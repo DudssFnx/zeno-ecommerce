@@ -7,6 +7,7 @@ import { z } from "zod";
 import multer from "multer";
 import { Client } from "@replit/object-storage";
 import * as blingService from "./services/bling";
+import bcrypt from "bcryptjs";
 
 const upload = multer({ 
   storage: multer.memoryStorage(),
@@ -433,6 +434,52 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error fetching users:", error);
       res.status(500).json({ message: "Failed to fetch users" });
+    }
+  });
+
+  // Create user with email/password (admin only)
+  app.post('/api/users', isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const { firstName, email, password, role } = req.body;
+      
+      if (!firstName || !email || !password) {
+        return res.status(400).json({ message: "Nome, email e senha são obrigatórios" });
+      }
+
+      const existingUser = await storage.getUserByEmail(email);
+      if (existingUser) {
+        return res.status(400).json({ message: "E-mail já cadastrado" });
+      }
+
+      const hashedPassword = await bcrypt.hash(password, 10);
+      
+      const newUser = await storage.upsertUser({
+        id: crypto.randomUUID(),
+        email,
+        password: hashedPassword,
+        firstName,
+        lastName: null,
+        profileImageUrl: null,
+        role: role || "customer",
+        company: null,
+        approved: true,
+        phone: null,
+        personType: null,
+        cnpj: null,
+        cpf: null,
+        cep: null,
+        address: null,
+        addressNumber: null,
+        complement: null,
+        neighborhood: null,
+        city: null,
+        state: null,
+      });
+
+      res.status(201).json({ message: "Usuário criado com sucesso", userId: newUser.id });
+    } catch (error) {
+      console.error("Error creating user:", error);
+      res.status(500).json({ message: "Erro ao criar usuário" });
     }
   });
 
