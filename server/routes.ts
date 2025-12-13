@@ -1,6 +1,9 @@
 import express, { type Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
+import { db } from "./db";
+import { products, orderItems, orders } from "@shared/schema";
+import { eq, sql } from "drizzle-orm";
 import { setupAuth, isAuthenticated } from "./replitAuth";
 import { insertCategorySchema, insertProductSchema, insertOrderSchema, insertOrderItemSchema, insertCouponSchema } from "@shared/schema";
 import { z } from "zod";
@@ -390,7 +393,36 @@ export async function registerRoutes(
 
   app.patch('/api/orders/:id', isAuthenticated, isAdminOrSales, async (req, res) => {
     try {
-      const order = await storage.updateOrder(parseInt(req.params.id), req.body);
+      const orderId = parseInt(req.params.id);
+      const { status } = req.body;
+      
+      // Handle cancellation with stock return
+      if (status === 'PEDIDO_CANCELADO') {
+        const existingOrder = await storage.getOrder(orderId);
+        if (!existingOrder) {
+          return res.status(404).json({ message: "Order not found" });
+        }
+        
+        // If order was in PEDIDO_GERADO (stock reserved), release it
+        if (existingOrder.status === 'PEDIDO_GERADO') {
+          const orderItems = await storage.getOrderItems(orderId);
+          for (const item of orderItems) {
+            await db.update(products)
+              .set({ reservedStock: sql`GREATEST(reserved_stock - ${item.quantity}, 0)` })
+              .where(eq(products.id, item.productId));
+          }
+        }
+        
+        // Update order to cancelled
+        const order = await storage.updateOrder(orderId, { 
+          status: 'PEDIDO_CANCELADO',
+          reservedAt: null,
+          reservedBy: null
+        });
+        return res.json(order);
+      }
+      
+      const order = await storage.updateOrder(orderId, req.body);
       if (!order) {
         return res.status(404).json({ message: "Order not found" });
       }
@@ -458,6 +490,39 @@ export async function registerRoutes(
       res.json(order);
     } catch (error) {
       res.status(500).json({ message: "Erro ao faturar pedido" });
+    }
+  });
+
+  // Admin-only: Delete order with stock return if applicable
+  app.delete('/api/orders/:id', isAuthenticated, isAdmin, async (req: any, res) => {
+    try {
+      const orderId = parseInt(req.params.id);
+      const existingOrder = await storage.getOrder(orderId);
+      
+      if (!existingOrder) {
+        return res.status(404).json({ message: "Pedido não encontrado" });
+      }
+      
+      // If order has reserved stock (PEDIDO_GERADO), release it back
+      if (existingOrder.status === 'PEDIDO_GERADO') {
+        const items = await storage.getOrderItems(orderId);
+        for (const item of items) {
+          await db.update(products)
+            .set({ reservedStock: sql`GREATEST(reserved_stock - ${item.quantity}, 0)` })
+            .where(eq(products.id, item.productId));
+        }
+      }
+      
+      // Delete order items first
+      await db.delete(orderItems).where(eq(orderItems.orderId, orderId));
+      
+      // Delete the order
+      await db.delete(orders).where(eq(orders.id, orderId));
+      
+      res.json({ success: true, message: "Pedido excluído com sucesso" });
+    } catch (error) {
+      console.error("Error deleting order:", error);
+      res.status(500).json({ message: "Erro ao excluir pedido" });
     }
   });
 

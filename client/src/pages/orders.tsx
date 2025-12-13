@@ -314,6 +314,47 @@ export default function OrdersPage() {
   };
 
   const [isBatchStatusLoading, setIsBatchStatusLoading] = useState(false);
+  const [isBatchDeleteLoading, setIsBatchDeleteLoading] = useState(false);
+
+  const handleBatchDelete = async () => {
+    if (selectedOrders.size === 0) {
+      toast({ title: "Aviso", description: "Selecione pelo menos um pedido", variant: "destructive" });
+      return;
+    }
+    
+    if (!confirm(`Tem certeza que deseja excluir ${selectedOrders.size} pedido(s)? Esta ação não pode ser desfeita.`)) {
+      return;
+    }
+    
+    setIsBatchDeleteLoading(true);
+    const orderIds = Array.from(selectedOrders);
+    let successCount = 0;
+    let errorCount = 0;
+
+    for (const orderId of orderIds) {
+      try {
+        await apiRequest("DELETE", `/api/orders/${orderId}`);
+        successCount++;
+      } catch (e) {
+        errorCount++;
+      }
+    }
+
+    queryClient.invalidateQueries({ queryKey: ['/api/orders'] });
+    queryClient.invalidateQueries({ queryKey: ['/api/products'] });
+    setSelectedOrders(new Set());
+    setIsBatchDeleteLoading(false);
+
+    if (errorCount === 0) {
+      toast({ title: "Sucesso", description: `${successCount} pedido(s) excluído(s) com sucesso` });
+    } else {
+      toast({ 
+        title: "Aviso", 
+        description: `${successCount} excluído(s), ${errorCount} erro(s)`,
+        variant: errorCount > 0 && successCount === 0 ? "destructive" : "default"
+      });
+    }
+  };
 
   const handleBatchStatusChange = async (newStatus: string) => {
     if (selectedOrders.size === 0) {
@@ -736,10 +777,25 @@ export default function OrdersPage() {
                 data-testid="batch-status-pedido-cancelado"
                 className="text-destructive"
               >
-                Cancelar Pedido
+                Cancelar Pedido (Devolver Estoque)
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+          {isAdmin && (
+            <Button 
+              variant="destructive" 
+              onClick={handleBatchDelete}
+              disabled={selectedOrders.size === 0 || isBatchDeleteLoading}
+              data-testid="button-batch-delete"
+            >
+              {isBatchDeleteLoading ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Trash2 className="h-4 w-4 mr-2" />
+              )}
+              Excluir {selectedOrders.size > 0 ? `(${selectedOrders.size})` : "Selecionados"}
+            </Button>
+          )}
           <Button variant="outline" onClick={() => refetch()} data-testid="button-refresh-orders">
             <RefreshCw className="h-4 w-4 mr-2" />
             Atualizar
