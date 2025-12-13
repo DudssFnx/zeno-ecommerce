@@ -182,10 +182,10 @@ export default function OrdersPage() {
 
   const cartTotal = cartItems.reduce((sum, item) => sum + (parseFloat(item.product.price) * item.quantity), 0);
 
-  const orders: Order[] = ordersData.map((order) => ({
+  const orders: Order[] = ordersData.map((order: any) => ({
     id: String(order.id),
     orderNumber: order.orderNumber,
-    customer: order.userId.substring(0, 8) + "...",
+    customer: order.customerName || order.userId.substring(0, 8) + "...",
     date: format(new Date(order.createdAt), "MMM d, yyyy"),
     status: order.status as Order["status"],
     total: parseFloat(order.total),

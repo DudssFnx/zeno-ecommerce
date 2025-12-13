@@ -283,15 +283,29 @@ export async function registerRoutes(
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
       
+      let ordersData;
       // Customers can only see their own orders
       if (user?.role === 'customer') {
-        const orders = await storage.getOrders(userId);
-        res.json(orders);
+        ordersData = await storage.getOrders(userId);
       } else {
         // Admin and sales can see all orders
-        const orders = await storage.getOrders();
-        res.json(orders);
+        ordersData = await storage.getOrders();
       }
+      
+      // Fetch customer info for each order
+      const ordersWithCustomers = await Promise.all(
+        ordersData.map(async (order) => {
+          const customer = await storage.getUser(order.userId);
+          return {
+            ...order,
+            customerName: customer ? 
+              (customer.tradingName || customer.company || `${customer.firstName || ''} ${customer.lastName || ''}`.trim() || customer.email) 
+              : order.userId.substring(0, 8) + "...",
+          };
+        })
+      );
+      
+      res.json(ordersWithCustomers);
     } catch (error) {
       console.error("Error fetching orders:", error);
       res.status(500).json({ message: "Failed to fetch orders" });
