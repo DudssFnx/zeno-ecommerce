@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { StatusBadge } from "./StatusBadge";
 import { Eye, MoreHorizontal, Printer } from "lucide-react";
 import { Link } from "wouter";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -28,6 +29,9 @@ interface OrderTableProps {
   onUpdateStatus?: (order: Order, status: string) => void;
   onPrintOrder?: (order: Order) => void;
   showCustomer?: boolean;
+  selectedOrderIds?: Set<string>;
+  onSelectionChange?: (orderId: string, selected: boolean) => void;
+  onSelectAll?: (selected: boolean) => void;
 }
 
 export function OrderTable({ 
@@ -36,13 +40,29 @@ export function OrderTable({
   onEditOrder, 
   onUpdateStatus,
   onPrintOrder,
-  showCustomer = true 
+  showCustomer = true,
+  selectedOrderIds,
+  onSelectionChange,
+  onSelectAll,
 }: OrderTableProps) {
+  const allSelected = orders.length > 0 && selectedOrderIds && orders.every(o => selectedOrderIds.has(o.id));
+  const someSelected = selectedOrderIds && orders.some(o => selectedOrderIds.has(o.id)) && !allSelected;
+
   return (
     <div className="rounded-lg border overflow-hidden">
       <Table>
         <TableHeader>
           <TableRow className="bg-muted/50">
+            {onSelectionChange && (
+              <TableHead className="w-[50px]">
+                <Checkbox
+                  checked={allSelected}
+                  onCheckedChange={(checked) => onSelectAll?.(!!checked)}
+                  data-testid="checkbox-select-all"
+                  className={someSelected ? "data-[state=checked]:bg-primary/50" : ""}
+                />
+              </TableHead>
+            )}
             <TableHead className="font-semibold">Pedido #</TableHead>
             {showCustomer && <TableHead className="font-semibold">Cliente</TableHead>}
             <TableHead className="font-semibold">Data</TableHead>
@@ -60,6 +80,15 @@ export function OrderTable({
               className={idx % 2 === 0 ? "bg-background" : "bg-muted/30"}
               data-testid={`row-order-${order.id}`}
             >
+              {onSelectionChange && (
+                <TableCell>
+                  <Checkbox
+                    checked={selectedOrderIds?.has(order.id) || false}
+                    onCheckedChange={(checked) => onSelectionChange(order.id, !!checked)}
+                    data-testid={`checkbox-order-${order.id}`}
+                  />
+                </TableCell>
+              )}
               <TableCell className="font-medium" data-testid={`text-order-number-${order.id}`}>
                 {order.orderNumber}
               </TableCell>
