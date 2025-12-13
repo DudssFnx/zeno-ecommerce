@@ -3,6 +3,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { 
   Search, 
   RefreshCw, 
@@ -25,6 +28,14 @@ import type { User } from "@shared/schema";
 export default function CustomersPage() {
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState("");
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [formLoading, setFormLoading] = useState(false);
+  const [newCustomer, setNewCustomer] = useState({
+    personType: "juridica",
+    cnpj: "", cpf: "", company: "", tradingName: "", firstName: "", email: "", phone: "",
+    stateRegistration: "", cep: "", address: "", addressNumber: "", complement: "",
+    neighborhood: "", city: "", state: "",
+  });
 
   const { data: usersData = [], isLoading, refetch } = useQuery<User[]>({
     queryKey: ['/api/users'],
@@ -107,6 +118,74 @@ export default function CustomersPage() {
     }).format(new Date(date));
   };
 
+  const fetchCNPJData = async (cnpj: string) => {
+    const cleanCnpj = cnpj.replace(/\D/g, '');
+    if (cleanCnpj.length !== 14) return;
+    setFormLoading(true);
+    try {
+      const response = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cleanCnpj}`);
+      if (response.ok) {
+        const data = await response.json();
+        setNewCustomer(prev => ({
+          ...prev,
+          company: data.razao_social || "",
+          tradingName: data.nome_fantasia || "",
+          firstName: data.nome_fantasia || data.razao_social || "",
+          phone: data.ddd_telefone_1 || "",
+          cep: data.cep?.replace(/\D/g, '') || "",
+          address: data.logradouro || "",
+          addressNumber: data.numero || "",
+          complement: data.complemento || "",
+          neighborhood: data.bairro || "",
+          city: data.municipio || "",
+          state: data.uf || "",
+        }));
+        toast({ title: "Dados carregados", description: "Dados da empresa preenchidos automaticamente" });
+      }
+    } catch (e) {
+      toast({ title: "Erro", description: "Falha ao buscar dados do CNPJ", variant: "destructive" });
+    }
+    setFormLoading(false);
+  };
+
+  const fetchCEPData = async (cep: string) => {
+    const cleanCep = cep.replace(/\D/g, '');
+    if (cleanCep.length !== 8) return;
+    try {
+      const response = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`);
+      if (response.ok) {
+        const data = await response.json();
+        if (!data.erro) {
+          setNewCustomer(prev => ({
+            ...prev,
+            address: data.logradouro || prev.address,
+            neighborhood: data.bairro || prev.neighborhood,
+            city: data.localidade || prev.city,
+            state: data.uf || prev.state,
+          }));
+        }
+      }
+    } catch (e) {}
+  };
+
+  const createCustomerMutation = useMutation({
+    mutationFn: async (data: typeof newCustomer) => {
+      await apiRequest("POST", "/api/register", {
+        ...data,
+        firstName: data.firstName || data.tradingName || data.company,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/users'] });
+      setShowCreateDialog(false);
+      setNewCustomer({ personType: "juridica", cnpj: "", cpf: "", company: "", tradingName: "", firstName: "", email: "", phone: "", stateRegistration: "", cep: "", address: "", addressNumber: "", complement: "", neighborhood: "", city: "", state: "" });
+      toast({ title: "Sucesso", description: "Cliente cadastrado com sucesso" });
+    },
+    onError: () => {
+      toast({ title: "Erro", description: "Falha ao cadastrar cliente", variant: "destructive" });
+    },
+  });
+
   return (
     <div className="p-4 lg:p-6 space-y-6">
       <div className="flex items-center justify-between gap-4 flex-wrap">
@@ -121,7 +200,7 @@ export default function CustomersPage() {
             <RefreshCw className="h-4 w-4 mr-2" />
             Atualizar
           </Button>
-          <Button data-testid="button-add-customer">
+          <Button onClick={() => setShowCreateDialog(true)} data-testid="button-add-customer">
             Cadastrar Cliente
           </Button>
         </div>
@@ -342,6 +421,197 @@ export default function CustomersPage() {
           </Card>
         </div>
       </div>
+
+      <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Cadastrar Novo Cliente</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label>Tipo de Pessoa</Label>
+              <Select value={newCustomer.personType} onValueChange={(v) => setNewCustomer(p => ({ ...p, personType: v }))}>
+                <SelectTrigger data-testid="select-person-type">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="juridica">Pessoa Juridica</SelectItem>
+                  <SelectItem value="fisica">Pessoa Fisica</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {newCustomer.personType === "juridica" ? (
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>CNPJ</Label>
+                  <Input
+                    value={newCustomer.cnpj}
+                    onChange={(e) => setNewCustomer(p => ({ ...p, cnpj: e.target.value }))}
+                    onBlur={() => fetchCNPJData(newCustomer.cnpj)}
+                    placeholder="00.000.000/0000-00"
+                    data-testid="input-cnpj"
+                  />
+                </div>
+                <div>
+                  <Label>Inscricao Estadual</Label>
+                  <Input
+                    value={newCustomer.stateRegistration}
+                    onChange={(e) => setNewCustomer(p => ({ ...p, stateRegistration: e.target.value }))}
+                    placeholder="Inscricao Estadual"
+                    data-testid="input-state-registration"
+                  />
+                </div>
+                <div className="col-span-2">
+                  <Label>Razao Social</Label>
+                  <Input
+                    value={newCustomer.company}
+                    onChange={(e) => setNewCustomer(p => ({ ...p, company: e.target.value }))}
+                    placeholder="Razao Social"
+                    data-testid="input-company"
+                  />
+                </div>
+                <div className="col-span-2">
+                  <Label>Nome Fantasia</Label>
+                  <Input
+                    value={newCustomer.tradingName}
+                    onChange={(e) => setNewCustomer(p => ({ ...p, tradingName: e.target.value }))}
+                    placeholder="Nome Fantasia"
+                    data-testid="input-trading-name"
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>CPF</Label>
+                  <Input
+                    value={newCustomer.cpf}
+                    onChange={(e) => setNewCustomer(p => ({ ...p, cpf: e.target.value }))}
+                    placeholder="000.000.000-00"
+                    data-testid="input-cpf"
+                  />
+                </div>
+                <div>
+                  <Label>Nome Completo</Label>
+                  <Input
+                    value={newCustomer.firstName}
+                    onChange={(e) => setNewCustomer(p => ({ ...p, firstName: e.target.value }))}
+                    placeholder="Nome Completo"
+                    data-testid="input-first-name"
+                  />
+                </div>
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Email</Label>
+                <Input
+                  type="email"
+                  value={newCustomer.email}
+                  onChange={(e) => setNewCustomer(p => ({ ...p, email: e.target.value }))}
+                  placeholder="email@exemplo.com"
+                  data-testid="input-email"
+                />
+              </div>
+              <div>
+                <Label>Telefone</Label>
+                <Input
+                  value={newCustomer.phone}
+                  onChange={(e) => setNewCustomer(p => ({ ...p, phone: e.target.value }))}
+                  placeholder="(00) 00000-0000"
+                  data-testid="input-phone"
+                />
+              </div>
+            </div>
+
+            <div className="border-t pt-4">
+              <h4 className="font-medium mb-3">Endereco</h4>
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <Label>CEP</Label>
+                  <Input
+                    value={newCustomer.cep}
+                    onChange={(e) => setNewCustomer(p => ({ ...p, cep: e.target.value }))}
+                    onBlur={() => fetchCEPData(newCustomer.cep)}
+                    placeholder="00000-000"
+                    data-testid="input-cep"
+                  />
+                </div>
+                <div className="col-span-2">
+                  <Label>Logradouro</Label>
+                  <Input
+                    value={newCustomer.address}
+                    onChange={(e) => setNewCustomer(p => ({ ...p, address: e.target.value }))}
+                    placeholder="Rua, Avenida..."
+                    data-testid="input-address"
+                  />
+                </div>
+                <div>
+                  <Label>Numero</Label>
+                  <Input
+                    value={newCustomer.addressNumber}
+                    onChange={(e) => setNewCustomer(p => ({ ...p, addressNumber: e.target.value }))}
+                    placeholder="Numero"
+                    data-testid="input-address-number"
+                  />
+                </div>
+                <div className="col-span-2">
+                  <Label>Complemento</Label>
+                  <Input
+                    value={newCustomer.complement}
+                    onChange={(e) => setNewCustomer(p => ({ ...p, complement: e.target.value }))}
+                    placeholder="Apto, Sala..."
+                    data-testid="input-complement"
+                  />
+                </div>
+                <div>
+                  <Label>Bairro</Label>
+                  <Input
+                    value={newCustomer.neighborhood}
+                    onChange={(e) => setNewCustomer(p => ({ ...p, neighborhood: e.target.value }))}
+                    placeholder="Bairro"
+                    data-testid="input-neighborhood"
+                  />
+                </div>
+                <div>
+                  <Label>Cidade</Label>
+                  <Input
+                    value={newCustomer.city}
+                    onChange={(e) => setNewCustomer(p => ({ ...p, city: e.target.value }))}
+                    placeholder="Cidade"
+                    data-testid="input-city"
+                  />
+                </div>
+                <div>
+                  <Label>Estado</Label>
+                  <Input
+                    value={newCustomer.state}
+                    onChange={(e) => setNewCustomer(p => ({ ...p, state: e.target.value }))}
+                    placeholder="UF"
+                    data-testid="input-state"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-4">
+              <Button variant="outline" onClick={() => setShowCreateDialog(false)} data-testid="button-cancel-customer">
+                Cancelar
+              </Button>
+              <Button 
+                onClick={() => createCustomerMutation.mutate(newCustomer)}
+                disabled={createCustomerMutation.isPending || formLoading}
+                data-testid="button-save-customer"
+              >
+                {createCustomerMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                Cadastrar
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
