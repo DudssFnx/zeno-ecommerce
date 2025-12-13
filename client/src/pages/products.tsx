@@ -70,14 +70,26 @@ export default function ProductsPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: productsResponse, isLoading } = useQuery<{ products: SchemaProduct[]; total: number }>({
-    queryKey: ['/api/products', { limit: 10000 }],
+    queryKey: ['/api/products'],
+    queryFn: async () => {
+      const res = await fetch('/api/products?limit=10000', { credentials: 'include' });
+      if (!res.ok) throw new Error('Failed to fetch products');
+      return res.json();
+    },
   });
   
   const productsData = productsResponse?.products || [];
 
-  const { data: categoriesData = [] } = useQuery<Category[]>({
+  const { data: categoriesResponse } = useQuery<{ categories: Category[]; total: number }>({
     queryKey: ['/api/categories'],
+    queryFn: async () => {
+      const res = await fetch('/api/categories?limit=1000', { credentials: 'include' });
+      if (!res.ok) throw new Error('Failed to fetch categories');
+      return res.json();
+    },
   });
+  
+  const categoriesData = categoriesResponse?.categories || [];
 
   const categoryMap: Record<number, string> = {};
   categoriesData.forEach(cat => {
