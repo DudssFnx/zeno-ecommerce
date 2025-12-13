@@ -393,6 +393,16 @@ export async function registerRoutes(
     }
   });
 
+  app.get('/api/admin/customer-analytics', isAuthenticated, isAdminOrSales, async (req: any, res) => {
+    try {
+      const analytics = await storage.getCustomerAnalytics();
+      res.json(analytics);
+    } catch (error) {
+      console.error("Error fetching customer analytics:", error);
+      res.status(500).json({ message: "Failed to fetch customer analytics" });
+    }
+  });
+
   // ========== USERS (Admin Only) ==========
   app.get('/api/users', isAuthenticated, isAdmin, async (req, res) => {
     try {
