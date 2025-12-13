@@ -219,6 +219,57 @@ export async function fetchBlingCategories(): Promise<BlingCategory[]> {
   return response.data || [];
 }
 
+interface BlingStockItem {
+  produto: { id: number };
+  saldoFisicoTotal: number;
+  saldoVirtualTotal: number;
+}
+
+interface BlingStockResponse {
+  id: number;
+  codigo: string;
+  nome: string;
+  estoqueAtual: number;
+  depositos?: Array<{
+    id: number;
+    nome: string;
+    saldo: number;
+    saldoVirtual: number;
+  }>;
+}
+
+export async function fetchBlingStock(productIds: number[]): Promise<Map<number, number>> {
+  const stockMap = new Map<number, number>();
+  
+  const batchSize = 50;
+  for (let i = 0; i < productIds.length; i += batchSize) {
+    const batch = productIds.slice(i, i + batchSize);
+    const idsParam = batch.join(',');
+    
+    try {
+      const response = await blingApiRequest<{ data: BlingStockResponse[] }>(
+        `/estoques?idsProdutos=${idsParam}`
+      );
+      
+      if (response.data) {
+        for (const item of response.data) {
+          let totalStock = item.estoqueAtual || 0;
+          if (item.depositos && item.depositos.length > 0) {
+            totalStock = item.depositos.reduce((sum, d) => sum + (d.saldoVirtual || d.saldo || 0), 0);
+          }
+          stockMap.set(item.id, Math.floor(totalStock));
+        }
+      }
+      
+      await new Promise(resolve => setTimeout(resolve, 200));
+    } catch (error) {
+      console.error(`Failed to fetch stock for batch starting at ${i}:`, error);
+    }
+  }
+  
+  return stockMap;
+}
+
 export async function syncCategories(): Promise<{ created: number; updated: number }> {
   const blingCategories = await fetchBlingCategories();
   let created = 0;
@@ -270,7 +321,10 @@ export async function syncProducts(): Promise<{ created: number; updated: number
     await new Promise(resolve => setTimeout(resolve, 200));
   }
   
-  console.log(`Found ${productIds.length} active products. Fetching details...`);
+  console.log(`Found ${productIds.length} active products. Fetching stock...`);
+  
+  const stockMap = await fetchBlingStock(productIds);
+  console.log(`Fetched stock for ${stockMap.size} products. Fetching details...`);
 
   const existingCategories = await db.select().from(categories);
   const categoryMap: Record<string, number> = {};
@@ -345,6 +399,8 @@ export async function syncProducts(): Promise<{ created: number; updated: number
 
       const description = blingProduct.descricaoComplementar || blingProduct.descricaoCurta || null;
 
+      const stock = stockMap.get(productId) ?? blingProduct.estoque?.saldoVirtual ?? blingProduct.estoque?.saldoFisico ?? 0;
+
       const productData: InsertProduct = {
         name: blingProduct.nome,
         sku: blingProduct.codigo || `BLING-${blingProduct.id}`,
@@ -352,7 +408,7 @@ export async function syncProducts(): Promise<{ created: number; updated: number
         brand: blingProduct.marca || null,
         description,
         price: String(blingProduct.preco || 0),
-        stock: blingProduct.estoque?.saldoVirtual || blingProduct.estoque?.saldoFisico || 0,
+        stock,
         image: imageUrl,
       };
 
