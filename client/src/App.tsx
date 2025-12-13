@@ -20,23 +20,15 @@ import OrdersPage from "@/pages/orders";
 import ProductsPage from "@/pages/products";
 import UsersPage from "@/pages/users";
 import SettingsPage from "@/pages/settings";
-import { useToast } from "@/hooks/use-toast";
+import CustomersPage from "@/pages/customers";
 
 function AuthenticatedApp() {
   const { user, logout, isAdmin, isApproved } = useAuth();
   const { openCart, itemCount } = useCart();
-  const { toast } = useToast();
 
   const displayName = user?.firstName && user?.lastName 
     ? `${user.firstName} ${user.lastName}` 
     : user?.email || "User";
-
-  const handleGenerateOrder = () => {
-    toast({
-      title: "Order Generated",
-      description: "Your order has been submitted and is pending approval.",
-    });
-  };
 
   const sidebarStyle = {
     "--sidebar-width": "16rem",
@@ -65,7 +57,7 @@ function AuthenticatedApp() {
     <SidebarProvider style={sidebarStyle as React.CSSProperties}>
       <div className="flex h-screen w-full">
         <AppSidebar
-          userRole={user?.role || "customer"}
+          userRole={(user?.role as "admin" | "sales" | "customer") || "customer"}
           userName={displayName}
           onLogout={logout}
         />
@@ -91,13 +83,14 @@ function AuthenticatedApp() {
               <Route path="/catalog" component={CatalogPage} />
               <Route path="/orders" component={OrdersPage} />
               {isAdmin && <Route path="/products" component={ProductsPage} />}
+              {isAdmin && <Route path="/customers" component={CustomersPage} />}
               {isAdmin && <Route path="/users" component={UsersPage} />}
               {isAdmin && <Route path="/settings" component={SettingsPage} />}
               <Route component={NotFound} />
             </Switch>
           </main>
         </div>
-        <CartDrawer onGenerateOrder={handleGenerateOrder} />
+        <CartDrawer />
       </div>
     </SidebarProvider>
   );

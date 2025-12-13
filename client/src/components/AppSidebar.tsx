@@ -19,10 +19,11 @@ import {
   ShoppingCart,
   ClipboardList,
   Users,
+  UserCheck,
   Settings,
   LogOut,
 } from "lucide-react";
-import type { UserRole } from "@/contexts/AuthContext";
+type UserRole = "admin" | "sales" | "customer";
 
 interface AppSidebarProps {
   userRole?: UserRole;
@@ -46,6 +47,7 @@ const menuItems = {
     { title: "Catalog", url: "/catalog", icon: Package },
     { title: "All Orders", url: "/orders", icon: ClipboardList },
     { title: "Products", url: "/products", icon: Package },
+    { title: "Customers", url: "/customers", icon: UserCheck },
     { title: "Users", url: "/users", icon: Users },
     { title: "Settings", url: "/settings", icon: Settings },
   ],
