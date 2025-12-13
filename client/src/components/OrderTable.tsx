@@ -152,17 +152,12 @@ export function OrderTable({
                       <DropdownMenuItem onClick={() => onEditOrder?.(order)}>
                         Editar Pedido
                       </DropdownMenuItem>
-                      {order.status === "ORCAMENTO_ABERTO" && (
-                        <DropdownMenuItem onClick={() => onUpdateStatus?.(order, "ORCAMENTO_CONCLUIDO")}>
-                          Enviar Orçamento
-                        </DropdownMenuItem>
-                      )}
-                      {order.status === "ORCAMENTO_CONCLUIDO" && (
+                      {order.status === "ORCAMENTO" && (
                         <DropdownMenuItem 
                           onClick={() => onReserveStock ? onReserveStock(order) : onUpdateStatus?.(order, "PEDIDO_GERADO")}
                           data-testid={`button-reserve-stock-${order.id}`}
                         >
-                          Gerar Pedido (Reservar Estoque)
+                          GERAR PEDIDO
                         </DropdownMenuItem>
                       )}
                       {order.status === "PEDIDO_GERADO" && (
