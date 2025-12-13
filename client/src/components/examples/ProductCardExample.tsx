@@ -1,6 +1,5 @@
 import { ProductCard } from "../ProductCard";
 
-// todo: remove mock functionality
 const mockProduct = {
   id: "1",
   name: "Industrial Bearing Set - Heavy Duty",
@@ -16,7 +15,7 @@ export default function ProductCardExample() {
     <div className="max-w-[280px]">
       <ProductCard
         product={mockProduct}
-        onAddToCart={(p) => console.log("Added to cart:", p.name)}
+        onAddToCart={(p, qty) => console.log("Added to cart:", p.name, "qty:", qty)}
       />
     </div>
   );

@@ -1,6 +1,5 @@
 import { ProductGrid } from "../ProductGrid";
 
-// todo: remove mock functionality
 const mockProducts = [
   { id: "1", name: "Industrial Bearing Set", sku: "BRG-001", category: "Machinery", brand: "TechParts", price: 149.99, stock: 25 },
   { id: "2", name: "Hydraulic Pump Motor", sku: "HYD-102", category: "Hydraulics", brand: "FlowMax", price: 599.00, stock: 8 },
@@ -12,7 +11,7 @@ export default function ProductGridExample() {
   return (
     <ProductGrid
       products={mockProducts}
-      onAddToCart={(p) => console.log("Added:", p.name)}
+      onAddToCart={(p, qty) => console.log("Added:", p.name, "qty:", qty)}
     />
   );
 }

@@ -9,7 +9,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { Product as SchemaProduct, Category } from "@shared/schema";
 
 export default function CatalogPage() {
-  const { addItem, openCart, itemCount } = useCart();
+  const { addItem, openCart, itemCount, total } = useCart();
   const [searchQuery, setSearchQuery] = useState("");
   const [category, setCategory] = useState("all");
   const [brand, setBrand] = useState("all");
@@ -66,13 +66,13 @@ export default function CatalogPage() {
     });
   }, [products, searchQuery, category, brand]);
 
-  const handleAddToCart = (product: Product) => {
+  const handleAddToCart = (product: Product, quantity: number) => {
     addItem({
       productId: product.id,
       name: product.name,
       sku: product.sku,
       price: product.price,
-      quantity: 1,
+      quantity: quantity,
       image: product.image,
     });
   };
@@ -83,18 +83,30 @@ export default function CatalogPage() {
     setBrand("all");
   };
 
+  const formatCurrency = (value: number) => {
+    return new Intl.NumberFormat('pt-BR', {
+      style: 'currency',
+      currency: 'BRL'
+    }).format(value);
+  };
+
   return (
-    <div className="p-6 lg:p-8 space-y-6">
+    <div className="p-4 lg:p-6 space-y-4">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-3xl font-semibold">Catálogo de Produtos</h1>
-          <p className="text-muted-foreground mt-1">
-            Navegue por nossa seleção completa de produtos
+          <h1 className="text-2xl lg:text-3xl font-bold">Catálogo</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            {products.length} produtos disponíveis
           </p>
         </div>
         <Button onClick={openCart} className="gap-2" data-testid="button-view-cart">
           <ShoppingCart className="h-4 w-4" />
-          Carrinho ({itemCount})
+          <span className="hidden sm:inline">Carrinho</span>
+          {itemCount > 0 && (
+            <span className="bg-primary-foreground text-primary font-semibold px-2 py-0.5 rounded-full text-xs">
+              {itemCount}
+            </span>
+          )}
         </Button>
       </div>
 
@@ -110,24 +122,31 @@ export default function CatalogPage() {
         onClearFilters={clearFilters}
       />
 
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">
-          Mostrando {filteredProducts.length} de {products.length} produtos
+      <div className="flex items-center justify-between text-sm">
+        <p className="text-muted-foreground">
+          {filteredProducts.length === products.length 
+            ? `${products.length} produtos` 
+            : `${filteredProducts.length} de ${products.length} produtos`}
         </p>
+        {itemCount > 0 && (
+          <p className="text-muted-foreground">
+            Total no carrinho: <span className="font-semibold text-foreground">{formatCurrency(total)}</span>
+          </p>
+        )}
       </div>
 
       {productsLoading ? (
-        <div className="flex flex-col items-center justify-center py-16">
+        <div className="flex flex-col items-center justify-center py-20">
           <Loader2 className="h-10 w-10 animate-spin text-primary mb-4" />
           <p className="text-muted-foreground">Carregando produtos...</p>
         </div>
       ) : products.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 text-center">
-          <div className="w-20 h-20 rounded-full bg-muted flex items-center justify-center mb-4">
-            <Package className="h-10 w-10 text-muted-foreground" />
+        <div className="flex flex-col items-center justify-center py-20 text-center">
+          <div className="w-20 h-20 rounded-full bg-muted/50 flex items-center justify-center mb-4">
+            <Package className="h-10 w-10 text-muted-foreground/50" />
           </div>
           <h3 className="font-semibold text-lg mb-2">Nenhum produto disponível</h3>
-          <p className="text-muted-foreground">
+          <p className="text-muted-foreground text-sm">
             Os produtos serão exibidos aqui quando forem cadastrados
           </p>
         </div>
