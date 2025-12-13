@@ -10,6 +10,10 @@ export default function LandingPage() {
     window.location.href = "/api/login";
   };
 
+  const handleRegister = () => {
+    window.location.href = "/register";
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <header className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -51,7 +55,7 @@ export default function LandingPage() {
                 Acessar Catálogo
                 <ArrowRight className="h-5 w-5" />
               </Button>
-              <Button size="lg" variant="outline" onClick={handleLogin} data-testid="button-register">
+              <Button size="lg" variant="outline" onClick={handleRegister} data-testid="button-register">
                 Criar Conta
               </Button>
             </div>
