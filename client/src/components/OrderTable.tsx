@@ -1,7 +1,8 @@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { StatusBadge } from "./StatusBadge";
-import { Eye, MoreHorizontal, Printer } from "lucide-react";
+import { Eye, MoreHorizontal, Printer, Check } from "lucide-react";
 import { Link } from "wouter";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -102,9 +103,14 @@ export function OrderTable({
               </TableCell>
               <TableCell>
                 {order.printed ? (
-                  <span className="text-sm font-semibold text-muted-foreground" data-testid={`text-printed-${order.id}`}>
-                    PEDIDO IMPRESSO
-                  </span>
+                  <Badge 
+                    variant="outline" 
+                    className="bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green-400 border-green-200 dark:border-green-800 text-xs gap-1"
+                    data-testid={`badge-printed-${order.id}`}
+                  >
+                    <Check className="h-3 w-3" />
+                    Impresso
+                  </Badge>
                 ) : (
                   <button
                     onClick={() => onPrintOrder?.(order)}
