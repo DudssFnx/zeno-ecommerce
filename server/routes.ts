@@ -117,10 +117,17 @@ export async function registerRoutes(
         return res.status(400).json({ message: "E-mail já cadastrado" });
       }
 
+      // Hash password if provided
+      let hashedPassword = null;
+      if (data.password) {
+        hashedPassword = await bcrypt.hash(data.password, 10);
+      }
+
       // Create new user with pending approval
       const newUser = await storage.upsertUser({
         id: crypto.randomUUID(),
         email: data.email,
+        password: hashedPassword,
         firstName: data.firstName,
         lastName: null,
         profileImageUrl: null,

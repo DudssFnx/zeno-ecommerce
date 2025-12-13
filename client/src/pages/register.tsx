@@ -156,6 +156,8 @@ const step1Schema = z.object({
 const step2Schema = z.object({
   firstName: z.string().min(2, "Nome obrigatório"),
   phone: z.string().min(10, "Telefone com DDD obrigatório"),
+  password: z.string().min(6, "Senha deve ter pelo menos 6 caracteres"),
+  confirmPassword: z.string().min(1, "Confirme a senha"),
   cep: z.string().min(8, "CEP obrigatório"),
   address: z.string().min(3, "Endereço obrigatório"),
   addressNumber: z.string().min(1, "Número obrigatório"),
@@ -166,6 +168,9 @@ const step2Schema = z.object({
   company: z.string().optional(),
   tradingName: z.string().optional(),
   stateRegistration: z.string().optional(),
+}).refine((data) => data.password === data.confirmPassword, {
+  message: "As senhas não coincidem",
+  path: ["confirmPassword"],
 });
 
 type Step1Data = z.infer<typeof step1Schema>;
@@ -197,6 +202,8 @@ export default function RegisterPage() {
     defaultValues: {
       firstName: "",
       phone: "",
+      password: "",
+      confirmPassword: "",
       cep: "",
       address: "",
       addressNumber: "",
@@ -493,6 +500,34 @@ export default function RegisterPage() {
                           <FormLabel>Telefone com DDD *</FormLabel>
                           <FormControl>
                             <Input placeholder="(11) 99999-9999" {...field} data-testid="input-phone" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form2.control}
+                      name="password"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Senha *</FormLabel>
+                          <FormControl>
+                            <Input type="password" placeholder="Mínimo 6 caracteres" {...field} data-testid="input-password" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form2.control}
+                      name="confirmPassword"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Confirmar Senha *</FormLabel>
+                          <FormControl>
+                            <Input type="password" placeholder="Repita a senha" {...field} data-testid="input-confirm-password" />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
