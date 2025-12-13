@@ -1,7 +1,13 @@
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
-export type OrderStatus = "pending" | "approved" | "processing" | "completed" | "cancelled";
+export type OrderStatus = 
+  | "ORCAMENTO_ABERTO" 
+  | "ORCAMENTO_CONCLUIDO" 
+  | "PEDIDO_GERADO" 
+  | "PEDIDO_FATURADO" 
+  | "PEDIDO_CANCELADO"
+  | "pending" | "approved" | "processing" | "completed" | "cancelled";
 export type UserStatus = "pending" | "approved" | "rejected";
 
 interface StatusBadgeProps {
@@ -10,6 +16,11 @@ interface StatusBadgeProps {
 }
 
 const statusConfig: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
+  ORCAMENTO_ABERTO: { label: "Orçamento Aberto", variant: "secondary" },
+  ORCAMENTO_CONCLUIDO: { label: "Orçamento Enviado", variant: "outline" },
+  PEDIDO_GERADO: { label: "Pedido Gerado", variant: "default" },
+  PEDIDO_FATURADO: { label: "Faturado", variant: "default" },
+  PEDIDO_CANCELADO: { label: "Cancelado", variant: "destructive" },
   pending: { label: "Pendente", variant: "secondary" },
   approved: { label: "Aprovado", variant: "default" },
   processing: { label: "Processando", variant: "outline" },

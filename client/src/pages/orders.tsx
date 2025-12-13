@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Download, RefreshCw, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import type { OrderStatus } from "@/components/StatusBadge";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { Order as SchemaOrder } from "@shared/schema";
@@ -36,8 +35,11 @@ export default function OrdersPage() {
     itemCount: order.items?.length || 0,
   }));
 
+  const newStatuses = ["ORCAMENTO_ABERTO", "ORCAMENTO_CONCLUIDO", "PEDIDO_GERADO", "PEDIDO_FATURADO", "PEDIDO_CANCELADO"];
+  
   const filteredOrders = orders.filter((order) => {
     if (activeTab === "all") return true;
+    if (activeTab === "legacy") return !newStatuses.includes(order.status);
     return order.status === activeTab;
   });
 
@@ -50,7 +52,7 @@ export default function OrdersPage() {
     },
   });
 
-  const handleUpdateStatus = (order: Order, status: OrderStatus) => {
+  const handleUpdateStatus = (order: Order, status: string) => {
     updateStatusMutation.mutate(
       { orderId: order.id, status },
       {
@@ -133,16 +135,22 @@ export default function OrdersPage() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList>
+        <TabsList className="flex-wrap">
           <TabsTrigger value="all" data-testid="tab-all">Todos ({orders.length})</TabsTrigger>
-          <TabsTrigger value="pending" data-testid="tab-pending">
-            Pendentes ({orders.filter(o => o.status === "pending").length})
+          <TabsTrigger value="ORCAMENTO_ABERTO" data-testid="tab-orcamento-aberto">
+            Orçamentos ({orders.filter(o => o.status === "ORCAMENTO_ABERTO").length})
           </TabsTrigger>
-          <TabsTrigger value="approved" data-testid="tab-approved">
-            Aprovados ({orders.filter(o => o.status === "approved").length})
+          <TabsTrigger value="ORCAMENTO_CONCLUIDO" data-testid="tab-orcamento-concluido">
+            Enviados ({orders.filter(o => o.status === "ORCAMENTO_CONCLUIDO").length})
           </TabsTrigger>
-          <TabsTrigger value="completed" data-testid="tab-completed">
-            Concluídos ({orders.filter(o => o.status === "completed").length})
+          <TabsTrigger value="PEDIDO_GERADO" data-testid="tab-pedido-gerado">
+            Pedidos ({orders.filter(o => o.status === "PEDIDO_GERADO").length})
+          </TabsTrigger>
+          <TabsTrigger value="PEDIDO_FATURADO" data-testid="tab-pedido-faturado">
+            Faturados ({orders.filter(o => o.status === "PEDIDO_FATURADO").length})
+          </TabsTrigger>
+          <TabsTrigger value="legacy" data-testid="tab-legacy">
+            Outros ({orders.filter(o => !["ORCAMENTO_ABERTO", "ORCAMENTO_CONCLUIDO", "PEDIDO_GERADO", "PEDIDO_FATURADO", "PEDIDO_CANCELADO"].includes(o.status)).length})
           </TabsTrigger>
         </TabsList>
 

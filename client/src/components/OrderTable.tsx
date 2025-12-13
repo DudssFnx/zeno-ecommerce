@@ -1,6 +1,6 @@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { StatusBadge, type OrderStatus } from "./StatusBadge";
+import { StatusBadge } from "./StatusBadge";
 import { Eye, MoreHorizontal } from "lucide-react";
 import { Link } from "wouter";
 import {
@@ -15,7 +15,7 @@ export interface Order {
   orderNumber: string;
   customer: string;
   date: string;
-  status: OrderStatus;
+  status: string;
   total: number;
   itemCount: number;
 }
@@ -24,7 +24,7 @@ interface OrderTableProps {
   orders: Order[];
   onViewOrder?: (order: Order) => void;
   onEditOrder?: (order: Order) => void;
-  onUpdateStatus?: (order: Order, status: OrderStatus) => void;
+  onUpdateStatus?: (order: Order, status: string) => void;
   showCustomer?: boolean;
 }
 
@@ -65,7 +65,7 @@ export function OrderTable({
               <TableCell className="text-muted-foreground">{order.date}</TableCell>
               <TableCell>{order.itemCount} itens</TableCell>
               <TableCell>
-                <StatusBadge status={order.status} />
+                <StatusBadge status={order.status as any} />
               </TableCell>
               <TableCell className="text-right font-medium">
                 R$ {order.total.toFixed(2)}
@@ -95,17 +95,26 @@ export function OrderTable({
                       <DropdownMenuItem onClick={() => onEditOrder?.(order)}>
                         Editar Pedido
                       </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => onUpdateStatus?.(order, "approved")}>
-                        Marcar como Aprovado
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => onUpdateStatus?.(order, "completed")}>
-                        Marcar como Concluído
-                      </DropdownMenuItem>
+                      {order.status === "ORCAMENTO_ABERTO" && (
+                        <DropdownMenuItem onClick={() => onUpdateStatus?.(order, "ORCAMENTO_CONCLUIDO")}>
+                          Enviar Orçamento
+                        </DropdownMenuItem>
+                      )}
+                      {order.status === "ORCAMENTO_CONCLUIDO" && (
+                        <DropdownMenuItem onClick={() => onUpdateStatus?.(order, "PEDIDO_GERADO")}>
+                          Gerar Pedido
+                        </DropdownMenuItem>
+                      )}
+                      {order.status === "PEDIDO_GERADO" && (
+                        <DropdownMenuItem onClick={() => onUpdateStatus?.(order, "PEDIDO_FATURADO")}>
+                          Marcar como Faturado
+                        </DropdownMenuItem>
+                      )}
                       <DropdownMenuItem 
-                        onClick={() => onUpdateStatus?.(order, "cancelled")}
+                        onClick={() => onUpdateStatus?.(order, "PEDIDO_CANCELADO")}
                         className="text-destructive"
                       >
-                        Cancelar Pedido
+                        Cancelar
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>

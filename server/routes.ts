@@ -332,11 +332,11 @@ export async function registerRoutes(
         total += parseFloat(product.price) * item.quantity;
       }
       
-      // Create order
+      // Create order with ORCAMENTO_ABERTO status (Mercos-style quote system)
       const order = await storage.createOrder({
         userId,
         orderNumber: generateOrderNumber(),
-        status: 'pending',
+        status: 'ORCAMENTO_ABERTO',
         total: total.toFixed(2),
         notes: notes || null,
       });

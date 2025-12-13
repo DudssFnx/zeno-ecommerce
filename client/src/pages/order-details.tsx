@@ -38,6 +38,11 @@ interface OrderWithDetails extends Order {
 }
 
 const statusLabels: Record<string, string> = {
+  ORCAMENTO_ABERTO: "Orçamento Aberto",
+  ORCAMENTO_CONCLUIDO: "Orçamento Enviado",
+  PEDIDO_GERADO: "Pedido Gerado",
+  PEDIDO_FATURADO: "Faturado",
+  PEDIDO_CANCELADO: "Cancelado",
   pending: "Pendente",
   approved: "Aprovado",
   processing: "Processando",
@@ -46,6 +51,11 @@ const statusLabels: Record<string, string> = {
 };
 
 const statusVariants: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
+  ORCAMENTO_ABERTO: "secondary",
+  ORCAMENTO_CONCLUIDO: "outline",
+  PEDIDO_GERADO: "default",
+  PEDIDO_FATURADO: "default",
+  PEDIDO_CANCELADO: "destructive",
   pending: "secondary",
   approved: "default",
   processing: "default",
@@ -233,11 +243,11 @@ export default function OrderDetailsPage() {
                     <SelectValue placeholder="Selecionar status" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="pending">Pendente</SelectItem>
-                    <SelectItem value="approved">Aprovado</SelectItem>
-                    <SelectItem value="processing">Processando</SelectItem>
-                    <SelectItem value="completed">Concluído</SelectItem>
-                    <SelectItem value="cancelled">Cancelado</SelectItem>
+                    <SelectItem value="ORCAMENTO_ABERTO">Orçamento Aberto</SelectItem>
+                    <SelectItem value="ORCAMENTO_CONCLUIDO">Orçamento Enviado</SelectItem>
+                    <SelectItem value="PEDIDO_GERADO">Pedido Gerado</SelectItem>
+                    <SelectItem value="PEDIDO_FATURADO">Faturado</SelectItem>
+                    <SelectItem value="PEDIDO_CANCELADO">Cancelado</SelectItem>
                   </SelectContent>
                 </Select>
               </CardContent>
