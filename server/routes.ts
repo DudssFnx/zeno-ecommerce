@@ -396,13 +396,19 @@ export async function registerRoutes(
       const orderId = parseInt(req.params.id);
       const { status } = req.body;
       
-      // Handle cancellation with stock return from any status
+      // Check if order exists and prevent changes from FATURADO
+      const existingOrder = await storage.getOrder(orderId);
+      if (!existingOrder) {
+        return res.status(404).json({ message: "Order not found" });
+      }
+      
+      // FATURADO orders cannot change to any other status
+      if (existingOrder.status === 'FATURADO' && status) {
+        return res.status(400).json({ message: "Pedidos faturados não podem ter o status alterado" });
+      }
+      
+      // Handle cancellation with stock return (only from PEDIDO_GERADO or ORCAMENTO)
       if (status === 'CANCELADO') {
-        const existingOrder = await storage.getOrder(orderId);
-        if (!existingOrder) {
-          return res.status(404).json({ message: "Order not found" });
-        }
-        
         const items = await storage.getOrderItems(orderId);
         
         // If order was in PEDIDO_GERADO (stock reserved), release reserved stock
@@ -410,15 +416,6 @@ export async function registerRoutes(
           for (const item of items) {
             await db.update(products)
               .set({ reservedStock: sql`GREATEST(reserved_stock - ${item.quantity}, 0)` })
-              .where(eq(products.id, item.productId));
-          }
-        }
-        
-        // If order was FATURADO (stock deducted), restore stock to available
-        if (existingOrder.status === 'FATURADO') {
-          for (const item of items) {
-            await db.update(products)
-              .set({ stock: sql`stock + ${item.quantity}` })
               .where(eq(products.id, item.productId));
           }
         }
@@ -513,6 +510,11 @@ export async function registerRoutes(
         return res.status(404).json({ message: "Pedido não encontrado" });
       }
       
+      // FATURADO orders cannot be deleted
+      if (existingOrder.status === 'FATURADO') {
+        return res.status(400).json({ message: "Pedidos faturados não podem ser excluídos" });
+      }
+      
       const items = await storage.getOrderItems(orderId);
       
       // If order has reserved stock (PEDIDO_GERADO), release it back
@@ -520,15 +522,6 @@ export async function registerRoutes(
         for (const item of items) {
           await db.update(products)
             .set({ reservedStock: sql`GREATEST(reserved_stock - ${item.quantity}, 0)` })
-            .where(eq(products.id, item.productId));
-        }
-      }
-      
-      // If order was FATURADO (stock deducted), restore stock
-      if (existingOrder.status === 'FATURADO') {
-        for (const item of items) {
-          await db.update(products)
-            .set({ stock: sql`stock + ${item.quantity}` })
             .where(eq(products.id, item.productId));
         }
       }
