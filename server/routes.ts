@@ -10,6 +10,18 @@ import * as blingService from "./services/bling";
 import bcrypt from "bcryptjs";
 import PDFDocument from "pdfkit";
 
+async function fetchImageBuffer(url: string): Promise<Buffer | null> {
+  try {
+    const response = await fetch(url);
+    if (!response.ok) return null;
+    const arrayBuffer = await response.arrayBuffer();
+    return Buffer.from(arrayBuffer);
+  } catch (error) {
+    console.error("Error fetching image:", error);
+    return null;
+  }
+}
+
 const upload = multer({ 
   storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 }
@@ -868,14 +880,17 @@ export async function registerRoutes(
       doc.moveTo(40, doc.y).lineTo(555, doc.y).stroke();
       doc.moveDown(0.3);
 
-      // Table header
+      // Table header - adjusted columns for image
       const tableTop = doc.y;
-      const colCode = 40;
-      const colProduct = 100;
+      const colImg = 40;
+      const colCode = 90;
+      const colProduct = 140;
       const colQty = showPrices ? 350 : 450;
       const colPrice = 410;
       const colSubtotal = 480;
+      const imgSize = 40;
 
+      doc.text('Img', colImg, tableTop);
       doc.text('#', colCode, tableTop);
       doc.text('Produto', colProduct, tableTop);
       doc.text('Qtde.', colQty, tableTop);
@@ -896,15 +911,35 @@ export async function registerRoutes(
         const itemSubtotal = parseFloat(item.price) * item.quantity;
         totalQty += item.quantity;
 
-        doc.text(item.product?.sku || '-', colCode, y, { width: 55 });
-        doc.text(item.product?.name || `Produto #${item.productId}`, colProduct, y, { width: showPrices ? 245 : 345 });
-        doc.text(item.quantity.toString(), colQty, y);
-        if (showPrices) {
-          doc.text(`R$ ${parseFloat(item.price).toFixed(2)}`, colPrice, y);
-          doc.text(`R$ ${itemSubtotal.toFixed(2)}`, colSubtotal, y);
+        // Check if we need a new page
+        if (y > 700) {
+          doc.addPage();
         }
 
-        doc.moveDown(0.8);
+        const rowY = doc.y;
+
+        // Try to add product image
+        if (item.product?.image) {
+          try {
+            const imageBuffer = await fetchImageBuffer(item.product.image);
+            if (imageBuffer) {
+              doc.image(imageBuffer, colImg, rowY, { width: imgSize, height: imgSize, fit: [imgSize, imgSize] });
+            }
+          } catch (imgErr) {
+            // If image fails, just skip it
+          }
+        }
+
+        doc.text(item.product?.sku || '-', colCode, rowY + 15, { width: 45 });
+        doc.text(item.product?.name || `Produto #${item.productId}`, colProduct, rowY + 15, { width: showPrices ? 205 : 305 });
+        doc.text(item.quantity.toString(), colQty, rowY + 15);
+        if (showPrices) {
+          doc.text(`R$ ${parseFloat(item.price).toFixed(2)}`, colPrice, rowY + 15);
+          doc.text(`R$ ${itemSubtotal.toFixed(2)}`, colSubtotal, rowY + 15);
+        }
+
+        // Move down based on image size
+        doc.y = rowY + imgSize + 5;
       }
 
       doc.moveTo(40, doc.y).lineTo(555, doc.y).stroke();
