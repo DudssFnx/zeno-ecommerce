@@ -253,21 +253,30 @@ export default function OrdersPage() {
       return;
     }
     const orderIds = Array.from(selectedOrders);
-    orderIds.forEach(orderId => {
-      window.open(`/api/orders/${orderId}/pdf?type=${pdfType}`, '_blank');
-    });
+    
     try {
+      const response = await fetch('/api/orders/pdf/batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ orderIds, type: pdfType })
+      });
+      
+      if (!response.ok) throw new Error('Failed to generate PDF');
+      
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      window.open(url, '_blank');
+      
       await Promise.all(orderIds.map(orderId => 
         apiRequest("PATCH", `/api/orders/${orderId}/print`, {})
       ));
       queryClient.invalidateQueries({ queryKey: ['/api/orders'] });
+      setSelectedOrders(new Set());
+      toast({ title: "Sucesso", description: `PDF gerado com ${orderIds.length} pedido(s)` });
     } catch (e) {
+      toast({ title: "Erro", description: "Falha ao gerar PDF", variant: "destructive" });
     }
-    setSelectedOrders(new Set());
-    toast({ 
-      title: "Sucesso", 
-      description: `${orderIds.length} PDF(s) de ${pdfType} abertos` 
-    });
   };
 
   const handleUpdateStatus = (order: Order, status: string) => {

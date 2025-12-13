@@ -770,6 +770,230 @@ export async function registerRoutes(
   });
 
   // ========== PDF GENERATION ==========
+  
+  // Batch PDF - generates a single PDF with multiple orders
+  app.post('/api/orders/pdf/batch', isAuthenticated, isApproved, async (req: any, res) => {
+    try {
+      const { orderIds, type } = req.body;
+      
+      if (!orderIds || !Array.isArray(orderIds) || orderIds.length === 0) {
+        return res.status(400).json({ message: "orderIds array is required" });
+      }
+
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      
+      const pdfType = type || 'cobranca';
+      const showPrices = pdfType === 'cobranca';
+      const showCustomerDetails = pdfType !== 'conferencia';
+      
+      const pdfTitles: Record<string, string> = {
+        separacao: 'SEPARACAO',
+        cobranca: 'ORCAMENTO',
+        conferencia: 'CONFERENCIA'
+      };
+
+      const doc = new PDFDocument({ margin: 40, size: 'A4' });
+      
+      const fileName = `${pdfTitles[pdfType] || 'PDF'}_Lote_${new Date().toISOString().slice(0,10)}.pdf`;
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+      doc.pipe(res);
+
+      for (let i = 0; i < orderIds.length; i++) {
+        const orderId = orderIds[i];
+        const orderDetails = await storage.getOrderWithDetails(parseInt(orderId));
+        
+        if (!orderDetails) continue;
+        
+        // Customers can only see their own orders
+        if (user?.role === 'customer' && orderDetails.order.userId !== userId) {
+          continue;
+        }
+
+        const { order, items, customer } = orderDetails;
+
+        // Add new page for orders after the first
+        if (i > 0) {
+          doc.addPage();
+        }
+
+        // Header
+        doc.fontSize(16).font('Helvetica-Bold').text('LOJAMADRUGADAO SAO PAULO', { align: 'center' });
+        doc.fontSize(12).font('Helvetica').text('11 99284-5596', { align: 'center' });
+        doc.moveDown(0.5);
+        doc.fontSize(14).font('Helvetica-Bold').text(`${pdfTitles[pdfType] || 'ORCAMENTO'} N. ${order.orderNumber}`, { align: 'center' });
+        doc.moveDown();
+
+        // Customer Info
+        if (showCustomerDetails && customer) {
+          doc.fontSize(10).font('Helvetica-Bold').text('DADOS DO CLIENTE');
+          doc.moveTo(40, doc.y).lineTo(555, doc.y).stroke();
+          doc.moveDown(0.3);
+
+          doc.font('Helvetica');
+          const col1X = 40;
+          const col2X = 300;
+
+          let y = doc.y;
+          doc.text(`Cliente: ${customer.firstName || ''} ${customer.lastName || ''}`, col1X, y);
+          if (customer.company) {
+            doc.text(`Razao Social: ${customer.company}`, col2X, y);
+          }
+
+          y = doc.y + 5;
+          if (customer.tradingName) {
+            doc.text(`Nome Fantasia: ${customer.tradingName}`, col1X, y);
+          }
+          
+          y = doc.y + 5;
+          if (customer.personType === 'juridica' && customer.cnpj) {
+            doc.text(`CNPJ: ${customer.cnpj}`, col1X, y);
+          } else if (customer.cpf) {
+            doc.text(`CPF: ${customer.cpf}`, col1X, y);
+          }
+          if (customer.stateRegistration) {
+            doc.text(`Inscricao Estadual: ${customer.stateRegistration}`, col2X, y);
+          }
+
+          y = doc.y + 5;
+          let addressLine = '';
+          if (customer.address) {
+            addressLine = customer.address;
+            if (customer.addressNumber) addressLine += `, ${customer.addressNumber}`;
+            if (customer.complement) addressLine += ` - ${customer.complement}`;
+          }
+          if (addressLine) {
+            doc.text(`Endereco: ${addressLine}`, col1X, y);
+          }
+
+          y = doc.y + 5;
+          if (customer.neighborhood) {
+            doc.text(`Bairro: ${customer.neighborhood}`, col1X, y);
+          }
+          if (customer.cep) {
+            doc.text(`CEP: ${customer.cep}`, col2X, y);
+          }
+
+          y = doc.y + 5;
+          if (customer.city) {
+            doc.text(`Cidade: ${customer.city}`, col1X, y);
+          }
+          if (customer.state) {
+            doc.text(`Estado: ${customer.state}`, col2X, y);
+          }
+
+          y = doc.y + 5;
+          if (customer.phone) {
+            doc.text(`Telefone: ${customer.phone}`, col1X, y);
+          }
+          if (customer.email) {
+            doc.text(`E-mail: ${customer.email}`, col2X, y);
+          }
+
+          doc.moveDown(1.5);
+        }
+
+        // Items Table Header
+        doc.font('Helvetica-Bold').fontSize(10);
+        doc.text('ITENS DO PEDIDO');
+        doc.moveTo(40, doc.y).lineTo(555, doc.y).stroke();
+        doc.moveDown(0.3);
+
+        const tableTop = doc.y;
+        const colImg = 40;
+        const colCode = 90;
+        const colProduct = 140;
+        const colQty = showPrices ? 350 : 450;
+        const colPrice = 410;
+        const colSubtotal = 480;
+        const imgSize = 40;
+
+        doc.text('Img', colImg, tableTop);
+        doc.text('#', colCode, tableTop);
+        doc.text('Produto', colProduct, tableTop);
+        doc.text('Qtde.', colQty, tableTop);
+        if (showPrices) {
+          doc.text('Preco', colPrice, tableTop);
+          doc.text('Subtotal', colSubtotal, tableTop);
+        }
+
+        doc.moveTo(40, doc.y + 3).lineTo(555, doc.y + 3).stroke();
+        doc.moveDown(0.5);
+
+        // Items
+        doc.font('Helvetica').fontSize(9);
+        let totalQty = 0;
+
+        for (const item of items) {
+          const itemSubtotal = parseFloat(item.price) * item.quantity;
+          totalQty += item.quantity;
+
+          if (doc.y > 700) {
+            doc.addPage();
+          }
+
+          const rowY = doc.y;
+
+          if (item.product?.image) {
+            try {
+              const imageBuffer = await fetchImageBuffer(item.product.image);
+              if (imageBuffer) {
+                doc.image(imageBuffer, colImg, rowY, { width: imgSize, height: imgSize, fit: [imgSize, imgSize] });
+              }
+            } catch (imgErr) {}
+          }
+
+          doc.text(item.product?.sku || '-', colCode, rowY + 15, { width: 45 });
+          doc.text(item.product?.name || `Produto #${item.productId}`, colProduct, rowY + 15, { width: showPrices ? 205 : 305 });
+          doc.text(item.quantity.toString(), colQty, rowY + 15);
+          if (showPrices) {
+            doc.text(`R$ ${parseFloat(item.price).toFixed(2)}`, colPrice, rowY + 15);
+            doc.text(`R$ ${itemSubtotal.toFixed(2)}`, colSubtotal, rowY + 15);
+          }
+
+          doc.y = rowY + imgSize + 5;
+        }
+
+        doc.moveTo(40, doc.y).lineTo(555, doc.y).stroke();
+        doc.moveDown();
+
+        // Totals
+        doc.font('Helvetica-Bold').fontSize(10);
+        doc.text(`Qtde. Total: ${totalQty}`, 40, doc.y);
+        
+        if (showPrices) {
+          const totalsX = 380;
+          doc.moveDown(0.3);
+          doc.text(`Total de Descontos: R$ 0,00`, totalsX);
+          doc.moveDown(0.3);
+          doc.text(`Valor do frete: R$ 0,00`, totalsX);
+          doc.moveDown(0.3);
+          doc.fontSize(12).text(`Valor Total: R$ ${parseFloat(order.total).toFixed(2)}`, totalsX);
+        }
+
+        doc.moveDown(2);
+
+        // Footer
+        doc.fontSize(9).font('Helvetica');
+        const footerY = doc.y;
+        doc.text(`Data de Emissao: ${new Date(order.createdAt).toLocaleDateString('pt-BR')}`, 40, footerY);
+        doc.text(`Status: ${order.status}`, 300, footerY);
+
+        if (order.notes) {
+          doc.moveDown();
+          doc.font('Helvetica-Bold').text('Observacoes:');
+          doc.font('Helvetica').text(order.notes);
+        }
+      }
+
+      doc.end();
+    } catch (error) {
+      console.error("Error generating batch PDF:", error);
+      res.status(500).json({ message: "Failed to generate batch PDF" });
+    }
+  });
+
   app.get('/api/orders/:id/pdf', isAuthenticated, isApproved, async (req: any, res) => {
     try {
       const orderDetails = await storage.getOrderWithDetails(parseInt(req.params.id));
