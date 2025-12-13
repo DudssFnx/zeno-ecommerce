@@ -104,7 +104,7 @@ export async function registerRoutes(
       }
 
       // Create new user with pending approval
-      const newUser = await storage.createUser({
+      const newUser = await storage.upsertUser({
         id: crypto.randomUUID(),
         email: data.email,
         firstName: data.firstName,
