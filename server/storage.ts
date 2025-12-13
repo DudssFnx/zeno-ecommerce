@@ -781,8 +781,12 @@ export class DatabaseStorage implements IStorage {
     const oneYearAgo = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
-    const allCustomers = await db.select().from(users).where(eq(users.role, 'customer'));
     const allOrders = await db.select().from(orders).where(eq(orders.status, 'PEDIDO_FATURADO'));
+    
+    // Get all users who have made orders, not just role='customer'
+    const userIdsWithOrders = [...new Set(allOrders.map(o => o.userId))];
+    const allUsers = await db.select().from(users);
+    const allCustomers = allUsers.filter(u => userIdsWithOrders.includes(u.id) || u.role === 'customer');
 
     const customerOrdersMap = new Map<string, Order[]>();
     for (const order of allOrders) {
