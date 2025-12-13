@@ -141,19 +141,19 @@ export default function LandingPage() {
       <div className="flex-1 bg-white dark:bg-background flex flex-col justify-center px-8 py-12 lg:px-16 lg:py-0">
         <div className="max-w-md mx-auto w-full">
           <div className="flex flex-col items-center mb-8">
-            <button
-              type="button"
+            <div
               onClick={handleLogoClick}
-              className="cursor-pointer focus:outline-none"
+              className="select-none"
               data-testid="button-logo-secret"
             >
               <img 
                 src={logoImage} 
                 alt="Lojamadrugadao" 
                 className="h-20 w-20 rounded-full mb-4"
+                draggable={false}
                 data-testid="img-logo"
               />
-            </button>
+            </div>
             <h1 className="text-xl font-bold text-foreground text-center" data-testid="text-title">
               LOJAMADRUGADAO SAO PAULO
             </h1>
