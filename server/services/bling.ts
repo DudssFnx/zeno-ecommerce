@@ -261,9 +261,13 @@ export async function fetchBlingStock(productIds: number[]): Promise<Map<number,
         }
       }
       
-      await new Promise(resolve => setTimeout(resolve, 200));
+      await new Promise(resolve => setTimeout(resolve, 500));
     } catch (error) {
       console.error(`Failed to fetch stock for batch starting at ${i}:`, error);
+      if (String(error).includes("429")) {
+        console.log("Rate limit hit on stock, waiting 30 seconds...");
+        await new Promise(resolve => setTimeout(resolve, 30000));
+      }
     }
   }
   
@@ -318,7 +322,7 @@ export async function syncProducts(): Promise<{ created: number; updated: number
     
     if (pageProducts.length < limit) break;
     page++;
-    await new Promise(resolve => setTimeout(resolve, 200));
+    await new Promise(resolve => setTimeout(resolve, 500));
   }
   
   console.log(`Found ${productIds.length} active products. Fetching stock...`);
@@ -461,10 +465,14 @@ export async function syncProducts(): Promise<{ created: number; updated: number
         updated++;
       }
       
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, 350));
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
       errors.push(`Product ${productId}: ${message}`);
+      if (message.includes("429")) {
+        console.log("Rate limit hit, waiting 30 seconds...");
+        await new Promise(resolve => setTimeout(resolve, 30000));
+      }
     }
   }
   
