@@ -2,7 +2,7 @@ import express, { type Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./replitAuth";
-import { insertCategorySchema, insertProductSchema, insertOrderSchema, insertOrderItemSchema } from "@shared/schema";
+import { insertCategorySchema, insertProductSchema, insertOrderSchema, insertOrderItemSchema, insertCouponSchema } from "@shared/schema";
 import { z } from "zod";
 import multer from "multer";
 import { Client } from "@replit/object-storage";
@@ -459,6 +459,114 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error uploading file:", error);
       res.status(500).json({ message: "Failed to upload file" });
+    }
+  });
+
+  // ========== COUPONS ==========
+  app.get("/api/coupons", isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const couponsList = await storage.getCoupons();
+      res.json(couponsList);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch coupons" });
+    }
+  });
+
+  app.get("/api/coupons/:id", isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const coupon = await storage.getCoupon(parseInt(req.params.id));
+      if (!coupon) {
+        return res.status(404).json({ message: "Coupon not found" });
+      }
+      res.json(coupon);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch coupon" });
+    }
+  });
+
+  app.post("/api/coupons", isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const data = insertCouponSchema.parse(req.body);
+      const coupon = await storage.createCoupon(data);
+      res.status(201).json(coupon);
+    } catch (error) {
+      res.status(400).json({ message: "Invalid coupon data" });
+    }
+  });
+
+  app.patch("/api/coupons/:id", isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const coupon = await storage.updateCoupon(parseInt(req.params.id), req.body);
+      if (!coupon) {
+        return res.status(404).json({ message: "Coupon not found" });
+      }
+      res.json(coupon);
+    } catch (error) {
+      res.status(400).json({ message: "Failed to update coupon" });
+    }
+  });
+
+  app.delete("/api/coupons/:id", isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      await storage.deleteCoupon(parseInt(req.params.id));
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ message: "Failed to delete coupon" });
+    }
+  });
+
+  app.post("/api/coupons/validate", isAuthenticated, isApproved, async (req, res) => {
+    try {
+      const { code, orderTotal } = req.body;
+      const coupon = await storage.getCouponByCode(code);
+      
+      if (!coupon) {
+        return res.status(404).json({ valid: false, message: "Cupom não encontrado" });
+      }
+      
+      if (!coupon.active) {
+        return res.status(400).json({ valid: false, message: "Cupom inativo" });
+      }
+      
+      const now = new Date();
+      if (coupon.validFrom && new Date(coupon.validFrom) > now) {
+        return res.status(400).json({ valid: false, message: "Cupom ainda não está válido" });
+      }
+      if (coupon.validUntil && new Date(coupon.validUntil) < now) {
+        return res.status(400).json({ valid: false, message: "Cupom expirado" });
+      }
+      
+      if (coupon.maxUses && coupon.usedCount >= coupon.maxUses) {
+        return res.status(400).json({ valid: false, message: "Cupom esgotado" });
+      }
+      
+      if (coupon.minOrderValue && parseFloat(coupon.minOrderValue) > orderTotal) {
+        return res.status(400).json({ 
+          valid: false, 
+          message: `Pedido mínimo de R$ ${parseFloat(coupon.minOrderValue).toFixed(2)}` 
+        });
+      }
+      
+      let discount = 0;
+      if (coupon.discountType === "percent") {
+        discount = orderTotal * (parseFloat(coupon.discountValue) / 100);
+      } else {
+        discount = Math.min(parseFloat(coupon.discountValue), orderTotal);
+      }
+      
+      res.json({
+        valid: true,
+        coupon: {
+          id: coupon.id,
+          code: coupon.code,
+          name: coupon.name,
+          discountType: coupon.discountType,
+          discountValue: coupon.discountValue,
+        },
+        discount: discount.toFixed(2),
+      });
+    } catch (error) {
+      res.status(500).json({ valid: false, message: "Erro ao validar cupom" });
     }
   });
 

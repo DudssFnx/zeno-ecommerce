@@ -24,6 +24,7 @@ import {
   LogOut,
   Grid3X3,
   Link2,
+  Ticket,
 } from "lucide-react";
 type UserRole = "admin" | "sales" | "customer";
 
@@ -54,6 +55,7 @@ const menuItems = {
     { title: "Produtos", url: "/products", icon: Package },
     { title: "Clientes", url: "/customers", icon: UserCheck },
     { title: "Usuários", url: "/users", icon: Users },
+    { title: "Cupons", url: "/coupons", icon: Ticket },
     { title: "Bling", url: "/bling", icon: Link2 },
     { title: "Configurações", url: "/settings", icon: Settings },
   ],

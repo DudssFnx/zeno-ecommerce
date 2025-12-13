@@ -123,3 +123,61 @@ export const insertOrderItemSchema = createInsertSchema(orderItems).omit({
 
 export type InsertOrderItem = z.infer<typeof insertOrderItemSchema>;
 export type OrderItem = typeof orderItems.$inferSelect;
+
+// Customer Price Tables - Personalized pricing per customer (like Mercos)
+export const priceTables = pgTable("price_tables", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  description: text("description"),
+  discountPercent: decimal("discount_percent", { precision: 5, scale: 2 }).default("0"),
+  isDefault: boolean("is_default").notNull().default(false),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertPriceTableSchema = createInsertSchema(priceTables).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertPriceTable = z.infer<typeof insertPriceTableSchema>;
+export type PriceTable = typeof priceTables.$inferSelect;
+
+// Customer-specific product prices
+export const customerPrices = pgTable("customer_prices", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  productId: integer("product_id").notNull().references(() => products.id),
+  customPrice: decimal("custom_price", { precision: 10, scale: 2 }).notNull(),
+});
+
+export const insertCustomerPriceSchema = createInsertSchema(customerPrices).omit({
+  id: true,
+});
+
+export type InsertCustomerPrice = z.infer<typeof insertCustomerPriceSchema>;
+export type CustomerPrice = typeof customerPrices.$inferSelect;
+
+// Coupons and promotions (like Mercos)
+export const coupons = pgTable("coupons", {
+  id: serial("id").primaryKey(),
+  code: text("code").notNull().unique(),
+  name: text("name").notNull(),
+  discountType: text("discount_type").notNull().default("percent"), // percent, fixed
+  discountValue: decimal("discount_value", { precision: 10, scale: 2 }).notNull(),
+  minOrderValue: decimal("min_order_value", { precision: 10, scale: 2 }),
+  maxUses: integer("max_uses"),
+  usedCount: integer("used_count").notNull().default(0),
+  validFrom: timestamp("valid_from"),
+  validUntil: timestamp("valid_until"),
+  active: boolean("active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertCouponSchema = createInsertSchema(coupons).omit({
+  id: true,
+  usedCount: true,
+  createdAt: true,
+});
+
+export type InsertCoupon = z.infer<typeof insertCouponSchema>;
+export type Coupon = typeof coupons.$inferSelect;
