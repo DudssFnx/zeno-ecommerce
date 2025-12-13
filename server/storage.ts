@@ -714,7 +714,7 @@ export class DatabaseStorage implements IStorage {
     ordersByStatus: Array<{ status: string; count: number }>;
   }> {
     const allOrders = await db.select().from(orders);
-    const completedStatuses = ['FATURADO', 'completed'];
+    const completedStatuses = ['PEDIDO_FATURADO', 'FATURADO', 'completed'];
     const pendingStatuses = ['ORCAMENTO', 'pending'];
     
     const faturadoOrders = allOrders.filter(o => completedStatuses.includes(o.status));
