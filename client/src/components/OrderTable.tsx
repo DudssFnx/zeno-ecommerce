@@ -74,6 +74,7 @@ export function OrderTable({
             <TableHead className="font-semibold">Itens</TableHead>
             <TableHead className="font-semibold">Status</TableHead>
             <TableHead className="font-semibold">IMPRESSAO</TableHead>
+            <TableHead className="font-semibold">SEPARADO</TableHead>
             <TableHead className="font-semibold text-right">Total</TableHead>
             <TableHead className="w-[80px]"></TableHead>
           </TableRow>
@@ -124,6 +125,36 @@ export function OrderTable({
                   </span>
                 )}
               </TableCell>
+              <TableCell>
+                {order.status === "ORCAMENTO" ? (
+                  <Button
+                    variant="default"
+                    size="sm"
+                    onClick={() => onReserveStock ? onReserveStock(order) : onUpdateStatus?.(order, "PEDIDO_GERADO")}
+                    data-testid={`button-gerar-pedido-${order.id}`}
+                  >
+                    GERAR PEDIDO
+                  </Button>
+                ) : order.status === "PEDIDO_GERADO" ? (
+                  <Badge 
+                    variant="outline" 
+                    className="bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-800 text-xs gap-1"
+                  >
+                    <Check className="h-3 w-3" />
+                    Separado
+                  </Badge>
+                ) : order.status === "PEDIDO_FATURADO" ? (
+                  <Badge 
+                    variant="outline" 
+                    className="bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green-400 border-green-200 dark:border-green-800 text-xs gap-1"
+                  >
+                    <Check className="h-3 w-3" />
+                    Faturado
+                  </Badge>
+                ) : (
+                  <span className="text-xs text-muted-foreground">-</span>
+                )}
+              </TableCell>
               <TableCell className="text-right font-medium">
                 R$ {order.total.toFixed(2)}
               </TableCell>
@@ -152,14 +183,6 @@ export function OrderTable({
                       <DropdownMenuItem onClick={() => onEditOrder?.(order)}>
                         Editar Pedido
                       </DropdownMenuItem>
-                      {order.status === "ORCAMENTO" && (
-                        <DropdownMenuItem 
-                          onClick={() => onReserveStock ? onReserveStock(order) : onUpdateStatus?.(order, "PEDIDO_GERADO")}
-                          data-testid={`button-reserve-stock-${order.id}`}
-                        >
-                          GERAR PEDIDO
-                        </DropdownMenuItem>
-                      )}
                       {order.status === "PEDIDO_GERADO" && (
                         <DropdownMenuItem 
                           onClick={() => onInvoice ? onInvoice(order) : onUpdateStatus?.(order, "PEDIDO_FATURADO")}
