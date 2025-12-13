@@ -8,11 +8,15 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubItem,
+  SidebarMenuSubButton,
   SidebarHeader,
   SidebarFooter,
 } from "@/components/ui/sidebar";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   LayoutDashboard,
   Package,
@@ -27,8 +31,16 @@ import {
   Ticket,
   BarChart3,
   TrendingUp,
+  ChevronRight,
 } from "lucide-react";
 type UserRole = "admin" | "sales" | "customer";
+
+interface MenuItem {
+  title: string;
+  url?: string;
+  icon: any;
+  subItems?: { title: string; url: string; icon: any }[];
+}
 
 interface AppSidebarProps {
   userRole?: UserRole;
@@ -36,7 +48,7 @@ interface AppSidebarProps {
   onLogout?: () => void;
 }
 
-const menuItems = {
+const menuItems: Record<UserRole, MenuItem[]> = {
   customer: [
     { title: "Painel", url: "/", icon: LayoutDashboard },
     { title: "Categorias", url: "/categories", icon: Grid3X3 },
@@ -50,14 +62,20 @@ const menuItems = {
     { title: "Todos os Pedidos", url: "/orders", icon: ClipboardList },
   ],
   admin: [
-    { title: "Painel", url: "/", icon: LayoutDashboard },
+    { 
+      title: "Painel", 
+      icon: LayoutDashboard,
+      subItems: [
+        { title: "Visão Geral", url: "/", icon: LayoutDashboard },
+        { title: "Análise de Clientes", url: "/customer-analytics", icon: BarChart3 },
+        { title: "Análise de Produtos", url: "/product-analytics", icon: TrendingUp },
+      ]
+    },
     { title: "Categorias", url: "/categories", icon: Grid3X3 },
     { title: "Catálogo", url: "/catalog", icon: Package },
     { title: "Todos os Pedidos", url: "/orders", icon: ClipboardList },
     { title: "Produtos", url: "/products", icon: Package },
     { title: "Clientes", url: "/customers", icon: UserCheck },
-    { title: "Análise Clientes", url: "/customer-analytics", icon: BarChart3 },
-    { title: "Análise Produtos", url: "/product-analytics", icon: TrendingUp },
     { title: "Usuários", url: "/users", icon: Users },
     { title: "Cupons", url: "/coupons", icon: Ticket },
     { title: "Bling", url: "/bling", icon: Link2 },
@@ -95,18 +113,52 @@ export function AppSidebar({ userRole = "customer", userName = "User", onLogout 
           <SidebarGroupContent>
             <SidebarMenu>
               {items.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton 
-                    asChild 
-                    isActive={location === item.url}
-                    data-testid={`link-nav-${item.title.toLowerCase().replace(/\s+/g, "-")}`}
-                  >
-                    <Link href={item.url}>
-                      <item.icon className="h-4 w-4" />
-                      <span>{item.title}</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
+                item.subItems ? (
+                  <Collapsible key={item.title} defaultOpen className="group/collapsible">
+                    <SidebarMenuItem>
+                      <CollapsibleTrigger asChild>
+                        <SidebarMenuButton
+                          data-testid={`link-nav-${item.title.toLowerCase().replace(/\s+/g, "-")}`}
+                        >
+                          <item.icon className="h-4 w-4" />
+                          <span>{item.title}</span>
+                          <ChevronRight className="ml-auto h-4 w-4 transition-transform group-data-[state=open]/collapsible:rotate-90" />
+                        </SidebarMenuButton>
+                      </CollapsibleTrigger>
+                      <CollapsibleContent>
+                        <SidebarMenuSub>
+                          {item.subItems.map((subItem) => (
+                            <SidebarMenuSubItem key={subItem.title}>
+                              <SidebarMenuSubButton
+                                asChild
+                                isActive={location === subItem.url}
+                                data-testid={`link-nav-${subItem.title.toLowerCase().replace(/\s+/g, "-")}`}
+                              >
+                                <Link href={subItem.url}>
+                                  <subItem.icon className="h-4 w-4" />
+                                  <span>{subItem.title}</span>
+                                </Link>
+                              </SidebarMenuSubButton>
+                            </SidebarMenuSubItem>
+                          ))}
+                        </SidebarMenuSub>
+                      </CollapsibleContent>
+                    </SidebarMenuItem>
+                  </Collapsible>
+                ) : (
+                  <SidebarMenuItem key={item.title}>
+                    <SidebarMenuButton 
+                      asChild 
+                      isActive={location === item.url}
+                      data-testid={`link-nav-${item.title.toLowerCase().replace(/\s+/g, "-")}`}
+                    >
+                      <Link href={item.url!}>
+                        <item.icon className="h-4 w-4" />
+                        <span>{item.title}</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                )
               ))}
             </SidebarMenu>
           </SidebarGroupContent>
