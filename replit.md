@@ -64,3 +64,20 @@ Users require admin approval before accessing the system (except admins who are 
 - **Vite**: Frontend development server and bundler
 - **esbuild**: Server-side bundling for production
 - **TSX**: TypeScript execution for development
+
+## Integração Bling (Planejado)
+
+### Documentação
+- Ver `docs/bling-api-integration.md` para detalhes completos
+
+### Resumo
+- **API**: Bling API v3 (OAuth 2.0)
+- **Base URL**: `https://api.bling.com.br/Api/v3`
+- **Autenticação**: Bearer token via OAuth 2.0
+- **Endpoint de Produtos**: `GET /produtos`
+
+### Credenciais Necessárias
+- `BLING_CLIENT_ID` - ID do aplicativo OAuth
+- `BLING_CLIENT_SECRET` - Secret do aplicativo
+- `BLING_ACCESS_TOKEN` - Token de acesso
+- `BLING_REFRESH_TOKEN` - Token para renovar acesso
