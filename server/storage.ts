@@ -73,6 +73,9 @@ export interface IStorage {
 
   // Customer Analytics
   getCustomerAnalytics(): Promise<CustomerAnalyticsData>;
+
+  // Product Analytics
+  getProductAnalytics(): Promise<ProductAnalyticsData>;
 }
 
 // Customer Analytics Types
@@ -141,6 +144,120 @@ export interface CustomerAnalyticsData {
     days60: number;
     days90: number;
   };
+}
+
+// Product Analytics Types
+export interface ProductRanking {
+  productId: number;
+  name: string;
+  sku: string;
+  brand: string | null;
+  categoryId: number | null;
+  categoryName: string | null;
+  totalRevenue: number;
+  totalQuantity: number;
+  orderCount: number;
+  avgPrice: number;
+  revenueShare: number;
+  growthPercent: number;
+}
+
+export interface ProductABC {
+  productId: number;
+  name: string;
+  sku: string;
+  categoryName: string | null;
+  totalRevenue: number;
+  revenueShare: number;
+  cumulativeShare: number;
+  abcClass: 'A' | 'B' | 'C';
+}
+
+export interface ProductVelocity {
+  productId: number;
+  name: string;
+  sku: string;
+  avgSalesPerDay: number;
+  totalQuantity: number;
+  daysSinceLastSale: number;
+  status: 'fast' | 'normal' | 'slow' | 'stopped';
+}
+
+export interface ProductRepurchase {
+  productId: number;
+  name: string;
+  sku: string;
+  uniqueCustomers: number;
+  repeatCustomers: number;
+  repurchaseRate: number;
+  avgDaysBetweenPurchases: number;
+  singlePurchaseCustomers: number;
+}
+
+export interface ProductCrossSell {
+  productId: number;
+  name: string;
+  pairedProducts: Array<{
+    productId: number;
+    name: string;
+    coOccurrence: number;
+  }>;
+  isLeader: boolean;
+}
+
+export interface CategoryPerformance {
+  categoryId: number;
+  categoryName: string;
+  totalRevenue: number;
+  totalQuantity: number;
+  productCount: number;
+  topProducts: Array<{
+    productId: number;
+    name: string;
+    revenue: number;
+  }>;
+}
+
+export interface ProblematicProduct {
+  productId: number;
+  name: string;
+  sku: string;
+  issue: 'low_turnover' | 'declining' | 'no_sales';
+  metric: number;
+  description: string;
+}
+
+export interface ProductAnalyticsData {
+  overview: {
+    totalRevenue: number;
+    totalQuantitySold: number;
+    avgTicketPerProduct: number;
+    uniqueProductsSold: number;
+  };
+  rankingByRevenue: {
+    days7: ProductRanking[];
+    days30: ProductRanking[];
+    days60: ProductRanking[];
+    days90: ProductRanking[];
+  };
+  rankingByVolume: {
+    days7: ProductRanking[];
+    days30: ProductRanking[];
+    days60: ProductRanking[];
+    days90: ProductRanking[];
+  };
+  topGrowing: ProductRanking[];
+  topDeclining: ProductRanking[];
+  abcAnalysis: {
+    a: ProductABC[];
+    b: ProductABC[];
+    c: ProductABC[];
+  };
+  velocity: ProductVelocity[];
+  repurchase: ProductRepurchase[];
+  crossSell: ProductCrossSell[];
+  categoryPerformance: CategoryPerformance[];
+  problematicProducts: ProblematicProduct[];
 }
 
 export class DatabaseStorage implements IStorage {
@@ -800,6 +917,410 @@ export class DatabaseStorage implements IStorage {
       rfmSegments,
       avgDaysBetweenOrders,
       cohortRetention,
+    };
+  }
+
+  async getProductAnalytics(): Promise<ProductAnalyticsData> {
+    const now = new Date();
+    const days7Ago = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const days30Ago = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const days60Ago = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
+    const days90Ago = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+
+    const allProducts = await db.select().from(products);
+    const allCategories = await db.select().from(categories);
+    const allOrders = await db.select().from(orders);
+    const allOrderItems = await db.select().from(orderItems);
+
+    const categoryMap = new Map<number, string>();
+    for (const cat of allCategories) {
+      categoryMap.set(cat.id, cat.name);
+    }
+
+    const productMap = new Map<number, typeof allProducts[0]>();
+    for (const prod of allProducts) {
+      productMap.set(prod.id, prod);
+    }
+
+    const orderDateMap = new Map<number, Date>();
+    for (const order of allOrders) {
+      orderDateMap.set(order.id, new Date(order.createdAt));
+    }
+
+    const orderUserMap = new Map<number, string>();
+    for (const order of allOrders) {
+      orderUserMap.set(order.id, order.userId);
+    }
+
+    interface ProductStats {
+      productId: number;
+      name: string;
+      sku: string;
+      brand: string | null;
+      categoryId: number | null;
+      categoryName: string | null;
+      totalRevenue: number;
+      totalQuantity: number;
+      orderCount: number;
+      orderIds: Set<number>;
+      customerIds: Set<string>;
+      salesDates: Date[];
+    }
+
+    const buildStats = (items: typeof allOrderItems, sinceDate?: Date): Map<number, ProductStats> => {
+      const stats = new Map<number, ProductStats>();
+      for (const item of items) {
+        const orderDate = orderDateMap.get(item.orderId);
+        if (!orderDate) continue;
+        if (sinceDate && orderDate < sinceDate) continue;
+
+        const product = productMap.get(item.productId);
+        if (!product) continue;
+
+        const existing = stats.get(item.productId) || {
+          productId: item.productId,
+          name: product.name,
+          sku: product.sku,
+          brand: product.brand,
+          categoryId: product.categoryId,
+          categoryName: product.categoryId ? categoryMap.get(product.categoryId) || null : null,
+          totalRevenue: 0,
+          totalQuantity: 0,
+          orderCount: 0,
+          orderIds: new Set<number>(),
+          customerIds: new Set<string>(),
+          salesDates: [],
+        };
+
+        existing.totalRevenue += item.quantity * parseFloat(item.price);
+        existing.totalQuantity += item.quantity;
+        existing.orderIds.add(item.orderId);
+        existing.salesDates.push(orderDate);
+        const userId = orderUserMap.get(item.orderId);
+        if (userId) existing.customerIds.add(userId);
+
+        stats.set(item.productId, existing);
+      }
+
+      for (const [, s] of stats) {
+        s.orderCount = s.orderIds.size;
+      }
+
+      return stats;
+    };
+
+    const allTimeStats = buildStats(allOrderItems);
+    const stats7d = buildStats(allOrderItems, days7Ago);
+    const stats30d = buildStats(allOrderItems, days30Ago);
+    const stats60d = buildStats(allOrderItems, days60Ago);
+    const stats90d = buildStats(allOrderItems, days90Ago);
+
+    const totalRevenue = Array.from(allTimeStats.values()).reduce((sum, s) => sum + s.totalRevenue, 0);
+    const totalQuantitySold = Array.from(allTimeStats.values()).reduce((sum, s) => sum + s.totalQuantity, 0);
+    const uniqueProductsSold = allTimeStats.size;
+    const avgTicketPerProduct = uniqueProductsSold > 0 ? totalRevenue / uniqueProductsSold : 0;
+
+    const overview = { totalRevenue, totalQuantitySold, avgTicketPerProduct, uniqueProductsSold };
+
+    const toRanking = (stats: Map<number, ProductStats>, totalRev: number): ProductRanking[] => {
+      return Array.from(stats.values()).map(s => ({
+        productId: s.productId,
+        name: s.name,
+        sku: s.sku,
+        brand: s.brand,
+        categoryId: s.categoryId,
+        categoryName: s.categoryName,
+        totalRevenue: s.totalRevenue,
+        totalQuantity: s.totalQuantity,
+        orderCount: s.orderCount,
+        avgPrice: s.totalQuantity > 0 ? s.totalRevenue / s.totalQuantity : 0,
+        revenueShare: totalRev > 0 ? (s.totalRevenue / totalRev) * 100 : 0,
+        growthPercent: 0,
+      }));
+    };
+
+    const sortByRevenue = (arr: ProductRanking[]) => [...arr].sort((a, b) => b.totalRevenue - a.totalRevenue).slice(0, 20);
+    const sortByVolume = (arr: ProductRanking[]) => [...arr].sort((a, b) => b.totalQuantity - a.totalQuantity).slice(0, 20);
+
+    const total7d = Array.from(stats7d.values()).reduce((sum, s) => sum + s.totalRevenue, 0);
+    const total30d = Array.from(stats30d.values()).reduce((sum, s) => sum + s.totalRevenue, 0);
+    const total60d = Array.from(stats60d.values()).reduce((sum, s) => sum + s.totalRevenue, 0);
+    const total90d = Array.from(stats90d.values()).reduce((sum, s) => sum + s.totalRevenue, 0);
+
+    const rankingByRevenue = {
+      days7: sortByRevenue(toRanking(stats7d, total7d)),
+      days30: sortByRevenue(toRanking(stats30d, total30d)),
+      days60: sortByRevenue(toRanking(stats60d, total60d)),
+      days90: sortByRevenue(toRanking(stats90d, total90d)),
+    };
+
+    const rankingByVolume = {
+      days7: sortByVolume(toRanking(stats7d, total7d)),
+      days30: sortByVolume(toRanking(stats30d, total30d)),
+      days60: sortByVolume(toRanking(stats60d, total60d)),
+      days90: sortByVolume(toRanking(stats90d, total90d)),
+    };
+
+    const prev30to60Stats = buildStats(allOrderItems.filter(item => {
+      const d = orderDateMap.get(item.orderId);
+      return d && d >= days60Ago && d < days30Ago;
+    }));
+
+    const growthData: ProductRanking[] = [];
+    for (const [productId, current] of stats30d) {
+      const prev = prev30to60Stats.get(productId);
+      const prevRev = prev?.totalRevenue || 0;
+      const growthPercent = prevRev > 0 ? ((current.totalRevenue - prevRev) / prevRev) * 100 : (current.totalRevenue > 0 ? 100 : 0);
+      const product = productMap.get(productId);
+      if (product) {
+        growthData.push({
+          productId,
+          name: product.name,
+          sku: product.sku,
+          brand: product.brand,
+          categoryId: product.categoryId,
+          categoryName: product.categoryId ? categoryMap.get(product.categoryId) || null : null,
+          totalRevenue: current.totalRevenue,
+          totalQuantity: current.totalQuantity,
+          orderCount: current.orderCount,
+          avgPrice: current.totalQuantity > 0 ? current.totalRevenue / current.totalQuantity : 0,
+          revenueShare: total30d > 0 ? (current.totalRevenue / total30d) * 100 : 0,
+          growthPercent,
+        });
+      }
+    }
+
+    const topGrowing = [...growthData].filter(p => p.growthPercent > 0).sort((a, b) => b.growthPercent - a.growthPercent).slice(0, 10);
+    const topDeclining = [...growthData].filter(p => p.growthPercent < 0).sort((a, b) => a.growthPercent - b.growthPercent).slice(0, 10);
+
+    const abcSorted = [...toRanking(allTimeStats, totalRevenue)].sort((a, b) => b.totalRevenue - a.totalRevenue);
+    let cumulative = 0;
+    const abcProducts: ProductABC[] = abcSorted.map(p => {
+      cumulative += p.revenueShare;
+      return {
+        productId: p.productId,
+        name: p.name,
+        sku: p.sku,
+        categoryName: p.categoryName,
+        totalRevenue: p.totalRevenue,
+        revenueShare: p.revenueShare,
+        cumulativeShare: cumulative,
+        abcClass: cumulative <= 80 ? 'A' : cumulative <= 95 ? 'B' : 'C',
+      };
+    });
+
+    const abcAnalysis = {
+      a: abcProducts.filter(p => p.abcClass === 'A'),
+      b: abcProducts.filter(p => p.abcClass === 'B'),
+      c: abcProducts.filter(p => p.abcClass === 'C'),
+    };
+
+    const daysSinceStart = allOrders.length > 0 
+      ? Math.max(1, Math.ceil((now.getTime() - Math.min(...allOrders.map(o => new Date(o.createdAt).getTime()))) / (24 * 60 * 60 * 1000)))
+      : 1;
+
+    const velocity: ProductVelocity[] = Array.from(allTimeStats.values()).map(s => {
+      const avgSalesPerDay = s.totalQuantity / daysSinceStart;
+      const lastSaleDate = s.salesDates.length > 0 ? Math.max(...s.salesDates.map(d => d.getTime())) : 0;
+      const daysSinceLastSale = lastSaleDate > 0 ? Math.ceil((now.getTime() - lastSaleDate) / (24 * 60 * 60 * 1000)) : 9999;
+      
+      let status: 'fast' | 'normal' | 'slow' | 'stopped' = 'normal';
+      if (daysSinceLastSale > 60) status = 'stopped';
+      else if (daysSinceLastSale > 30) status = 'slow';
+      else if (avgSalesPerDay >= 1) status = 'fast';
+
+      return {
+        productId: s.productId,
+        name: s.name,
+        sku: s.sku,
+        avgSalesPerDay,
+        totalQuantity: s.totalQuantity,
+        daysSinceLastSale,
+        status,
+      };
+    }).sort((a, b) => b.avgSalesPerDay - a.avgSalesPerDay);
+
+    const productCustomerOrders = new Map<number, Map<string, Date[]>>();
+    for (const item of allOrderItems) {
+      const orderDate = orderDateMap.get(item.orderId);
+      const userId = orderUserMap.get(item.orderId);
+      if (!orderDate || !userId) continue;
+
+      if (!productCustomerOrders.has(item.productId)) {
+        productCustomerOrders.set(item.productId, new Map());
+      }
+      const customerMap = productCustomerOrders.get(item.productId)!;
+      if (!customerMap.has(userId)) {
+        customerMap.set(userId, []);
+      }
+      customerMap.get(userId)!.push(orderDate);
+    }
+
+    const repurchase: ProductRepurchase[] = Array.from(allTimeStats.values()).map(s => {
+      const customerOrders = productCustomerOrders.get(s.productId) || new Map();
+      const uniqueCustomers = customerOrders.size;
+      let repeatCustomers = 0;
+      let totalDaysBetween = 0;
+      let countWithRepeat = 0;
+
+      for (const [, dates] of customerOrders) {
+        if (dates.length > 1) {
+          repeatCustomers++;
+          const sorted = dates.sort((a, b) => a.getTime() - b.getTime());
+          for (let i = 1; i < sorted.length; i++) {
+            totalDaysBetween += (sorted[i].getTime() - sorted[i - 1].getTime()) / (24 * 60 * 60 * 1000);
+            countWithRepeat++;
+          }
+        }
+      }
+
+      return {
+        productId: s.productId,
+        name: s.name,
+        sku: s.sku,
+        uniqueCustomers,
+        repeatCustomers,
+        repurchaseRate: uniqueCustomers > 0 ? (repeatCustomers / uniqueCustomers) * 100 : 0,
+        avgDaysBetweenPurchases: countWithRepeat > 0 ? totalDaysBetween / countWithRepeat : 0,
+        singlePurchaseCustomers: uniqueCustomers - repeatCustomers,
+      };
+    }).sort((a, b) => b.repurchaseRate - a.repurchaseRate);
+
+    const orderProductsMap = new Map<number, number[]>();
+    for (const item of allOrderItems) {
+      if (!orderProductsMap.has(item.orderId)) {
+        orderProductsMap.set(item.orderId, []);
+      }
+      orderProductsMap.get(item.orderId)!.push(item.productId);
+    }
+
+    const coOccurrence = new Map<string, number>();
+    for (const [, prods] of orderProductsMap) {
+      if (prods.length < 2) continue;
+      for (let i = 0; i < prods.length; i++) {
+        for (let j = i + 1; j < prods.length; j++) {
+          const key = [prods[i], prods[j]].sort((a, b) => a - b).join('-');
+          coOccurrence.set(key, (coOccurrence.get(key) || 0) + 1);
+        }
+      }
+    }
+
+    const productCoOccurrence = new Map<number, Map<number, number>>();
+    for (const [key, count] of coOccurrence) {
+      const [a, b] = key.split('-').map(Number);
+      if (!productCoOccurrence.has(a)) productCoOccurrence.set(a, new Map());
+      if (!productCoOccurrence.has(b)) productCoOccurrence.set(b, new Map());
+      productCoOccurrence.get(a)!.set(b, count);
+      productCoOccurrence.get(b)!.set(a, count);
+    }
+
+    const crossSell: ProductCrossSell[] = Array.from(allTimeStats.values())
+      .sort((a, b) => b.totalRevenue - a.totalRevenue)
+      .slice(0, 20)
+      .map(s => {
+        const pairs = productCoOccurrence.get(s.productId) || new Map();
+        const pairedProducts = Array.from(pairs.entries())
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 5)
+          .map(([pid, count]) => ({
+            productId: pid,
+            name: productMap.get(pid)?.name || 'Produto',
+            coOccurrence: count,
+          }));
+
+        return {
+          productId: s.productId,
+          name: s.name,
+          pairedProducts,
+          isLeader: s.totalRevenue === Math.max(...Array.from(allTimeStats.values()).map(x => x.totalRevenue)),
+        };
+      });
+
+    const categoryStats = new Map<number, { revenue: number; quantity: number; products: Map<number, number> }>();
+    for (const [productId, stats] of allTimeStats) {
+      const product = productMap.get(productId);
+      if (!product?.categoryId) continue;
+      
+      const existing = categoryStats.get(product.categoryId) || { revenue: 0, quantity: 0, products: new Map() };
+      existing.revenue += stats.totalRevenue;
+      existing.quantity += stats.totalQuantity;
+      existing.products.set(productId, stats.totalRevenue);
+      categoryStats.set(product.categoryId, existing);
+    }
+
+    const categoryPerformance: CategoryPerformance[] = Array.from(categoryStats.entries())
+      .map(([categoryId, stats]) => ({
+        categoryId,
+        categoryName: categoryMap.get(categoryId) || 'Sem Categoria',
+        totalRevenue: stats.revenue,
+        totalQuantity: stats.quantity,
+        productCount: stats.products.size,
+        topProducts: Array.from(stats.products.entries())
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 5)
+          .map(([pid, rev]) => ({
+            productId: pid,
+            name: productMap.get(pid)?.name || 'Produto',
+            revenue: rev,
+          })),
+      }))
+      .sort((a, b) => b.totalRevenue - a.totalRevenue);
+
+    const problematicProducts: ProblematicProduct[] = [];
+    
+    for (const v of velocity) {
+      if (v.status === 'stopped') {
+        const product = productMap.get(v.productId);
+        if (product) {
+          problematicProducts.push({
+            productId: v.productId,
+            name: v.name,
+            sku: v.sku,
+            issue: 'no_sales',
+            metric: v.daysSinceLastSale,
+            description: `Sem vendas há ${v.daysSinceLastSale} dias`,
+          });
+        }
+      } else if (v.status === 'slow') {
+        const product = productMap.get(v.productId);
+        if (product) {
+          problematicProducts.push({
+            productId: v.productId,
+            name: v.name,
+            sku: v.sku,
+            issue: 'low_turnover',
+            metric: v.avgSalesPerDay,
+            description: `Giro lento: ${v.avgSalesPerDay.toFixed(2)} un/dia`,
+          });
+        }
+      }
+    }
+
+    for (const p of topDeclining.slice(0, 5)) {
+      if (p.growthPercent < -30) {
+        problematicProducts.push({
+          productId: p.productId,
+          name: p.name,
+          sku: p.sku,
+          issue: 'declining',
+          metric: p.growthPercent,
+          description: `Queda de ${Math.abs(p.growthPercent).toFixed(0)}% vs período anterior`,
+        });
+      }
+    }
+
+    return {
+      overview,
+      rankingByRevenue,
+      rankingByVolume,
+      topGrowing,
+      topDeclining,
+      abcAnalysis,
+      velocity,
+      repurchase,
+      crossSell,
+      categoryPerformance,
+      problematicProducts,
     };
   }
 }

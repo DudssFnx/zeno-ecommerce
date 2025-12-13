@@ -27,6 +27,7 @@ import BlingPage from "@/pages/bling";
 import CouponsPage from "@/pages/coupons";
 import OrderDetailsPage from "@/pages/order-details";
 import CustomerAnalyticsPage from "@/pages/customer-analytics";
+import ProductAnalyticsPage from "@/pages/product-analytics";
 
 function AuthenticatedApp() {
   const { user, logout, isAdmin, isApproved } = useAuth();
@@ -97,6 +98,7 @@ function AuthenticatedApp() {
               {isAdmin && <Route path="/bling" component={BlingPage} />}
               {isAdmin && <Route path="/coupons" component={CouponsPage} />}
               {isAdmin && <Route path="/customer-analytics" component={CustomerAnalyticsPage} />}
+              {isAdmin && <Route path="/product-analytics" component={ProductAnalyticsPage} />}
               <Route component={NotFound} />
             </Switch>
           </main>

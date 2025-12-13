@@ -26,6 +26,7 @@ import {
   Link2,
   Ticket,
   BarChart3,
+  TrendingUp,
 } from "lucide-react";
 type UserRole = "admin" | "sales" | "customer";
 
@@ -56,6 +57,7 @@ const menuItems = {
     { title: "Produtos", url: "/products", icon: Package },
     { title: "Clientes", url: "/customers", icon: UserCheck },
     { title: "Análise Clientes", url: "/customer-analytics", icon: BarChart3 },
+    { title: "Análise Produtos", url: "/product-analytics", icon: TrendingUp },
     { title: "Usuários", url: "/users", icon: Users },
     { title: "Cupons", url: "/coupons", icon: Ticket },
     { title: "Bling", url: "/bling", icon: Link2 },
