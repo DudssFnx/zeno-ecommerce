@@ -279,24 +279,64 @@ export async function syncCategories(): Promise<{ created: number; updated: numb
   let created = 0;
   let updated = 0;
 
-  for (const cat of blingCategories) {
+  const blingIdToLocalId: Record<number, number> = {};
+  const blingCatMap = new Map<number, BlingCategory>();
+  blingCategories.forEach(c => blingCatMap.set(c.id, c));
+
+  function topologicalSort(cats: BlingCategory[]): BlingCategory[] {
+    const sorted: BlingCategory[] = [];
+    const visited = new Set<number>();
+    
+    function visit(cat: BlingCategory) {
+      if (visited.has(cat.id)) return;
+      visited.add(cat.id);
+      
+      if (cat.idCategoriaPai && blingCatMap.has(cat.idCategoriaPai)) {
+        visit(blingCatMap.get(cat.idCategoriaPai)!);
+      }
+      
+      sorted.push(cat);
+    }
+    
+    cats.forEach(c => visit(c));
+    return sorted;
+  }
+
+  const sortedCategories = topologicalSort(blingCategories);
+
+  for (const cat of sortedCategories) {
     const slug = cat.descricao
       .toLowerCase()
       .normalize("NFD")
       .replace(/[\u0300-\u036f]/g, "")
       .replace(/[^a-z0-9]+/g, "-")
-      .replace(/(^-|-$)/g, "");
+      .replace(/(^-|-$)/g, "") || `cat-${cat.id}`;
 
-    const existing = await db.select().from(categories).where(eq(categories.slug, slug)).limit(1);
+    const parentLocalId = cat.idCategoriaPai ? blingIdToLocalId[cat.idCategoriaPai] || null : null;
+
+    let existing = await db.select().from(categories).where(eq(categories.blingId, cat.id)).limit(1);
+    
+    if (existing.length === 0) {
+      existing = await db.select().from(categories).where(eq(categories.slug, slug)).limit(1);
+    }
 
     if (existing.length === 0) {
-      await db.insert(categories).values({
+      const [newCat] = await db.insert(categories).values({
         name: cat.descricao,
         slug,
-      });
+        parentId: parentLocalId,
+        blingId: cat.id,
+      }).returning();
+      blingIdToLocalId[cat.id] = newCat.id;
       created++;
     } else {
-      await db.update(categories).set({ name: cat.descricao }).where(eq(categories.slug, slug));
+      await db.update(categories).set({ 
+        name: cat.descricao,
+        slug,
+        parentId: parentLocalId,
+        blingId: cat.id,
+      }).where(eq(categories.id, existing[0].id));
+      blingIdToLocalId[cat.id] = existing[0].id;
       updated++;
     }
   }

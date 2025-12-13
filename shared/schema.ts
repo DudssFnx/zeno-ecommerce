@@ -40,11 +40,13 @@ export const insertUserSchema = createInsertSchema(users).omit({
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
 
-// Categories table
+// Categories table with hierarchy support (parent/child)
 export const categories = pgTable("categories", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   slug: text("slug").notNull().unique(),
+  parentId: integer("parent_id"),
+  blingId: integer("bling_id"),
 });
 
 export const insertCategorySchema = createInsertSchema(categories).omit({
