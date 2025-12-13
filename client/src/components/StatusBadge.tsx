@@ -2,6 +2,7 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
 export type OrderStatus = 
+  | "ORCAMENTO"
   | "ORCAMENTO_ABERTO" 
   | "ORCAMENTO_CONCLUIDO" 
   | "PEDIDO_GERADO" 
@@ -16,6 +17,7 @@ interface StatusBadgeProps {
 }
 
 const statusConfig: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
+  ORCAMENTO: { label: "Orçamento", variant: "secondary" },
   ORCAMENTO_ABERTO: { label: "Orçamento Aberto", variant: "secondary" },
   ORCAMENTO_CONCLUIDO: { label: "Orçamento Enviado", variant: "outline" },
   PEDIDO_GERADO: { label: "Pedido Gerado", variant: "default" },
