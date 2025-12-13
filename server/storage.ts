@@ -416,6 +416,8 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getNextOrderNumber(): Promise<number> {
+    await db.execute(sql`CREATE SEQUENCE IF NOT EXISTS order_number_seq START WITH 8000`);
+    
     const result = await db.execute(sql`SELECT nextval('order_number_seq') as num`);
     return Number((result.rows[0] as any).num);
   }
