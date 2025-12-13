@@ -417,6 +417,50 @@ export async function registerRoutes(
     }
   });
 
+  app.post('/api/orders/:id/reserve', isAuthenticated, isAdminOrSales, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const orderId = parseInt(req.params.id);
+      const result = await storage.reserveStockForOrder(orderId, userId);
+      if (!result.success) {
+        return res.status(400).json({ message: result.error });
+      }
+      const order = await storage.getOrder(orderId);
+      res.json(order);
+    } catch (error) {
+      res.status(500).json({ message: "Erro ao reservar estoque" });
+    }
+  });
+
+  app.post('/api/orders/:id/release', isAuthenticated, isAdminOrSales, async (req: any, res) => {
+    try {
+      const orderId = parseInt(req.params.id);
+      const result = await storage.releaseStockForOrder(orderId);
+      if (!result.success) {
+        return res.status(400).json({ message: result.error });
+      }
+      const order = await storage.getOrder(orderId);
+      res.json(order);
+    } catch (error) {
+      res.status(500).json({ message: "Erro ao liberar estoque" });
+    }
+  });
+
+  app.post('/api/orders/:id/invoice', isAuthenticated, isAdminOrSales, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const orderId = parseInt(req.params.id);
+      const result = await storage.deductStockForOrder(orderId, userId);
+      if (!result.success) {
+        return res.status(400).json({ message: result.error });
+      }
+      const order = await storage.getOrder(orderId);
+      res.json(order);
+    } catch (error) {
+      res.status(500).json({ message: "Erro ao faturar pedido" });
+    }
+  });
+
   app.get('/api/me/purchase-stats', isAuthenticated, isApproved, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;

@@ -96,6 +96,11 @@ export interface IStorage {
 
   // Product Analytics
   getProductAnalytics(): Promise<ProductAnalyticsData>;
+
+  // Stock Management
+  reserveStockForOrder(orderId: number, userId: string): Promise<{ success: boolean; error?: string }>;
+  releaseStockForOrder(orderId: number): Promise<{ success: boolean; error?: string }>;
+  deductStockForOrder(orderId: number, userId: string): Promise<{ success: boolean; error?: string }>;
 }
 
 // Customer Analytics Types
@@ -1409,6 +1414,93 @@ export class DatabaseStorage implements IStorage {
       categoryPerformance,
       problematicProducts,
     };
+  }
+
+  async reserveStockForOrder(orderId: number, userId: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      const orderItems = await this.getOrderItems(orderId);
+      const order = await this.getOrder(orderId);
+      if (!order) return { success: false, error: 'Pedido não encontrado' };
+      if (order.status === 'pedido_gerado' || order.status === 'faturado') {
+        return { success: false, error: 'Estoque já reservado para este pedido' };
+      }
+      
+      for (const item of orderItems) {
+        const product = await this.getProduct(item.productId);
+        if (!product) return { success: false, error: `Produto ${item.productId} não encontrado` };
+        const available = product.stock - (product.reservedStock || 0);
+        if (available < item.quantity) {
+          return { success: false, error: `Estoque insuficiente para ${product.name}. Disponível: ${available}, Necessário: ${item.quantity}` };
+        }
+      }
+      
+      for (const item of orderItems) {
+        await db.update(products)
+          .set({ reservedStock: sql`reserved_stock + ${item.quantity}` })
+          .where(eq(products.id, item.productId));
+      }
+      
+      await db.update(orders)
+        .set({ status: 'pedido_gerado', reservedAt: new Date(), reservedBy: userId })
+        .where(eq(orders.id, orderId));
+      
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: 'Erro ao reservar estoque' };
+    }
+  }
+
+  async releaseStockForOrder(orderId: number): Promise<{ success: boolean; error?: string }> {
+    try {
+      const order = await this.getOrder(orderId);
+      if (!order) return { success: false, error: 'Pedido não encontrado' };
+      if (order.status !== 'pedido_gerado') {
+        return { success: false, error: 'Pedido não está com estoque reservado' };
+      }
+      
+      const orderItems = await this.getOrderItems(orderId);
+      for (const item of orderItems) {
+        await db.update(products)
+          .set({ reservedStock: sql`GREATEST(reserved_stock - ${item.quantity}, 0)` })
+          .where(eq(products.id, item.productId));
+      }
+      
+      await db.update(orders)
+        .set({ status: 'orcamento_enviado', reservedAt: null, reservedBy: null })
+        .where(eq(orders.id, orderId));
+      
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: 'Erro ao liberar estoque' };
+    }
+  }
+
+  async deductStockForOrder(orderId: number, userId: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      const order = await this.getOrder(orderId);
+      if (!order) return { success: false, error: 'Pedido não encontrado' };
+      if (order.status !== 'pedido_gerado') {
+        return { success: false, error: 'Pedido precisa estar com estoque reservado antes de faturar' };
+      }
+      
+      const orderItems = await this.getOrderItems(orderId);
+      for (const item of orderItems) {
+        await db.update(products)
+          .set({ 
+            stock: sql`stock - ${item.quantity}`,
+            reservedStock: sql`GREATEST(reserved_stock - ${item.quantity}, 0)`
+          })
+          .where(eq(products.id, item.productId));
+      }
+      
+      await db.update(orders)
+        .set({ status: 'faturado', invoicedAt: new Date(), invoicedBy: userId })
+        .where(eq(orders.id, orderId));
+      
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: 'Erro ao faturar pedido' };
+    }
   }
 }
 

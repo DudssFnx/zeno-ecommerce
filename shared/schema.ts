@@ -80,6 +80,7 @@ export const products = pgTable("products", {
   description: text("description"),
   price: decimal("price", { precision: 10, scale: 2 }).notNull(),
   stock: integer("stock").notNull().default(0),
+  reservedStock: integer("reserved_stock").notNull().default(0),
   image: text("image"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
@@ -93,16 +94,24 @@ export type InsertProduct = z.infer<typeof insertProductSchema>;
 export type Product = typeof products.$inferSelect;
 
 // Orders table
+// Status flow: pending -> orcamento_enviado -> pedido_gerado -> faturado -> completed
+// pending: cart/draft, orcamento_enviado: sent by customer (no stock), 
+// pedido_gerado: stock RESERVED, faturado: stock DEDUCTED + sent to ERP
 export const orders = pgTable("orders", {
   id: serial("id").primaryKey(),
   userId: varchar("user_id").notNull().references(() => users.id),
   orderNumber: text("order_number").notNull().unique(),
-  status: text("status").notNull().default("pending"), // pending, approved, processing, completed, cancelled
+  status: text("status").notNull().default("pending"),
   total: decimal("total", { precision: 10, scale: 2 }).notNull(),
   notes: text("notes"),
   printed: boolean("printed").notNull().default(false),
   printedAt: timestamp("printed_at"),
   printedBy: varchar("printed_by").references(() => users.id),
+  reservedAt: timestamp("reserved_at"),
+  reservedBy: varchar("reserved_by").references(() => users.id),
+  invoicedAt: timestamp("invoiced_at"),
+  invoicedBy: varchar("invoiced_by").references(() => users.id),
+  blingOrderId: text("bling_order_id"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
