@@ -183,6 +183,7 @@ export default function OrdersPage() {
     status: order.status as Order["status"],
     total: parseFloat(order.total),
     itemCount: order.items?.length || 0,
+    printed: order.printed || false,
   }));
 
   const newStatuses = ["ORCAMENTO_ABERTO", "ORCAMENTO_CONCLUIDO", "PEDIDO_GERADO", "PEDIDO_FATURADO", "PEDIDO_CANCELADO"];
@@ -201,6 +202,23 @@ export default function OrdersPage() {
       queryClient.invalidateQueries({ queryKey: ['/api/orders'] });
     },
   });
+
+  const printOrderMutation = useMutation({
+    mutationFn: async (orderId: string) => {
+      await apiRequest("PATCH", `/api/orders/${orderId}/print`, {});
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/orders'] });
+      toast({ title: "Sucesso", description: "Pedido marcado como impresso" });
+    },
+    onError: () => {
+      toast({ title: "Erro", description: "Falha ao marcar como impresso", variant: "destructive" });
+    },
+  });
+
+  const handlePrintOrder = (order: Order) => {
+    printOrderMutation.mutate(order.id);
+  };
 
   const handleUpdateStatus = (order: Order, status: string) => {
     updateStatusMutation.mutate(
@@ -558,6 +576,7 @@ export default function OrdersPage() {
               onViewOrder={(order) => console.log("View:", order.orderNumber)}
               onEditOrder={(order) => console.log("Edit:", order.orderNumber)}
               onUpdateStatus={handleUpdateStatus}
+              onPrintOrder={handlePrintOrder}
             />
           )}
         </TabsContent>
