@@ -11,9 +11,9 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { AppSidebar } from "@/components/AppSidebar";
 import { CartDrawer } from "@/components/CartDrawer";
 import { Button } from "@/components/ui/button";
-import { ShoppingCart } from "lucide-react";
+import { ShoppingCart, Loader2 } from "lucide-react";
 import NotFound from "@/pages/not-found";
-import LoginPage from "@/pages/login";
+import LandingPage from "@/pages/landing";
 import DashboardPage from "@/pages/dashboard";
 import CatalogPage from "@/pages/catalog";
 import OrdersPage from "@/pages/orders";
@@ -23,9 +23,13 @@ import SettingsPage from "@/pages/settings";
 import { useToast } from "@/hooks/use-toast";
 
 function AuthenticatedApp() {
-  const { user, logout, isAdmin } = useAuth();
+  const { user, logout, isAdmin, isApproved } = useAuth();
   const { openCart, itemCount } = useCart();
   const { toast } = useToast();
+
+  const displayName = user?.firstName && user?.lastName 
+    ? `${user.firstName} ${user.lastName}` 
+    : user?.email || "User";
 
   const handleGenerateOrder = () => {
     toast({
@@ -39,12 +43,30 @@ function AuthenticatedApp() {
     "--sidebar-width-icon": "3rem",
   };
 
+  // Show pending approval message for non-approved users
+  if (!isApproved) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-background">
+        <div className="text-center p-8 max-w-md">
+          <h1 className="text-2xl font-bold mb-4">Account Pending Approval</h1>
+          <p className="text-muted-foreground mb-6">
+            Your account is currently pending approval by an administrator. 
+            Please check back later or contact support.
+          </p>
+          <Button onClick={logout} variant="outline" data-testid="button-logout-pending">
+            Sign Out
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <SidebarProvider style={sidebarStyle as React.CSSProperties}>
       <div className="flex h-screen w-full">
         <AppSidebar
-          userRole={user?.role}
-          userName={user?.name}
+          userRole={user?.role || "customer"}
+          userName={displayName}
           onLogout={logout}
         />
         <div className="flex flex-col flex-1 overflow-hidden">
@@ -82,10 +104,18 @@ function AuthenticatedApp() {
 }
 
 function AppContent() {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, isLoading } = useAuth();
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
 
   if (!isAuthenticated) {
-    return <LoginPage />;
+    return <LandingPage />;
   }
 
   return (

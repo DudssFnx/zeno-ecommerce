@@ -1,85 +1,43 @@
-import { createContext, useContext, useState, useCallback, type ReactNode } from "react";
-
-export type UserRole = "admin" | "sales" | "customer";
-
-export interface User {
-  id: string;
-  email: string;
-  name: string;
-  role: UserRole;
-  company?: string;
-  approved: boolean;
-}
+import { createContext, useContext, type ReactNode } from "react";
+import { useAuth as useReplitAuth } from "@/hooks/useAuth";
+import type { User } from "@shared/schema";
 
 interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
-  login: (email: string, password: string) => Promise<boolean>;
+  isLoading: boolean;
   logout: () => void;
   isAdmin: boolean;
   isSales: boolean;
   isCustomer: boolean;
+  isApproved: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// todo: remove mock functionality
-const mockUsers: Record<string, User> = {
-  "admin@company.com": {
-    id: "1",
-    email: "admin@company.com",
-    name: "Admin User",
-    role: "admin",
-    approved: true,
-  },
-  "sales@company.com": {
-    id: "2",
-    email: "sales@company.com",
-    name: "Sales Rep",
-    role: "sales",
-    approved: true,
-  },
-  "customer@client.com": {
-    id: "3",
-    email: "customer@client.com",
-    name: "John Client",
-    role: "customer",
-    company: "Client Corp",
-    approved: true,
-  },
-};
-
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
+  const { user, isLoading, isAuthenticated } = useReplitAuth();
 
-  const login = useCallback(async (email: string, _password: string): Promise<boolean> => {
-    // todo: remove mock functionality
-    const mockUser = mockUsers[email.toLowerCase()];
-    if (mockUser) {
-      setUser(mockUser);
-      return true;
-    }
-    return false;
-  }, []);
-
-  const logout = useCallback(() => {
-    setUser(null);
-  }, []);
+  const logout = () => {
+    window.location.href = "/api/logout";
+  };
 
   const isAdmin = user?.role === "admin";
   const isSales = user?.role === "sales";
   const isCustomer = user?.role === "customer";
+  const isApproved = user?.approved || isAdmin;
 
   return (
     <AuthContext.Provider
       value={{
-        user,
-        isAuthenticated: !!user,
-        login,
+        user: user || null,
+        isAuthenticated,
+        isLoading,
         logout,
         isAdmin,
         isSales,
         isCustomer,
+        isApproved,
       }}
     >
       {children}
@@ -94,3 +52,5 @@ export function useAuth() {
   }
   return context;
 }
+
+export type { User };
