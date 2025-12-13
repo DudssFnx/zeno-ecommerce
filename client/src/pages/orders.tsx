@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Download, RefreshCw, Loader2, Package, Eye, Plus, Trash2, Search, X, User as UserIcon } from "lucide-react";
+import { Download, RefreshCw, Loader2, Package, Eye, Plus, Trash2, Search, X, User as UserIcon, Printer } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -31,6 +31,12 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 interface OrderWithItems extends SchemaOrder {
   items?: { id: number; quantity: number }[];
@@ -66,6 +72,7 @@ export default function OrdersPage() {
   const [customerSearch, setCustomerSearch] = useState("");
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [productSearch, setProductSearch] = useState("");
+  const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set());
 
   const showAllOrders = isAdmin || isSales;
 
@@ -218,6 +225,49 @@ export default function OrdersPage() {
 
   const handlePrintOrder = (order: Order) => {
     printOrderMutation.mutate(order.id);
+  };
+
+  const handleSelectionChange = (orderId: string, selected: boolean) => {
+    setSelectedOrders(prev => {
+      const newSet = new Set(prev);
+      if (selected) {
+        newSet.add(orderId);
+      } else {
+        newSet.delete(orderId);
+      }
+      return newSet;
+    });
+  };
+
+  const handleSelectAll = (selected: boolean) => {
+    if (selected) {
+      setSelectedOrders(new Set(filteredOrders.map(o => o.id)));
+    } else {
+      setSelectedOrders(new Set());
+    }
+  };
+
+  const handleBatchPrint = async (pdfType: 'separacao' | 'cobranca' | 'conferencia') => {
+    if (selectedOrders.size === 0) {
+      toast({ title: "Aviso", description: "Selecione pelo menos um pedido", variant: "destructive" });
+      return;
+    }
+    const orderIds = Array.from(selectedOrders);
+    orderIds.forEach(orderId => {
+      window.open(`/api/orders/${orderId}/pdf/${pdfType}`, '_blank');
+    });
+    try {
+      await Promise.all(orderIds.map(orderId => 
+        apiRequest("PATCH", `/api/orders/${orderId}/print`, {})
+      ));
+      queryClient.invalidateQueries({ queryKey: ['/api/orders'] });
+    } catch (e) {
+    }
+    setSelectedOrders(new Set());
+    toast({ 
+      title: "Sucesso", 
+      description: `${orderIds.length} PDF(s) de ${pdfType} abertos` 
+    });
   };
 
   const handleUpdateStatus = (order: Order, status: string) => {
@@ -529,6 +579,37 @@ export default function OrdersPage() {
               </div>
             </DialogContent>
           </Dialog>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button 
+                variant={selectedOrders.size > 0 ? "default" : "outline"}
+                data-testid="button-batch-print"
+              >
+                <Printer className="h-4 w-4 mr-2" />
+                Imprimir {selectedOrders.size > 0 ? `(${selectedOrders.size})` : "Selecionados"}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem 
+                onClick={() => handleBatchPrint('separacao')}
+                data-testid="menu-print-separacao"
+              >
+                Separação
+              </DropdownMenuItem>
+              <DropdownMenuItem 
+                onClick={() => handleBatchPrint('cobranca')}
+                data-testid="menu-print-cobranca"
+              >
+                Cobrança
+              </DropdownMenuItem>
+              <DropdownMenuItem 
+                onClick={() => handleBatchPrint('conferencia')}
+                data-testid="menu-print-conferencia"
+              >
+                Conferência
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <Button variant="outline" onClick={() => refetch()} data-testid="button-refresh-orders">
             <RefreshCw className="h-4 w-4 mr-2" />
             Atualizar
@@ -573,6 +654,9 @@ export default function OrdersPage() {
             <OrderTable
               orders={filteredOrders}
               showCustomer={true}
+              selectedOrderIds={selectedOrders}
+              onSelectionChange={handleSelectionChange}
+              onSelectAll={handleSelectAll}
               onViewOrder={(order) => console.log("View:", order.orderNumber)}
               onEditOrder={(order) => console.log("Edit:", order.orderNumber)}
               onUpdateStatus={handleUpdateStatus}
