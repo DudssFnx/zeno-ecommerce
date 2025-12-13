@@ -204,11 +204,15 @@ export async function fetchBlingProductsList(page: number = 1, limit: number = 1
   return response.data || [];
 }
 
-export async function fetchBlingProductDetails(productId: number): Promise<BlingProductFull | null> {
+export async function fetchBlingProductDetails(productId: number, throwOn429: boolean = false): Promise<BlingProductFull | null> {
   try {
     const response = await blingApiRequest<{ data: BlingProductFull }>(`/produtos/${productId}`);
     return response.data || null;
   } catch (error) {
+    const message = String(error);
+    if (throwOn429 && message.includes("429")) {
+      throw error;
+    }
     console.error(`Failed to fetch product ${productId}:`, error);
     return null;
   }
@@ -344,7 +348,58 @@ export async function syncCategories(): Promise<{ created: number; updated: numb
   return { created, updated };
 }
 
+async function runWithConcurrency<T, R>(
+  items: T[],
+  fn: (item: T) => Promise<R>,
+  concurrency: number,
+  onProgress?: (completed: number, total: number) => void
+): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let index = 0;
+  let completed = 0;
+
+  async function worker() {
+    while (index < items.length) {
+      const i = index++;
+      try {
+        results[i] = await fn(items[i]);
+      } catch (error) {
+        results[i] = null as R;
+      }
+      completed++;
+      if (onProgress && completed % 50 === 0) {
+        onProgress(completed, items.length);
+      }
+    }
+  }
+
+  await Promise.all(Array(Math.min(concurrency, items.length)).fill(0).map(() => worker()));
+  return results;
+}
+
+async function fetchProductDetailsWithRetry(productId: number): Promise<BlingProductFull | null> {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const result = await fetchBlingProductDetails(productId, true);
+      return result;
+    } catch (error) {
+      const message = String(error);
+      if (message.includes("429")) {
+        const waitTime = Math.pow(2, attempt) * 5000 + Math.random() * 1000;
+        console.log(`Rate limit on product ${productId}, attempt ${attempt + 1}/3, waiting ${(waitTime/1000).toFixed(1)}s...`);
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+      } else {
+        console.error(`Error fetching product ${productId}:`, message);
+        return null;
+      }
+    }
+  }
+  console.error(`Failed to fetch product ${productId} after 3 retries`);
+  return null;
+}
+
 export async function syncProducts(): Promise<{ created: number; updated: number; errors: string[] }> {
+  const startTime = Date.now();
   let productIds: number[] = [];
   let page = 1;
   const limit = 100;
@@ -362,98 +417,62 @@ export async function syncProducts(): Promise<{ created: number; updated: number
     
     if (pageProducts.length < limit) break;
     page++;
-    await new Promise(resolve => setTimeout(resolve, 500));
   }
   
   console.log(`Found ${productIds.length} active products. Fetching stock...`);
   
   const stockMap = await fetchBlingStock(productIds);
-  console.log(`Fetched stock for ${stockMap.size} products. Fetching details...`);
+  console.log(`Fetched stock for ${stockMap.size} products.`);
 
-  // First, fetch Bling categories to create ID mapping
   console.log("Fetching categories from Bling for mapping...");
   const blingCategories = await fetchBlingCategories();
   const blingCatIdToName: Record<number, string> = {};
   blingCategories.forEach(bc => {
     blingCatIdToName[bc.id] = bc.descricao;
   });
-  console.log(`Loaded ${Object.keys(blingCatIdToName).length} Bling categories for mapping`);
 
   const existingCategories = await db.select().from(categories);
   const categoryMap: Record<string, number> = {};
-  const blingToLocalCategoryId: Record<number, number> = {};
+  const blingIdToCategoryId: Record<number, number> = {};
   existingCategories.forEach(c => {
     categoryMap[c.name.toLowerCase()] = c.id;
+    if (c.blingId) {
+      blingIdToCategoryId[c.blingId] = c.id;
+    }
   });
+  console.log(`Loaded ${Object.keys(categoryMap).length} local categories`);
+
+  console.log(`Fetching product details with 5 parallel workers...`);
+  const blingProducts = await runWithConcurrency(
+    productIds,
+    fetchProductDetailsWithRetry,
+    5,
+    (done, total) => console.log(`Fetched ${done}/${total} product details...`)
+  );
+  console.log(`Fetched all product details.`);
 
   let created = 0;
   let updated = 0;
   const errors: string[] = [];
-  let processed = 0;
 
-  for (const productId of productIds) {
+  for (let i = 0; i < productIds.length; i++) {
+    const productId = productIds[i];
+    const blingProduct = blingProducts[i];
+    
+    if (!blingProduct) {
+      errors.push(`Product ${productId}: Failed to fetch details`);
+      continue;
+    }
+
     try {
-      const blingProduct = await fetchBlingProductDetails(productId);
-      if (!blingProduct) {
-        errors.push(`Product ${productId}: Failed to fetch details`);
-        continue;
-      }
-      
-      processed++;
-      if (processed % 100 === 0) {
-        console.log(`Processed ${processed}/${productIds.length} products...`);
-      }
-
       let categoryId: number | null = null;
-      
-      // Try to get category from Bling product
       const blingCat = blingProduct.categoria;
       if (blingCat && blingCat.id) {
-        const blingCatId = blingCat.id;
-        
-        // Check if we already have this mapping
-        if (blingToLocalCategoryId[blingCatId]) {
-          categoryId = blingToLocalCategoryId[blingCatId];
-        } else {
-          // Get the category name from our Bling categories map
-          const blingCatName = blingCatIdToName[blingCatId] || blingCat.descricao;
-          
+        categoryId = blingIdToCategoryId[blingCat.id] || null;
+        if (!categoryId) {
+          const blingCatName = blingCatIdToName[blingCat.id] || blingCat.descricao;
           if (blingCatName) {
-            const catNameLower = blingCatName.toLowerCase();
-            categoryId = categoryMap[catNameLower] || null;
-            
-            if (!categoryId) {
-              // Create new category
-              const slug = blingCatName
-                .toLowerCase()
-                .normalize("NFD")
-                .replace(/[\u0300-\u036f]/g, "")
-                .replace(/[^a-z0-9]+/g, "-")
-                .replace(/(^-|-$)/g, "");
-              
-              try {
-                const [newCat] = await db.insert(categories).values({
-                  name: blingCatName,
-                  slug,
-                }).returning();
-                
-                categoryId = newCat.id;
-                categoryMap[catNameLower] = categoryId;
-                console.log(`Created category: ${blingCatName} -> ${categoryId}`);
-              } catch (err) {
-                // Category might already exist
-                const existingCat = await db.select().from(categories)
-                  .where(eq(categories.slug, slug)).limit(1);
-                if (existingCat.length > 0) {
-                  categoryId = existingCat[0].id;
-                  categoryMap[catNameLower] = categoryId;
-                }
-              }
-            }
-            
-            if (categoryId) {
-              blingToLocalCategoryId[blingCatId] = categoryId;
-            }
+            categoryId = categoryMap[blingCatName.toLowerCase()] || null;
           }
         }
       }
@@ -471,7 +490,6 @@ export async function syncProducts(): Promise<{ created: number; updated: number
       }
 
       const description = blingProduct.descricaoComplementar || blingProduct.descricaoCurta || null;
-
       const stock = stockMap.get(productId) ?? blingProduct.estoque?.saldoVirtual ?? blingProduct.estoque?.saldoFisico ?? 0;
 
       const productData: InsertProduct = {
@@ -504,19 +522,14 @@ export async function syncProducts(): Promise<{ created: number; updated: number
           .where(eq(products.sku, productData.sku));
         updated++;
       }
-      
-      await new Promise(resolve => setTimeout(resolve, 350));
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
       errors.push(`Product ${productId}: ${message}`);
-      if (message.includes("429")) {
-        console.log("Rate limit hit, waiting 30 seconds...");
-        await new Promise(resolve => setTimeout(resolve, 30000));
-      }
     }
   }
   
-  console.log(`Sync complete: ${created} created, ${updated} updated, ${errors.length} errors`);
+  const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+  console.log(`Sync complete in ${elapsed}s: ${created} created, ${updated} updated, ${errors.length} errors`);
 
   return { created, updated, errors };
 }
