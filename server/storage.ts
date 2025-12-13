@@ -1422,7 +1422,7 @@ export class DatabaseStorage implements IStorage {
       const orderItems = await this.getOrderItems(orderId);
       const order = await this.getOrder(orderId);
       if (!order) return { success: false, error: 'Pedido não encontrado' };
-      if (order.status === 'pedido_gerado' || order.status === 'faturado') {
+      if (order.status === 'PEDIDO_GERADO' || order.status === 'PEDIDO_FATURADO') {
         return { success: false, error: 'Estoque já reservado para este pedido' };
       }
       
@@ -1442,7 +1442,7 @@ export class DatabaseStorage implements IStorage {
       }
       
       await db.update(orders)
-        .set({ status: 'pedido_gerado', reservedAt: new Date(), reservedBy: userId })
+        .set({ status: 'PEDIDO_GERADO', reservedAt: new Date(), reservedBy: userId })
         .where(eq(orders.id, orderId));
       
       return { success: true };
@@ -1455,7 +1455,7 @@ export class DatabaseStorage implements IStorage {
     try {
       const order = await this.getOrder(orderId);
       if (!order) return { success: false, error: 'Pedido não encontrado' };
-      if (order.status !== 'pedido_gerado') {
+      if (order.status !== 'PEDIDO_GERADO') {
         return { success: false, error: 'Pedido não está com estoque reservado' };
       }
       
@@ -1467,7 +1467,7 @@ export class DatabaseStorage implements IStorage {
       }
       
       await db.update(orders)
-        .set({ status: 'orcamento_enviado', reservedAt: null, reservedBy: null })
+        .set({ status: 'ORCAMENTO', reservedAt: null, reservedBy: null })
         .where(eq(orders.id, orderId));
       
       return { success: true };
@@ -1480,7 +1480,7 @@ export class DatabaseStorage implements IStorage {
     try {
       const order = await this.getOrder(orderId);
       if (!order) return { success: false, error: 'Pedido não encontrado' };
-      if (order.status !== 'pedido_gerado') {
+      if (order.status !== 'PEDIDO_GERADO') {
         return { success: false, error: 'Pedido precisa estar com estoque reservado antes de faturar' };
       }
       
@@ -1495,7 +1495,7 @@ export class DatabaseStorage implements IStorage {
       }
       
       await db.update(orders)
-        .set({ status: 'faturado', invoicedAt: new Date(), invoicedBy: userId })
+        .set({ status: 'PEDIDO_FATURADO', invoicedAt: new Date(), invoicedBy: userId })
         .where(eq(orders.id, orderId));
       
       return { success: true };
