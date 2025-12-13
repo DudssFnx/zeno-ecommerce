@@ -1,6 +1,7 @@
 import { db } from "../db";
 import { products, categories, type InsertProduct, type InsertCategory } from "@shared/schema";
 import { eq } from "drizzle-orm";
+import crypto from "crypto";
 
 const BLING_API_BASE = "https://api.bling.com.br/Api/v3";
 const BLING_OAUTH_URL = "https://www.bling.com.br/Api/v3/oauth";
@@ -320,4 +321,140 @@ export function getStatus(): { authenticated: boolean; hasCredentials: boolean }
     authenticated: isAuthenticated(),
     hasCredentials: !!(process.env.BLING_CLIENT_ID && process.env.BLING_CLIENT_SECRET),
   };
+}
+
+// ========== WEBHOOK HANDLING ==========
+
+interface BlingWebhookPayload {
+  eventId: string;
+  date: string;
+  version: string;
+  event: string;
+  companyId: string;
+  data: any;
+}
+
+interface WebhookProductData {
+  id: number;
+  nome: string;
+  codigo: string;
+  tipo: string;
+  situacao: string;
+  preco: number;
+  unidade?: string;
+  formato?: string;
+  idProdutoPai?: number;
+  categoria?: { id: number };
+  descricaoCurta?: string;
+  descricaoComplementar?: string;
+}
+
+interface WebhookStockData {
+  produto: { id: number };
+  deposito?: { id: number; saldoFisico: number; saldoVirtual: number };
+  operacao?: string;
+  quantidade?: number;
+  saldoFisicoTotal: number;
+  saldoVirtualTotal: number;
+}
+
+export function verifyWebhookSignature(payload: string, signature: string): boolean {
+  const clientSecret = process.env.BLING_CLIENT_SECRET;
+  if (!clientSecret) {
+    console.error("BLING_CLIENT_SECRET not configured for webhook verification");
+    return false;
+  }
+
+  const expectedSignature = crypto
+    .createHmac("sha256", clientSecret)
+    .update(payload, "utf8")
+    .digest("hex");
+
+  const providedHash = signature.replace("sha256=", "");
+  return crypto.timingSafeEqual(
+    Buffer.from(expectedSignature, "hex"),
+    Buffer.from(providedHash, "hex")
+  );
+}
+
+export async function handleWebhook(payload: BlingWebhookPayload): Promise<{ success: boolean; message: string }> {
+  const { event, data, eventId } = payload;
+  console.log(`Processing Bling webhook: ${event} (${eventId})`);
+
+  try {
+    switch (event) {
+      case "product.created":
+      case "product.updated":
+        return await handleProductEvent(data as WebhookProductData);
+      case "product.deleted":
+        return await handleProductDeleted(data.id);
+      case "stock.created":
+      case "stock.updated":
+        return await handleStockEvent(data as WebhookStockData);
+      default:
+        console.log(`Unhandled webhook event: ${event}`);
+        return { success: true, message: `Event ${event} acknowledged but not processed` };
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    console.error(`Webhook processing error for ${event}:`, message);
+    return { success: false, message };
+  }
+}
+
+async function handleProductEvent(data: WebhookProductData): Promise<{ success: boolean; message: string }> {
+  const sku = data.codigo || `BLING-${data.id}`;
+  
+  if (data.situacao !== "A") {
+    const existing = await db.select().from(products).where(eq(products.sku, sku)).limit(1);
+    if (existing.length > 0) {
+      await db.delete(products).where(eq(products.sku, sku));
+      return { success: true, message: `Product ${sku} deleted (inactive)` };
+    }
+    return { success: true, message: `Inactive product ${sku} ignored` };
+  }
+
+  const productData: Partial<InsertProduct> = {
+    name: data.nome,
+    sku,
+    description: data.descricaoCurta || null,
+    price: String(data.preco || 0),
+  };
+
+  const existing = await db.select().from(products).where(eq(products.sku, sku)).limit(1);
+
+  if (existing.length === 0) {
+    await db.insert(products).values(productData as InsertProduct);
+    return { success: true, message: `Product ${sku} created` };
+  } else {
+    await db.update(products).set(productData).where(eq(products.sku, sku));
+    return { success: true, message: `Product ${sku} updated` };
+  }
+}
+
+async function handleProductDeleted(blingId: number): Promise<{ success: boolean; message: string }> {
+  const sku = `BLING-${blingId}`;
+  const existing = await db.select().from(products).where(eq(products.sku, sku)).limit(1);
+  
+  if (existing.length > 0) {
+    await db.delete(products).where(eq(products.sku, sku));
+    return { success: true, message: `Product ${sku} deleted` };
+  }
+  
+  return { success: true, message: `Product ${blingId} not found locally` };
+}
+
+async function handleStockEvent(data: WebhookStockData): Promise<{ success: boolean; message: string }> {
+  const blingProductId = data.produto.id;
+  const newStock = data.saldoVirtualTotal;
+
+  const allProducts = await db.select().from(products);
+  const product = allProducts.find(p => p.sku === `BLING-${blingProductId}` || p.sku.includes(String(blingProductId)));
+
+  if (product) {
+    await db.update(products).set({ stock: Math.floor(newStock) }).where(eq(products.id, product.id));
+    return { success: true, message: `Stock updated for product ${product.sku}: ${newStock}` };
+  }
+
+  return { success: true, message: `Product ${blingProductId} not found for stock update` };
 }

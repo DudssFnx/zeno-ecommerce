@@ -1,4 +1,4 @@
-import type { Express } from "express";
+import express, { type Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./replitAuth";
@@ -422,6 +422,25 @@ export async function registerRoutes(
   // ========== BLING INTEGRATION ==========
   app.get("/api/bling/status", isAuthenticated, isAdmin, async (req, res) => {
     res.json(blingService.getStatus());
+  });
+
+  app.post("/api/bling/webhook", express.raw({ type: 'application/json' }), async (req, res) => {
+    const signature = req.headers["x-bling-signature-256"] as string;
+    const rawBody = req.body.toString("utf8");
+
+    if (!signature || !blingService.verifyWebhookSignature(rawBody, signature)) {
+      console.error("Invalid Bling webhook signature");
+      return res.status(401).json({ error: "Invalid signature" });
+    }
+
+    try {
+      const payload = JSON.parse(rawBody);
+      const result = await blingService.handleWebhook(payload);
+      res.status(200).json(result);
+    } catch (error) {
+      console.error("Webhook processing error:", error);
+      res.status(200).json({ success: false, message: "Processing error" });
+    }
   });
 
   app.get("/api/bling/auth", isAuthenticated, isAdmin, (req, res) => {
