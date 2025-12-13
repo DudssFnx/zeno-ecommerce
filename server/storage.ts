@@ -70,6 +70,77 @@ export interface IStorage {
   updateCoupon(id: number, coupon: Partial<InsertCoupon>): Promise<Coupon | undefined>;
   deleteCoupon(id: number): Promise<boolean>;
   incrementCouponUsage(id: number): Promise<void>;
+
+  // Customer Analytics
+  getCustomerAnalytics(): Promise<CustomerAnalyticsData>;
+}
+
+// Customer Analytics Types
+export interface CustomerRanking {
+  userId: string;
+  name: string;
+  company: string | null;
+  email: string | null;
+  totalRevenue: number;
+  orderCount: number;
+  avgTicket: number;
+  lastOrderDate: Date | null;
+  daysSinceLastOrder: number;
+  firstOrderDate: Date | null;
+}
+
+export interface RFMSegment {
+  userId: string;
+  name: string;
+  company: string | null;
+  recency: number;
+  frequency: number;
+  monetary: number;
+  rfmScore: string;
+  segment: string;
+}
+
+export interface InactiveCustomer {
+  userId: string;
+  name: string;
+  company: string | null;
+  email: string | null;
+  lastOrderDate: Date;
+  daysSinceLastOrder: number;
+  avgDaysBetweenOrders: number;
+  churnRisk: 'low' | 'medium' | 'high';
+  totalSpent: number;
+  orderCount: number;
+}
+
+export interface CustomerAnalyticsData {
+  topCustomersByRevenue: {
+    month: CustomerRanking[];
+    quarter: CustomerRanking[];
+    year: CustomerRanking[];
+  };
+  topCustomersByFrequency: CustomerRanking[];
+  abcAnalysis: {
+    a: CustomerRanking[];
+    b: CustomerRanking[];
+    c: CustomerRanking[];
+  };
+  inactiveCustomers: {
+    days7: InactiveCustomer[];
+    days15: InactiveCustomer[];
+    days30: InactiveCustomer[];
+    days60: InactiveCustomer[];
+    days90: InactiveCustomer[];
+  };
+  reactivatedThisMonth: CustomerRanking[];
+  newCustomersThisMonth: CustomerRanking[];
+  rfmSegments: RFMSegment[];
+  avgDaysBetweenOrders: number;
+  cohortRetention: {
+    days30: number;
+    days60: number;
+    days90: number;
+  };
 }
 
 export class DatabaseStorage implements IStorage {
@@ -492,6 +563,244 @@ export class DatabaseStorage implements IStorage {
     }
 
     return { totalRevenue, totalOrders, completedOrders, pendingOrders, averageOrderValue, monthlyRevenue, topProducts, ordersByStatus };
+  }
+
+  async getCustomerAnalytics(): Promise<CustomerAnalyticsData> {
+    const now = new Date();
+    const oneMonthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const threeMonthsAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+    const oneYearAgo = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    const allCustomers = await db.select().from(users).where(eq(users.role, 'customer'));
+    const allOrders = await db.select().from(orders);
+
+    const customerOrdersMap = new Map<string, Order[]>();
+    for (const order of allOrders) {
+      const existing = customerOrdersMap.get(order.userId) || [];
+      existing.push(order);
+      customerOrdersMap.set(order.userId, existing);
+    }
+
+    const buildRanking = (customerOrders: Order[], user: User): CustomerRanking => {
+      const totalRevenue = customerOrders.reduce((sum, o) => sum + parseFloat(o.total), 0);
+      const orderCount = customerOrders.length;
+      const avgTicket = orderCount > 0 ? totalRevenue / orderCount : 0;
+      const sortedOrders = [...customerOrders].sort((a, b) => 
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
+      const lastOrderDate = sortedOrders.length > 0 ? new Date(sortedOrders[0].createdAt) : null;
+      const firstOrderDate = sortedOrders.length > 0 ? new Date(sortedOrders[sortedOrders.length - 1].createdAt) : null;
+      const daysSinceLastOrder = lastOrderDate ? Math.floor((now.getTime() - lastOrderDate.getTime()) / (24 * 60 * 60 * 1000)) : 9999;
+
+      return {
+        userId: user.id,
+        name: [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email || 'Cliente',
+        company: user.company,
+        email: user.email,
+        totalRevenue,
+        orderCount,
+        avgTicket,
+        lastOrderDate,
+        daysSinceLastOrder,
+        firstOrderDate,
+      };
+    };
+
+    const customerRankings: CustomerRanking[] = [];
+    for (const user of allCustomers) {
+      const customerOrders = customerOrdersMap.get(user.id) || [];
+      if (customerOrders.length > 0) {
+        customerRankings.push(buildRanking(customerOrders, user));
+      }
+    }
+
+    const filterByDate = (rankings: CustomerRanking[], since: Date) => {
+      return allCustomers.map(user => {
+        const customerOrders = (customerOrdersMap.get(user.id) || [])
+          .filter(o => new Date(o.createdAt) >= since);
+        if (customerOrders.length === 0) return null;
+        return buildRanking(customerOrders, user);
+      }).filter((r): r is CustomerRanking => r !== null)
+        .sort((a, b) => b.totalRevenue - a.totalRevenue)
+        .slice(0, 20);
+    };
+
+    const topCustomersByRevenue = {
+      month: filterByDate(customerRankings, oneMonthAgo),
+      quarter: filterByDate(customerRankings, threeMonthsAgo),
+      year: filterByDate(customerRankings, oneYearAgo),
+    };
+
+    const topCustomersByFrequency = [...customerRankings]
+      .sort((a, b) => b.orderCount - a.orderCount)
+      .slice(0, 20);
+
+    const sortedByRevenue = [...customerRankings].sort((a, b) => b.totalRevenue - a.totalRevenue);
+    const totalRevenue = sortedByRevenue.reduce((sum, c) => sum + c.totalRevenue, 0);
+    let cumulative = 0;
+    const abcAnalysis = { a: [] as CustomerRanking[], b: [] as CustomerRanking[], c: [] as CustomerRanking[] };
+    for (const customer of sortedByRevenue) {
+      cumulative += customer.totalRevenue;
+      const percent = (cumulative / totalRevenue) * 100;
+      if (percent <= 80) abcAnalysis.a.push(customer);
+      else if (percent <= 95) abcAnalysis.b.push(customer);
+      else abcAnalysis.c.push(customer);
+    }
+
+    const calculateAvgDaysBetween = (customerOrders: Order[]): number => {
+      if (customerOrders.length < 2) return 0;
+      const sorted = [...customerOrders].sort((a, b) => 
+        new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+      );
+      let totalDays = 0;
+      for (let i = 1; i < sorted.length; i++) {
+        totalDays += (new Date(sorted[i].createdAt).getTime() - new Date(sorted[i-1].createdAt).getTime()) / (24 * 60 * 60 * 1000);
+      }
+      return totalDays / (sorted.length - 1);
+    };
+
+    const buildInactiveCustomer = (ranking: CustomerRanking, avgDays: number): InactiveCustomer => {
+      let churnRisk: 'low' | 'medium' | 'high' = 'low';
+      if (avgDays > 0 && ranking.daysSinceLastOrder > avgDays * 1.5) churnRisk = 'high';
+      else if (avgDays > 0 && ranking.daysSinceLastOrder > avgDays) churnRisk = 'medium';
+      else if (ranking.daysSinceLastOrder > 60) churnRisk = 'high';
+      else if (ranking.daysSinceLastOrder > 30) churnRisk = 'medium';
+
+      return {
+        userId: ranking.userId,
+        name: ranking.name,
+        company: ranking.company,
+        email: ranking.email,
+        lastOrderDate: ranking.lastOrderDate!,
+        daysSinceLastOrder: ranking.daysSinceLastOrder,
+        avgDaysBetweenOrders: avgDays,
+        churnRisk,
+        totalSpent: ranking.totalRevenue,
+        orderCount: ranking.orderCount,
+      };
+    };
+
+    const inactiveCustomers = { days7: [] as InactiveCustomer[], days15: [] as InactiveCustomer[], days30: [] as InactiveCustomer[], days60: [] as InactiveCustomer[], days90: [] as InactiveCustomer[] };
+    for (const ranking of customerRankings) {
+      if (ranking.lastOrderDate) {
+        const avgDays = calculateAvgDaysBetween(customerOrdersMap.get(ranking.userId) || []);
+        const inactive = buildInactiveCustomer(ranking, avgDays);
+        if (ranking.daysSinceLastOrder >= 7) inactiveCustomers.days7.push(inactive);
+        if (ranking.daysSinceLastOrder >= 15) inactiveCustomers.days15.push(inactive);
+        if (ranking.daysSinceLastOrder >= 30) inactiveCustomers.days30.push(inactive);
+        if (ranking.daysSinceLastOrder >= 60) inactiveCustomers.days60.push(inactive);
+        if (ranking.daysSinceLastOrder >= 90) inactiveCustomers.days90.push(inactive);
+      }
+    }
+    Object.values(inactiveCustomers).forEach(list => list.sort((a, b) => b.daysSinceLastOrder - a.daysSinceLastOrder));
+
+    const newCustomersThisMonth = allCustomers
+      .filter(u => new Date(u.createdAt) >= startOfMonth)
+      .map(user => {
+        const customerOrders = customerOrdersMap.get(user.id) || [];
+        return buildRanking(customerOrders, user);
+      })
+      .filter(r => r.orderCount > 0);
+
+    const reactivatedThisMonth: CustomerRanking[] = [];
+    for (const user of allCustomers) {
+      const customerOrders = customerOrdersMap.get(user.id) || [];
+      if (customerOrders.length < 2) continue;
+      const sorted = [...customerOrders].sort((a, b) => 
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
+      const lastOrder = new Date(sorted[0].createdAt);
+      const previousOrder = new Date(sorted[1].createdAt);
+      if (lastOrder >= startOfMonth && (lastOrder.getTime() - previousOrder.getTime()) > 60 * 24 * 60 * 60 * 1000) {
+        reactivatedThisMonth.push(buildRanking(customerOrders, user));
+      }
+    }
+
+    const maxRecency = Math.max(...customerRankings.map(c => c.daysSinceLastOrder).filter(d => d < 9999), 1);
+    const maxFrequency = Math.max(...customerRankings.map(c => c.orderCount), 1);
+    const maxMonetary = Math.max(...customerRankings.map(c => c.totalRevenue), 1);
+
+    const rfmSegments: RFMSegment[] = customerRankings.map(c => {
+      const rScore = Math.ceil(5 - (c.daysSinceLastOrder / maxRecency) * 4);
+      const fScore = Math.ceil((c.orderCount / maxFrequency) * 5);
+      const mScore = Math.ceil((c.totalRevenue / maxMonetary) * 5);
+      const rfmScore = `${Math.max(1, Math.min(5, rScore))}${Math.max(1, Math.min(5, fScore))}${Math.max(1, Math.min(5, mScore))}`;
+      
+      let segment = 'Regular';
+      const r = Math.max(1, Math.min(5, rScore));
+      const f = Math.max(1, Math.min(5, fScore));
+      const m = Math.max(1, Math.min(5, mScore));
+      
+      if (r >= 4 && f >= 4 && m >= 4) segment = 'VIP';
+      else if (r >= 4 && f >= 3) segment = 'Recente e Frequente';
+      else if (r <= 2 && m >= 4) segment = 'Alto Valor Sumido';
+      else if (r <= 2 && f <= 2 && m <= 2) segment = 'Baixo Engajamento';
+      else if (r >= 4) segment = 'Novo/Recente';
+      else if (m >= 4) segment = 'Alto Valor';
+      else if (f >= 4) segment = 'Frequente';
+
+      return {
+        userId: c.userId,
+        name: c.name,
+        company: c.company,
+        recency: c.daysSinceLastOrder,
+        frequency: c.orderCount,
+        monetary: c.totalRevenue,
+        rfmScore,
+        segment,
+      };
+    });
+
+    let totalAvgDays = 0;
+    let countWithMultiple = 0;
+    for (const [, customerOrders] of customerOrdersMap) {
+      if (customerOrders.length >= 2) {
+        totalAvgDays += calculateAvgDaysBetween(customerOrders);
+        countWithMultiple++;
+      }
+    }
+    const avgDaysBetweenOrders = countWithMultiple > 0 ? totalAvgDays / countWithMultiple : 0;
+
+    const firstTimeCustomers = allCustomers.filter(u => {
+      const customerOrders = customerOrdersMap.get(u.id) || [];
+      return customerOrders.length === 1;
+    });
+    
+    const cohortRetention = { days30: 0, days60: 0, days90: 0 };
+    for (const user of allCustomers) {
+      const customerOrders = customerOrdersMap.get(user.id) || [];
+      if (customerOrders.length < 1) continue;
+      const sorted = [...customerOrders].sort((a, b) => 
+        new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+      );
+      const firstOrder = new Date(sorted[0].createdAt);
+      if (customerOrders.length >= 2) {
+        const secondOrder = new Date(sorted[1].createdAt);
+        const daysBetween = (secondOrder.getTime() - firstOrder.getTime()) / (24 * 60 * 60 * 1000);
+        if (daysBetween <= 30) cohortRetention.days30++;
+        if (daysBetween <= 60) cohortRetention.days60++;
+        if (daysBetween <= 90) cohortRetention.days90++;
+      }
+    }
+    const totalWithOrders = customerRankings.length;
+    if (totalWithOrders > 0) {
+      cohortRetention.days30 = Math.round((cohortRetention.days30 / totalWithOrders) * 100);
+      cohortRetention.days60 = Math.round((cohortRetention.days60 / totalWithOrders) * 100);
+      cohortRetention.days90 = Math.round((cohortRetention.days90 / totalWithOrders) * 100);
+    }
+
+    return {
+      topCustomersByRevenue,
+      topCustomersByFrequency,
+      abcAnalysis,
+      inactiveCustomers,
+      reactivatedThisMonth,
+      newCustomersThisMonth,
+      rfmSegments,
+      avgDaysBetweenOrders,
+      cohortRetention,
+    };
   }
 }
 
