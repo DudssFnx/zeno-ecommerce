@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -7,6 +7,12 @@ import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+
+function generateMathCaptcha() {
+  const num1 = Math.floor(Math.random() * 10) + 1;
+  const num2 = Math.floor(Math.random() * 10) + 1;
+  return { num1, num2, answer: num1 + num2 };
+}
 import {
   Form,
   FormControl,
@@ -95,6 +101,10 @@ export default function RegisterPage() {
   const [step1Data, setStep1Data] = useState<Step1Data | null>(null);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [captchaAnswer, setCaptchaAnswer] = useState("");
+  const [honeypot, setHoneypot] = useState("");
+  
+  const captcha = useMemo(() => generateMathCaptcha(), []);
 
   const form1 = useForm<Step1Data>({
     resolver: zodResolver(step1Schema),
@@ -141,6 +151,19 @@ export default function RegisterPage() {
 
   const handleStep2Submit = (data: Step2Data) => {
     if (!step1Data) return;
+    
+    // Honeypot check - if filled, it's a bot
+    if (honeypot) {
+      setError("Verificação de segurança falhou");
+      return;
+    }
+    
+    // Captcha validation
+    if (parseInt(captchaAnswer) !== captcha.answer) {
+      setError("Resposta da verificação incorreta. Tente novamente.");
+      return;
+    }
+    
     setError(null);
     registerMutation.mutate({ ...step1Data, ...data });
   };
@@ -491,6 +514,36 @@ export default function RegisterPage() {
                       )}
                     />
 
+                    {/* Honeypot - hidden field to catch bots */}
+                    <div className="absolute -left-[9999px]" aria-hidden="true">
+                      <Input
+                        type="text"
+                        name="website"
+                        value={honeypot}
+                        onChange={(e) => setHoneypot(e.target.value)}
+                        tabIndex={-1}
+                        autoComplete="off"
+                      />
+                    </div>
+
+                    {/* Math Captcha */}
+                    <div className="space-y-2">
+                      <FormLabel>Verificação de segurança *</FormLabel>
+                      <div className="flex items-center gap-3">
+                        <span className="text-sm font-medium bg-muted px-3 py-2 rounded-md">
+                          {captcha.num1} + {captcha.num2} = ?
+                        </span>
+                        <Input
+                          type="number"
+                          value={captchaAnswer}
+                          onChange={(e) => setCaptchaAnswer(e.target.value)}
+                          placeholder="Resposta"
+                          className="w-24"
+                          data-testid="input-captcha"
+                        />
+                      </div>
+                    </div>
+
                     <div className="flex gap-2 pt-4">
                       <Button 
                         type="button" 
@@ -504,7 +557,7 @@ export default function RegisterPage() {
                       <Button 
                         type="submit" 
                         className="flex-1 gap-2"
-                        disabled={registerMutation.isPending}
+                        disabled={registerMutation.isPending || !captchaAnswer}
                         data-testid="button-submit"
                       >
                         {registerMutation.isPending ? (
