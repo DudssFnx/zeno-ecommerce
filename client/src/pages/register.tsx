@@ -351,6 +351,7 @@ export default function RegisterPage() {
 
                     {personType === "juridica" ? (
                       <FormField
+                        key="cnpj-field"
                         control={form1.control}
                         name="cnpj"
                         render={({ field }) => (
@@ -359,7 +360,11 @@ export default function RegisterPage() {
                             <FormControl>
                               <Input 
                                 placeholder="00.000.000/0000-00" 
-                                {...field} 
+                                value={field.value || ""}
+                                onChange={field.onChange}
+                                onBlur={field.onBlur}
+                                name={field.name}
+                                ref={field.ref}
                                 data-testid="input-cnpj"
                               />
                             </FormControl>
@@ -369,6 +374,7 @@ export default function RegisterPage() {
                       />
                     ) : (
                       <FormField
+                        key="cpf-field"
                         control={form1.control}
                         name="cpf"
                         render={({ field }) => (
@@ -377,7 +383,11 @@ export default function RegisterPage() {
                             <FormControl>
                               <Input 
                                 placeholder="000.000.000-00" 
-                                {...field}
+                                value={field.value || ""}
+                                onChange={field.onChange}
+                                onBlur={field.onBlur}
+                                name={field.name}
+                                ref={field.ref}
                                 data-testid="input-cpf"
                               />
                             </FormControl>
