@@ -97,6 +97,8 @@ export const orders = pgTable("orders", {
   status: text("status").notNull().default("pending"), // pending, approved, processing, completed, cancelled
   total: decimal("total", { precision: 10, scale: 2 }).notNull(),
   notes: text("notes"),
+  printed: boolean("printed").notNull().default(false),
+  printedAt: timestamp("printed_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
