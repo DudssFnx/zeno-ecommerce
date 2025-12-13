@@ -20,7 +20,6 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import {
   LayoutDashboard,
   Package,
-  ShoppingCart,
   ClipboardList,
   Users,
   UserCheck,
@@ -33,6 +32,7 @@ import {
   TrendingUp,
   ChevronRight,
 } from "lucide-react";
+import logoImage from "@assets/image_1765659931449.png";
 type UserRole = "admin" | "sales" | "customer";
 
 interface MenuItem {
@@ -98,9 +98,7 @@ export function AppSidebar({ userRole = "customer", userName = "User", onLogout 
     <Sidebar>
       <SidebarHeader className="p-4 border-b border-sidebar-border">
         <div className="flex items-center gap-3">
-          <div className="p-2 bg-primary rounded-md">
-            <ShoppingCart className="h-5 w-5 text-primary-foreground" />
-          </div>
+          <img src={logoImage} alt="Lojamadrugadao" className="h-10 w-10 rounded-full" />
           <div>
             <h2 className="font-semibold text-sm">Lojamadrugadao</h2>
             <p className="text-xs text-muted-foreground capitalize">Portal Atacado</p>

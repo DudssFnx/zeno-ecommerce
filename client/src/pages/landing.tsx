@@ -2,6 +2,7 @@ import { useTheme } from "@/contexts/ThemeContext";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Moon, Sun, Package, ShoppingCart, Truck, Shield, ArrowRight, Store, Users, DollarSign, Handshake, BadgeCheck } from "lucide-react";
+import logoImage from "@assets/image_1765659931449.png";
 
 export default function LandingPage() {
   const { theme, toggleTheme } = useTheme();
@@ -19,9 +20,7 @@ export default function LandingPage() {
       <header className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="container mx-auto px-4 h-16 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-md bg-primary flex items-center justify-center">
-              <Store className="h-6 w-6 text-primary-foreground" />
-            </div>
+            <img src={logoImage} alt="Lojamadrugadao" className="h-10 w-10 rounded-full" />
             <span className="font-bold text-xl hidden sm:block">Lojamadrugadao</span>
           </div>
           <div className="flex items-center gap-2">
