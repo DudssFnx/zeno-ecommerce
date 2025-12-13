@@ -287,8 +287,8 @@ export async function registerRoutes(
 
   app.get('/api/orders/:id', isAuthenticated, isApproved, async (req: any, res) => {
     try {
-      const order = await storage.getOrder(parseInt(req.params.id));
-      if (!order) {
+      const orderDetails = await storage.getOrderWithDetails(parseInt(req.params.id));
+      if (!orderDetails) {
         return res.status(404).json({ message: "Order not found" });
       }
       
@@ -296,13 +296,17 @@ export async function registerRoutes(
       const user = await storage.getUser(userId);
       
       // Customers can only see their own orders
-      if (user?.role === 'customer' && order.userId !== userId) {
+      if (user?.role === 'customer' && orderDetails.order.userId !== userId) {
         return res.status(403).json({ message: "Forbidden" });
       }
       
-      const items = await storage.getOrderItems(order.id);
-      res.json({ ...order, items });
+      res.json({
+        ...orderDetails.order,
+        items: orderDetails.items,
+        customer: orderDetails.customer,
+      });
     } catch (error) {
+      console.error("Error fetching order details:", error);
       res.status(500).json({ message: "Failed to fetch order" });
     }
   });

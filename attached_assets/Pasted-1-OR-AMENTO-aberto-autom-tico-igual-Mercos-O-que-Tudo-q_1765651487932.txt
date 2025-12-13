@@ -1,0 +1,194 @@
+1️⃣ ORÇAMENTO (aberto / automático)
+(igual Mercos)
+
+O que é
+
+Tudo que o cliente adiciona no carrinho
+
+Mesmo sem clicar em “finalizar” ou “enviar pedido”
+
+Como funciona
+
+Criado automaticamente ao:
+
+adicionar item
+
+alterar quantidade
+
+remover item
+
+Um orçamento ativo por cliente
+
+Características
+
+❌ Não desconta estoque
+
+❌ Não gera pedido
+
+✔️ Visível para o vendedor/admin em tempo real
+
+✔️ Pode ser alterado pelo cliente e pelo time interno
+
+Campos
+
+Cliente
+
+Produtos
+
+Quantidades
+
+Preço atual
+
+Data da última alteração
+
+Status: ORCAMENTO_ABERTO
+
+📌 Diferencial Mercos: você já vê a intenção de compra antes do fechamento
+
+2️⃣ ORÇAMENTO CONCLUÍDO
+(cliente clicou em “Enviar pedido”)
+
+O que é
+
+Cliente decidiu enviar o orçamento para análise/aprovação
+
+Ação do cliente
+
+Botão: ENVIAR PEDIDO
+
+O que acontece
+
+Orçamento muda de status
+
+Fica travado para edição pelo cliente
+
+Notificação interna (WhatsApp / e-mail / painel)
+
+Regras
+
+✔️ Ainda não desconta estoque
+
+✔️ Ainda não é pedido fiscal
+
+❌ Cliente não edita mais
+
+✔️ Time interno pode revisar preço/condição
+
+Status
+
+ORCAMENTO_CONCLUIDO
+
+3️⃣ PEDIDO GERADO
+(separação / reserva de estoque)
+
+O que é
+
+Pedido aprovado internamente
+
+Separação iniciada
+
+Ação interna
+
+Botão interno: GERAR PEDIDO
+
+O que acontece
+
+Pedido vira oficial
+
+Estoque é reservado ou baixado
+
+Número de pedido é criado
+
+Regras
+
+✔️ Desconta ou reserva estoque
+
+❌ Ainda não faturado
+
+✔️ Pedido pode ser cancelado (com retorno de estoque)
+
+Status
+
+PEDIDO_GERADO
+
+📌 Ideal para:
+
+picking
+
+conferência
+
+logística
+
+4️⃣ PEDIDO FATURADO
+(integração com ERP)
+
+O que é
+
+Pedido finalizado fiscalmente
+
+Ação
+
+Botão: FATURAR PEDIDO
+
+Ou automático via ERP
+
+O que acontece
+
+Sistema envia pedido para ERP (ex: Bling)
+
+ERP:
+
+gera NF-e
+
+confirma baixa definitiva de estoque
+
+retorna nº da nota
+
+Regras
+
+✔️ Estoque baixado oficialmente
+
+✔️ Pedido fechado
+
+❌ Não pode mais ser alterado
+
+Status
+
+PEDIDO_FATURADO
+
+🧠 STATUS RESUMIDO (tabela)
+Etapa	Quem age	Estoque	Pode editar	ERP
+Orçamento	Cliente	❌	✔️	❌
+Orçamento concluído	Cliente	❌	❌	❌
+Pedido gerado	Interno	✔️ (reserva/baixa)	❌	❌
+Pedido faturado	Sistema	✔️ definitivo	❌	✔️
+🔔 Alertas inteligentes (igual Mercos)
+
+Cliente criou orçamento
+
+Cliente alterou orçamento
+
+Orçamento parado há X dias
+
+Orçamento enviado e não processado
+
+Pedido separado e não faturado
+
+🧩 Regras importantes (bem Mercos)
+
+1 orçamento ativo por cliente
+
+Histórico de orçamentos anteriores
+
+Clone de orçamento
+
+Conversão de orçamento → pedido
+
+Permitir ajuste manual antes de gerar pedido
+
+🧠 Nomes de status (prontos para código)
+ORCAMENTO_ABERTO
+ORCAMENTO_CONCLUIDO
+PEDIDO_GERADO
+PEDIDO_FATURADO
+PEDIDO_CANCELADO

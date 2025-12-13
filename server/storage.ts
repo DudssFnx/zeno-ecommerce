@@ -38,6 +38,11 @@ export interface IStorage {
   // Orders
   getOrders(userId?: string): Promise<Order[]>;
   getOrder(id: number): Promise<Order | undefined>;
+  getOrderWithDetails(id: number): Promise<{
+    order: Order;
+    items: Array<OrderItem & { product: { id: number; name: string; sku: string; image: string | null; price: string } }>;
+    customer: { id: string; firstName: string | null; lastName: string | null; company: string | null; email: string | null; phone: string | null; city: string | null; state: string | null };
+  } | undefined>;
   createOrder(order: InsertOrder): Promise<Order>;
   updateOrder(id: number, order: Partial<InsertOrder>): Promise<Order | undefined>;
 
@@ -202,6 +207,58 @@ export class DatabaseStorage implements IStorage {
   async getOrder(id: number): Promise<Order | undefined> {
     const [order] = await db.select().from(orders).where(eq(orders.id, id));
     return order;
+  }
+
+  async getOrderWithDetails(id: number): Promise<{
+    order: Order;
+    items: Array<OrderItem & { product: { id: number; name: string; sku: string; image: string | null; price: string } }>;
+    customer: { id: string; firstName: string | null; lastName: string | null; company: string | null; email: string | null; phone: string | null; city: string | null; state: string | null };
+  } | undefined> {
+    const [order] = await db.select().from(orders).where(eq(orders.id, id));
+    if (!order) return undefined;
+
+    const [customer] = await db.select({
+      id: users.id,
+      firstName: users.firstName,
+      lastName: users.lastName,
+      company: users.company,
+      email: users.email,
+      phone: users.phone,
+      city: users.city,
+      state: users.state,
+    }).from(users).where(eq(users.id, order.userId));
+
+    const itemsWithProducts = await db.select({
+      id: orderItems.id,
+      orderId: orderItems.orderId,
+      productId: orderItems.productId,
+      quantity: orderItems.quantity,
+      price: orderItems.price,
+      product: {
+        id: products.id,
+        name: products.name,
+        sku: products.sku,
+        image: products.image,
+        price: products.price,
+      },
+    }).from(orderItems)
+      .leftJoin(products, eq(orderItems.productId, products.id))
+      .where(eq(orderItems.orderId, id));
+
+    const items = itemsWithProducts.map(item => ({
+      id: item.id,
+      orderId: item.orderId,
+      productId: item.productId,
+      quantity: item.quantity,
+      price: item.price,
+      product: item.product || { id: item.productId, name: 'Produto não encontrado', sku: '', image: null, price: item.price },
+    }));
+
+    return {
+      order,
+      items,
+      customer: customer || { id: order.userId, firstName: null, lastName: null, company: null, email: null, phone: null, city: null, state: null },
+    };
   }
 
   async createOrder(insertOrder: InsertOrder): Promise<Order> {

@@ -2,6 +2,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button";
 import { StatusBadge, type OrderStatus } from "./StatusBadge";
 import { Eye, MoreHorizontal } from "lucide-react";
+import { Link } from "wouter";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -67,18 +68,19 @@ export function OrderTable({
                 <StatusBadge status={order.status} />
               </TableCell>
               <TableCell className="text-right font-medium">
-                ${order.total.toFixed(2)}
+                R$ {order.total.toFixed(2)}
               </TableCell>
               <TableCell>
                 <div className="flex items-center gap-1 justify-end">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => onViewOrder?.(order)}
-                    data-testid={`button-view-order-${order.id}`}
-                  >
-                    <Eye className="h-4 w-4" />
-                  </Button>
+                  <Link href={`/orders/${order.id}`}>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      data-testid={`button-view-order-${order.id}`}
+                    >
+                      <Eye className="h-4 w-4" />
+                    </Button>
+                  </Link>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button 
