@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -28,7 +29,7 @@ import {
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Plus, Search, Pencil, Trash2, Loader2 } from "lucide-react";
+import { Plus, Search, Pencil, Trash2, Loader2, Upload, Image, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -43,15 +44,18 @@ interface ProductData {
   brand: string;
   price: number;
   stock: number;
+  description: string | null;
+  image: string | null;
 }
 
 const productSchema = z.object({
-  name: z.string().min(1, "Name is required"),
-  sku: z.string().min(1, "SKU is required"),
+  name: z.string().min(1, "Nome é obrigatório"),
+  sku: z.string().min(1, "SKU é obrigatório"),
   categoryId: z.string().optional(),
-  brand: z.string().min(1, "Brand is required"),
-  price: z.coerce.number().min(0, "Price must be positive"),
-  stock: z.coerce.number().int().min(0, "Stock must be 0 or more"),
+  brand: z.string().min(1, "Marca é obrigatória"),
+  price: z.coerce.number().min(0, "Preço deve ser positivo"),
+  stock: z.coerce.number().int().min(0, "Estoque deve ser 0 ou mais"),
+  description: z.string().optional(),
 });
 
 type ProductFormValues = z.infer<typeof productSchema>;
@@ -61,6 +65,9 @@ export default function ProductsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<ProductData | null>(null);
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: productsData = [], isLoading } = useQuery<SchemaProduct[]>({
     queryKey: ['/api/products'],
@@ -79,11 +86,13 @@ export default function ProductsPage() {
     id: String(p.id),
     name: p.name,
     sku: p.sku,
-    category: p.categoryId ? categoryMap[p.categoryId] || "Uncategorized" : "Uncategorized",
+    category: p.categoryId ? categoryMap[p.categoryId] || "Sem categoria" : "Sem categoria",
     categoryId: p.categoryId,
     brand: p.brand || "",
     price: parseFloat(p.price),
     stock: p.stock,
+    description: p.description,
+    image: p.image,
   }));
 
   const form = useForm<ProductFormValues>({
@@ -95,6 +104,7 @@ export default function ProductsPage() {
       brand: "",
       price: 0,
       stock: 0,
+      description: "",
     },
   });
 
@@ -103,6 +113,37 @@ export default function ProductsPage() {
       p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       p.sku.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  const handleImageUpload = async (file: File) => {
+    setIsUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      
+      const response = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData,
+        credentials: 'include',
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Falha no upload');
+      }
+      
+      const data = await response.json();
+      setImageUrl(data.url);
+      toast({ title: "Imagem enviada", description: "A imagem foi enviada com sucesso." });
+    } catch (error: any) {
+      toast({ 
+        title: "Erro no upload", 
+        description: error.message || "Falha ao enviar imagem", 
+        variant: "destructive" 
+      });
+    } finally {
+      setIsUploading(false);
+    }
+  };
 
   const createProductMutation = useMutation({
     mutationFn: async (data: ProductFormValues) => {
@@ -113,6 +154,8 @@ export default function ProductsPage() {
         brand: data.brand,
         price: data.price.toFixed(2),
         stock: data.stock,
+        description: data.description || null,
+        image: imageUrl,
       };
       await apiRequest("POST", "/api/products", payload);
     },
@@ -130,6 +173,8 @@ export default function ProductsPage() {
         brand: data.brand,
         price: data.price.toFixed(2),
         stock: data.stock,
+        description: data.description || null,
+        image: imageUrl,
       };
       await apiRequest("PATCH", `/api/products/${id}`, payload);
     },
@@ -148,8 +193,9 @@ export default function ProductsPage() {
   });
 
   const openAddDialog = () => {
-    form.reset({ name: "", sku: "", categoryId: "", brand: "", price: 0, stock: 0 });
+    form.reset({ name: "", sku: "", categoryId: "", brand: "", price: 0, stock: 0, description: "" });
     setEditingProduct(null);
+    setImageUrl(null);
     setIsDialogOpen(true);
   };
 
@@ -161,8 +207,10 @@ export default function ProductsPage() {
       brand: product.brand,
       price: product.price,
       stock: product.stock,
+      description: product.description || "",
     });
     setEditingProduct(product);
+    setImageUrl(product.image);
     setIsDialogOpen(true);
   };
 
@@ -172,22 +220,22 @@ export default function ProductsPage() {
         { id: editingProduct.id, data: values },
         {
           onSuccess: () => {
-            toast({ title: "Product Updated", description: `${values.name} has been updated.` });
+            toast({ title: "Produto Atualizado", description: `${values.name} foi atualizado.` });
             setIsDialogOpen(false);
           },
           onError: () => {
-            toast({ title: "Error", description: "Failed to update product", variant: "destructive" });
+            toast({ title: "Erro", description: "Falha ao atualizar produto", variant: "destructive" });
           },
         }
       );
     } else {
       createProductMutation.mutate(values, {
         onSuccess: () => {
-          toast({ title: "Product Created", description: `${values.name} has been added.` });
+          toast({ title: "Produto Criado", description: `${values.name} foi adicionado.` });
           setIsDialogOpen(false);
         },
         onError: () => {
-          toast({ title: "Error", description: "Failed to create product", variant: "destructive" });
+          toast({ title: "Erro", description: "Falha ao criar produto", variant: "destructive" });
         },
       });
     }
@@ -196,12 +244,19 @@ export default function ProductsPage() {
   const handleDelete = (product: ProductData) => {
     deleteProductMutation.mutate(product.id, {
       onSuccess: () => {
-        toast({ title: "Product Deleted", description: `${product.name} has been removed.` });
+        toast({ title: "Produto Excluído", description: `${product.name} foi removido.` });
       },
       onError: () => {
-        toast({ title: "Error", description: "Failed to delete product", variant: "destructive" });
+        toast({ title: "Erro", description: "Falha ao excluir produto", variant: "destructive" });
       },
     });
+  };
+
+  const formatPrice = (price: number) => {
+    return new Intl.NumberFormat('pt-BR', {
+      style: 'currency',
+      currency: 'BRL'
+    }).format(price);
   };
 
   const isPending = createProductMutation.isPending || updateProductMutation.isPending;
@@ -210,13 +265,13 @@ export default function ProductsPage() {
     <div className="p-6 lg:p-8 space-y-6">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-3xl font-semibold">Product Management</h1>
-          <p className="text-muted-foreground mt-1">Add, edit, and manage your product catalog</p>
+          <h1 className="text-3xl font-semibold">Gerenciamento de Produtos</h1>
+          <p className="text-muted-foreground mt-1">Adicione, edite e gerencie seu catálogo de produtos</p>
         </div>
         <div className="flex gap-2">
           <Button onClick={openAddDialog} data-testid="button-add-product">
             <Plus className="h-4 w-4 mr-2" />
-            Add Product
+            Adicionar Produto
           </Button>
         </div>
       </div>
@@ -224,7 +279,7 @@ export default function ProductsPage() {
       <div className="relative max-w-sm">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input
-          placeholder="Search products..."
+          placeholder="Buscar produtos..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           className="pl-9"
@@ -241,20 +296,21 @@ export default function ProductsPage() {
           <Table>
             <TableHeader>
               <TableRow className="bg-muted/50">
+                <TableHead className="font-semibold w-16">Foto</TableHead>
                 <TableHead className="font-semibold">SKU</TableHead>
-                <TableHead className="font-semibold">Name</TableHead>
-                <TableHead className="font-semibold">Category</TableHead>
-                <TableHead className="font-semibold">Brand</TableHead>
-                <TableHead className="font-semibold text-right">Price</TableHead>
-                <TableHead className="font-semibold text-right">Stock</TableHead>
+                <TableHead className="font-semibold">Nome</TableHead>
+                <TableHead className="font-semibold">Categoria</TableHead>
+                <TableHead className="font-semibold">Marca</TableHead>
+                <TableHead className="font-semibold text-right">Preço</TableHead>
+                <TableHead className="font-semibold text-right">Estoque</TableHead>
                 <TableHead className="w-[100px]"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filteredProducts.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center py-12 text-muted-foreground">
-                    No products found
+                  <TableCell colSpan={8} className="text-center py-12 text-muted-foreground">
+                    Nenhum produto encontrado
                   </TableCell>
                 </TableRow>
               ) : (
@@ -265,12 +321,21 @@ export default function ProductsPage() {
                     data-testid={`row-product-${product.id}`}
                   >
                     <TableCell>
+                      <div className="w-10 h-10 rounded bg-muted/50 flex items-center justify-center overflow-hidden">
+                        {product.image ? (
+                          <img src={product.image} alt={product.name} className="w-full h-full object-cover" />
+                        ) : (
+                          <Image className="h-4 w-4 text-muted-foreground/50" />
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>
                       <Badge variant="outline">{product.sku}</Badge>
                     </TableCell>
                     <TableCell className="font-medium">{product.name}</TableCell>
                     <TableCell>{product.category}</TableCell>
                     <TableCell>{product.brand}</TableCell>
-                    <TableCell className="text-right">${product.price.toFixed(2)}</TableCell>
+                    <TableCell className="text-right">{formatPrice(product.price)}</TableCell>
                     <TableCell className="text-right">
                       <span className={product.stock === 0 ? "text-destructive" : ""}>
                         {product.stock}
@@ -307,19 +372,73 @@ export default function ProductsPage() {
       )}
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{editingProduct ? "Edit Product" : "Add Product"}</DialogTitle>
+            <DialogTitle>{editingProduct ? "Editar Produto" : "Adicionar Produto"}</DialogTitle>
           </DialogHeader>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
+                <div className="col-span-2">
+                  <FormLabel>Imagem do Produto</FormLabel>
+                  <div className="mt-2 flex items-start gap-4">
+                    <div className="w-32 h-32 rounded-lg border-2 border-dashed border-muted-foreground/25 flex items-center justify-center bg-muted/30 overflow-hidden">
+                      {imageUrl ? (
+                        <img src={imageUrl} alt="Preview" className="w-full h-full object-cover" />
+                      ) : (
+                        <Image className="h-8 w-8 text-muted-foreground/50" />
+                      )}
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp,image/gif"
+                        className="hidden"
+                        ref={fileInputRef}
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) handleImageUpload(file);
+                        }}
+                        data-testid="input-product-image"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={isUploading}
+                        data-testid="button-upload-image"
+                      >
+                        {isUploading ? (
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        ) : (
+                          <Upload className="h-4 w-4 mr-2" />
+                        )}
+                        {isUploading ? "Enviando..." : "Enviar Imagem"}
+                      </Button>
+                      {imageUrl && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setImageUrl(null)}
+                          className="text-destructive"
+                          data-testid="button-remove-image"
+                        >
+                          <X className="h-4 w-4 mr-1" />
+                          Remover
+                        </Button>
+                      )}
+                      <p className="text-xs text-muted-foreground">JPG, PNG, WebP ou GIF. Máximo 5MB.</p>
+                    </div>
+                  </div>
+                </div>
+
                 <FormField
                   control={form.control}
                   name="name"
                   render={({ field }) => (
                     <FormItem className="col-span-2">
-                      <FormLabel>Product Name</FormLabel>
+                      <FormLabel>Nome do Produto</FormLabel>
                       <FormControl>
                         <Input {...field} data-testid="input-product-name" />
                       </FormControl>
@@ -327,6 +446,26 @@ export default function ProductsPage() {
                     </FormItem>
                   )}
                 />
+                
+                <FormField
+                  control={form.control}
+                  name="description"
+                  render={({ field }) => (
+                    <FormItem className="col-span-2">
+                      <FormLabel>Descrição</FormLabel>
+                      <FormControl>
+                        <Textarea 
+                          {...field} 
+                          placeholder="Descreva o produto..."
+                          className="min-h-[80px]"
+                          data-testid="input-product-description" 
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
                 <FormField
                   control={form.control}
                   name="sku"
@@ -345,11 +484,11 @@ export default function ProductsPage() {
                   name="categoryId"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Category</FormLabel>
+                      <FormLabel>Categoria</FormLabel>
                       <Select onValueChange={field.onChange} value={field.value}>
                         <FormControl>
                           <SelectTrigger data-testid="select-product-category">
-                            <SelectValue placeholder="Select category" />
+                            <SelectValue placeholder="Selecione uma categoria" />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
@@ -369,7 +508,7 @@ export default function ProductsPage() {
                   name="brand"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Brand</FormLabel>
+                      <FormLabel>Marca</FormLabel>
                       <FormControl>
                         <Input {...field} data-testid="input-product-brand" />
                       </FormControl>
@@ -382,7 +521,7 @@ export default function ProductsPage() {
                   name="price"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Price ($)</FormLabel>
+                      <FormLabel>Preço (R$)</FormLabel>
                       <FormControl>
                         <Input type="number" step="0.01" {...field} data-testid="input-product-price" />
                       </FormControl>
@@ -395,7 +534,7 @@ export default function ProductsPage() {
                   name="stock"
                   render={({ field }) => (
                     <FormItem className="col-span-2">
-                      <FormLabel>Stock Quantity</FormLabel>
+                      <FormLabel>Quantidade em Estoque</FormLabel>
                       <FormControl>
                         <Input type="number" {...field} data-testid="input-product-stock" />
                       </FormControl>
@@ -406,11 +545,11 @@ export default function ProductsPage() {
               </div>
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
-                  Cancel
+                  Cancelar
                 </Button>
-                <Button type="submit" disabled={isPending} data-testid="button-save-product">
+                <Button type="submit" disabled={isPending || isUploading} data-testid="button-save-product">
                   {isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                  {editingProduct ? "Save Changes" : "Add Product"}
+                  {editingProduct ? "Salvar Alterações" : "Adicionar Produto"}
                 </Button>
               </DialogFooter>
             </form>

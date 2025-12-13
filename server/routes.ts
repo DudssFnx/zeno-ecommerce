@@ -4,6 +4,22 @@ import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./replitAuth";
 import { insertCategorySchema, insertProductSchema, insertOrderSchema, insertOrderItemSchema } from "@shared/schema";
 import { z } from "zod";
+import multer from "multer";
+import { Client } from "@replit/object-storage";
+
+const upload = multer({ 
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 }
+});
+
+let objectStorageClient: Client | null = null;
+
+async function getObjectStorage(): Promise<Client> {
+  if (!objectStorageClient) {
+    objectStorageClient = new Client();
+  }
+  return objectStorageClient;
+}
 
 // Helper to generate order numbers
 function generateOrderNumber(): string {
@@ -367,6 +383,38 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error exporting orders:", error);
       res.status(500).json({ message: "Failed to export orders" });
+    }
+  });
+
+  // ========== FILE UPLOAD ==========
+  app.post('/api/upload', isAuthenticated, isAdminOrSales, upload.single('file'), async (req: any, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: "No file uploaded" });
+      }
+
+      const file = req.file;
+      const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+      
+      if (!allowedTypes.includes(file.mimetype)) {
+        return res.status(400).json({ message: "Invalid file type. Only JPEG, PNG, WebP, and GIF are allowed." });
+      }
+
+      const ext = file.originalname.split('.').pop() || 'jpg';
+      const filename = `products/${Date.now()}-${Math.random().toString(36).substring(2, 8)}.${ext}`;
+
+      const objectStorage = await getObjectStorage();
+      await objectStorage.uploadFromBytes(filename, file.buffer);
+
+      const publicUrl = await objectStorage.getSignedDownloadUrl(filename);
+      
+      res.json({ 
+        url: publicUrl,
+        filename: filename
+      });
+    } catch (error) {
+      console.error("Error uploading file:", error);
+      res.status(500).json({ message: "Failed to upload file" });
     }
   });
 
