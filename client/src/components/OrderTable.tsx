@@ -116,13 +116,12 @@ export function OrderTable({
                     Impresso
                   </Badge>
                 ) : (
-                  <button
-                    onClick={() => onPrintOrder?.(order)}
-                    className="text-sm font-semibold cursor-pointer hover:underline"
-                    data-testid={`button-print-${order.id}`}
+                  <span
+                    className="text-xs text-destructive"
+                    data-testid={`text-not-printed-${order.id}`}
                   >
-                    IMPRIMIR PEDIDO
-                  </button>
+                    Pendente impressão
+                  </span>
                 )}
               </TableCell>
               <TableCell className="text-right font-medium">
