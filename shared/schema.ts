@@ -30,6 +30,8 @@ export const users = pgTable("users", {
   personType: text("person_type"), // juridica, fisica
   cnpj: text("cnpj"),
   cpf: text("cpf"),
+  tradingName: text("trading_name"), // Nome Fantasia
+  stateRegistration: text("state_registration"), // Inscrição Estadual
   cep: text("cep"),
   address: text("address"),
   addressNumber: text("address_number"),
