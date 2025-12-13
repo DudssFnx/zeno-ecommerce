@@ -305,6 +305,7 @@ export async function registerRoutes(
         ...orderDetails.order,
         items: orderDetails.items,
         customer: orderDetails.customer,
+        printedByUser: orderDetails.printedByUser,
       });
     } catch (error) {
       console.error("Error fetching order details:", error);
@@ -373,11 +374,13 @@ export async function registerRoutes(
     }
   });
 
-  app.patch('/api/orders/:id/print', isAuthenticated, isAdminOrSales, async (req, res) => {
+  app.patch('/api/orders/:id/print', isAuthenticated, isAdminOrSales, async (req: any, res) => {
     try {
+      const userId = req.user?.claims?.sub;
       const order = await storage.updateOrder(parseInt(req.params.id), {
         printed: true,
         printedAt: new Date(),
+        printedBy: userId,
         status: "PEDIDO_IMPRESSO",
       });
       if (!order) {

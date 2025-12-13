@@ -447,6 +447,7 @@ export class DatabaseStorage implements IStorage {
       city: string | null; 
       state: string | null;
     };
+    printedByUser: { id: string; firstName: string | null; lastName: string | null; email: string | null } | null;
   } | undefined> {
     const [order] = await db.select().from(orders).where(eq(orders.id, id));
     if (!order) return undefined;
@@ -471,6 +472,17 @@ export class DatabaseStorage implements IStorage {
       city: users.city,
       state: users.state,
     }).from(users).where(eq(users.id, order.userId));
+
+    let printedByUser = null;
+    if (order.printedBy) {
+      const [pUser] = await db.select({
+        id: users.id,
+        firstName: users.firstName,
+        lastName: users.lastName,
+        email: users.email,
+      }).from(users).where(eq(users.id, order.printedBy));
+      printedByUser = pUser || null;
+    }
 
     const itemsWithProducts = await db.select({
       id: orderItems.id,
@@ -519,6 +531,7 @@ export class DatabaseStorage implements IStorage {
         city: null, 
         state: null 
       },
+      printedByUser,
     };
   }
 

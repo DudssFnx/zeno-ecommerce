@@ -102,6 +102,7 @@ export const orders = pgTable("orders", {
   notes: text("notes"),
   printed: boolean("printed").notNull().default(false),
   printedAt: timestamp("printed_at"),
+  printedBy: varchar("printed_by").references(() => users.id),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

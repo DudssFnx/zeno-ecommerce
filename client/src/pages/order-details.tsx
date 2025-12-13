@@ -42,9 +42,17 @@ interface CustomerInfo {
   state: string | null;
 }
 
+interface PrintedByUser {
+  id: string;
+  firstName: string | null;
+  lastName: string | null;
+  email: string | null;
+}
+
 interface OrderWithDetails extends Order {
   items: (OrderItem & { product: ProductInfo })[];
   customer: CustomerInfo;
+  printedByUser: PrintedByUser | null;
 }
 
 const statusLabels: Record<string, string> = {
@@ -488,6 +496,11 @@ export default function OrderDetailsPage() {
                   <p className="font-medium">
                     {format(new Date(orderData.printedAt), "dd/MM/yyyy HH:mm", { locale: ptBR })}
                   </p>
+                  {orderData.printedByUser && (
+                    <p className="text-sm text-muted-foreground mt-1" data-testid="text-printed-by">
+                      por {orderData.printedByUser.firstName || orderData.printedByUser.email}
+                    </p>
+                  )}
                 </div>
               )}
               <div>
