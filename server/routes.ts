@@ -22,13 +22,10 @@ async function getObjectStorage(): Promise<Client> {
   return objectStorageClient;
 }
 
-// Helper to generate order numbers
-function generateOrderNumber(): string {
-  const date = new Date();
-  const year = date.getFullYear().toString().slice(-2);
-  const month = (date.getMonth() + 1).toString().padStart(2, '0');
-  const random = Math.random().toString(36).substring(2, 8).toUpperCase();
-  return `ORD-${year}${month}-${random}`;
+// Helper to generate sequential order numbers starting from 8000
+async function generateOrderNumber(): Promise<string> {
+  const nextNumber = await storage.getNextOrderNumber();
+  return nextNumber.toString();
 }
 
 // Middleware to check if user is admin or sales
@@ -335,7 +332,7 @@ export async function registerRoutes(
       // Create order with ORCAMENTO_ABERTO status (Mercos-style quote system)
       const order = await storage.createOrder({
         userId,
-        orderNumber: generateOrderNumber(),
+        orderNumber: await generateOrderNumber(),
         status: 'ORCAMENTO_ABERTO',
         total: total.toFixed(2),
         notes: notes || null,
@@ -369,6 +366,21 @@ export async function registerRoutes(
       res.json(order);
     } catch (error) {
       res.status(500).json({ message: "Failed to update order" });
+    }
+  });
+
+  app.patch('/api/orders/:id/print', isAuthenticated, isAdminOrSales, async (req, res) => {
+    try {
+      const order = await storage.updateOrder(parseInt(req.params.id), {
+        printed: true,
+        printedAt: new Date(),
+      });
+      if (!order) {
+        return res.status(404).json({ message: "Order not found" });
+      }
+      res.json(order);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to mark order as printed" });
     }
   });
 

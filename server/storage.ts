@@ -41,8 +41,26 @@ export interface IStorage {
   getOrderWithDetails(id: number): Promise<{
     order: Order;
     items: Array<OrderItem & { product: { id: number; name: string; sku: string; image: string | null; price: string } }>;
-    customer: { id: string; firstName: string | null; lastName: string | null; company: string | null; email: string | null; phone: string | null; city: string | null; state: string | null };
+    customer: { 
+      id: string; 
+      firstName: string | null; 
+      lastName: string | null; 
+      company: string | null; 
+      email: string | null; 
+      phone: string | null; 
+      personType: string | null;
+      cnpj: string | null;
+      cpf: string | null;
+      cep: string | null;
+      address: string | null;
+      addressNumber: string | null;
+      complement: string | null;
+      neighborhood: string | null;
+      city: string | null; 
+      state: string | null;
+    };
   } | undefined>;
+  getNextOrderNumber(): Promise<number>;
   createOrder(order: InsertOrder): Promise<Order>;
   updateOrder(id: number, order: Partial<InsertOrder>): Promise<Order | undefined>;
 
@@ -397,10 +415,32 @@ export class DatabaseStorage implements IStorage {
     return order;
   }
 
+  async getNextOrderNumber(): Promise<number> {
+    const result = await db.execute(sql`SELECT nextval('order_number_seq') as num`);
+    return Number((result.rows[0] as any).num);
+  }
+
   async getOrderWithDetails(id: number): Promise<{
     order: Order;
     items: Array<OrderItem & { product: { id: number; name: string; sku: string; image: string | null; price: string } }>;
-    customer: { id: string; firstName: string | null; lastName: string | null; company: string | null; email: string | null; phone: string | null; city: string | null; state: string | null };
+    customer: { 
+      id: string; 
+      firstName: string | null; 
+      lastName: string | null; 
+      company: string | null; 
+      email: string | null; 
+      phone: string | null; 
+      personType: string | null;
+      cnpj: string | null;
+      cpf: string | null;
+      cep: string | null;
+      address: string | null;
+      addressNumber: string | null;
+      complement: string | null;
+      neighborhood: string | null;
+      city: string | null; 
+      state: string | null;
+    };
   } | undefined> {
     const [order] = await db.select().from(orders).where(eq(orders.id, id));
     if (!order) return undefined;
@@ -412,6 +452,14 @@ export class DatabaseStorage implements IStorage {
       company: users.company,
       email: users.email,
       phone: users.phone,
+      personType: users.personType,
+      cnpj: users.cnpj,
+      cpf: users.cpf,
+      cep: users.cep,
+      address: users.address,
+      addressNumber: users.addressNumber,
+      complement: users.complement,
+      neighborhood: users.neighborhood,
       city: users.city,
       state: users.state,
     }).from(users).where(eq(users.id, order.userId));
@@ -445,7 +493,24 @@ export class DatabaseStorage implements IStorage {
     return {
       order,
       items,
-      customer: customer || { id: order.userId, firstName: null, lastName: null, company: null, email: null, phone: null, city: null, state: null },
+      customer: customer || { 
+        id: order.userId, 
+        firstName: null, 
+        lastName: null, 
+        company: null, 
+        email: null, 
+        phone: null, 
+        personType: null,
+        cnpj: null,
+        cpf: null,
+        cep: null,
+        address: null,
+        addressNumber: null,
+        complement: null,
+        neighborhood: null,
+        city: null, 
+        state: null 
+      },
     };
   }
 

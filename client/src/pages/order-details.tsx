@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, Loader2, Package, User, Calendar, FileText, DollarSign } from "lucide-react";
+import { ArrowLeft, Loader2, Package, User, Calendar, FileText, DollarSign, Printer, MapPin } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import type { Order, OrderItem } from "@shared/schema";
@@ -28,6 +28,14 @@ interface CustomerInfo {
   company: string | null;
   email: string | null;
   phone: string | null;
+  personType: string | null;
+  cnpj: string | null;
+  cpf: string | null;
+  cep: string | null;
+  address: string | null;
+  addressNumber: string | null;
+  complement: string | null;
+  neighborhood: string | null;
   city: string | null;
   state: string | null;
 }
@@ -96,6 +104,28 @@ export default function OrderDetailsPage() {
     },
   });
 
+  const printMutation = useMutation({
+    mutationFn: async () => {
+      await apiRequest("PATCH", `/api/orders/${orderId}/print`, {});
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/orders", orderId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
+      window.print();
+      toast({
+        title: "Pedido Impresso",
+        description: "O pedido foi marcado como impresso.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Erro",
+        description: "Não foi possível marcar o pedido como impresso.",
+        variant: "destructive",
+      });
+    },
+  });
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-24">
@@ -128,6 +158,32 @@ export default function OrderDetailsPage() {
     0
   );
 
+  const formatDocument = () => {
+    if (customer?.personType === 'juridica' && customer?.cnpj) {
+      return `CNPJ: ${customer.cnpj}`;
+    }
+    if (customer?.personType === 'fisica' && customer?.cpf) {
+      return `CPF: ${customer.cpf}`;
+    }
+    return null;
+  };
+
+  const formatAddress = () => {
+    const parts = [];
+    if (customer?.address) {
+      let addressLine = customer.address;
+      if (customer.addressNumber) addressLine += `, ${customer.addressNumber}`;
+      if (customer.complement) addressLine += ` - ${customer.complement}`;
+      parts.push(addressLine);
+    }
+    if (customer?.neighborhood) parts.push(customer.neighborhood);
+    if (customer?.city || customer?.state) {
+      parts.push([customer.city, customer.state].filter(Boolean).join(" - "));
+    }
+    if (customer?.cep) parts.push(`CEP: ${customer.cep}`);
+    return parts;
+  };
+
   return (
     <div className="p-6 lg:p-8 space-y-6">
       <div className="flex items-center gap-4 flex-wrap">
@@ -145,9 +201,16 @@ export default function OrderDetailsPage() {
             Criado em {format(new Date(orderData.createdAt), "dd 'de' MMMM 'de' yyyy 'às' HH:mm", { locale: ptBR })}
           </p>
         </div>
-        <Badge variant={statusVariants[orderData.status]} data-testid="badge-order-status">
-          {statusLabels[orderData.status] || orderData.status}
-        </Badge>
+        <div className="flex items-center gap-2 flex-wrap">
+          {orderData.printed && (
+            <Badge variant="outline" data-testid="badge-printed">
+              Impresso
+            </Badge>
+          )}
+          <Badge variant={statusVariants[orderData.status]} data-testid="badge-order-status">
+            {statusLabels[orderData.status] || orderData.status}
+          </Badge>
+        </div>
       </div>
 
       <div className="grid gap-6 md:grid-cols-3">
@@ -164,7 +227,7 @@ export default function OrderDetailsPage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {itemsWithProducts.map((item, index) => (
+                {itemsWithProducts.map((item) => (
                   <div
                     key={item.id}
                     className="flex items-center gap-4"
@@ -231,9 +294,9 @@ export default function OrderDetailsPage() {
           {canEditStatus && (
             <Card>
               <CardHeader className="pb-4">
-                <CardTitle>Atualizar Status</CardTitle>
+                <CardTitle>Ações</CardTitle>
               </CardHeader>
-              <CardContent>
+              <CardContent className="space-y-4">
                 <Select
                   value={orderData.status}
                   onValueChange={(value) => updateStatusMutation.mutate(value)}
@@ -250,6 +313,16 @@ export default function OrderDetailsPage() {
                     <SelectItem value="PEDIDO_CANCELADO">Cancelado</SelectItem>
                   </SelectContent>
                 </Select>
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => printMutation.mutate()}
+                  disabled={printMutation.isPending}
+                  data-testid="button-print"
+                >
+                  <Printer className="h-4 w-4 mr-2" />
+                  {printMutation.isPending ? "Imprimindo..." : "Imprimir Pedido"}
+                </Button>
               </CardContent>
             </Card>
           )}
@@ -276,6 +349,12 @@ export default function OrderDetailsPage() {
                       <p className="font-medium">{customer.company}</p>
                     </div>
                   )}
+                  {formatDocument() && (
+                    <div>
+                      <p className="text-sm text-muted-foreground">Documento</p>
+                      <p className="font-medium" data-testid="text-customer-document">{formatDocument()}</p>
+                    </div>
+                  )}
                   {customer.email && (
                     <div>
                       <p className="text-sm text-muted-foreground">E-mail</p>
@@ -286,14 +365,6 @@ export default function OrderDetailsPage() {
                     <div>
                       <p className="text-sm text-muted-foreground">Telefone</p>
                       <p className="font-medium">{customer.phone}</p>
-                    </div>
-                  )}
-                  {(customer.city || customer.state) && (
-                    <div>
-                      <p className="text-sm text-muted-foreground">Localização</p>
-                      <p className="font-medium">
-                        {[customer.city, customer.state].filter(Boolean).join(" - ")}
-                      </p>
                     </div>
                   )}
                 </>
@@ -307,6 +378,26 @@ export default function OrderDetailsPage() {
               )}
             </CardContent>
           </Card>
+
+          {customer && formatAddress().length > 0 && (
+            <Card>
+              <CardHeader className="pb-4">
+                <CardTitle className="flex items-center gap-2">
+                  <MapPin className="h-5 w-5" />
+                  Endereço
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-1" data-testid="text-customer-address">
+                  {formatAddress().map((line, idx) => (
+                    <p key={idx} className={idx === 0 ? "font-medium" : "text-muted-foreground text-sm"}>
+                      {line}
+                    </p>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           <Card>
             <CardHeader className="pb-4">
@@ -346,6 +437,14 @@ export default function OrderDetailsPage() {
                   {format(new Date(orderData.createdAt), "dd/MM/yyyy HH:mm", { locale: ptBR })}
                 </p>
               </div>
+              {orderData.printed && orderData.printedAt && (
+                <div>
+                  <p className="text-sm text-muted-foreground">Impresso em</p>
+                  <p className="font-medium">
+                    {format(new Date(orderData.printedAt), "dd/MM/yyyy HH:mm", { locale: ptBR })}
+                  </p>
+                </div>
+              )}
               <div>
                 <p className="text-sm text-muted-foreground">Status Atual</p>
                 <Badge variant={statusVariants[orderData.status]} className="mt-1">
