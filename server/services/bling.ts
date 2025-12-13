@@ -13,7 +13,16 @@ interface BlingTokens {
   token_type: string;
 }
 
-interface BlingProduct {
+interface BlingProductBasic {
+  id: number;
+  nome: string;
+  codigo: string;
+  preco: number;
+  tipo: string;
+  situacao: string;
+}
+
+interface BlingProductFull {
   id: number;
   nome: string;
   codigo: string;
@@ -22,19 +31,29 @@ interface BlingProduct {
   tipo: string;
   situacao: string;
   descricaoCurta?: string;
+  descricaoComplementar?: string;
   marca?: string;
   categoria?: {
     id: number;
-    descricao: string;
+    descricao?: string;
   };
   estoque?: {
-    minimo: number;
-    maximo: number;
-    saldoVirtual: number;
+    minimo?: number;
+    maximo?: number;
+    saldoFisico?: number;
+    saldoVirtual?: number;
   };
+  imagens?: Array<{
+    id: number;
+    tipo?: string;
+    ordem?: number;
+    linkExterno?: string;
+    link?: string;
+  }>;
   midia?: {
     imagens?: {
       externas?: Array<{ link: string }>;
+      internas?: Array<{ link: string }>;
     };
   };
 }
@@ -178,11 +197,21 @@ async function blingApiRequest<T>(endpoint: string): Promise<T> {
   return response.json();
 }
 
-export async function fetchBlingProducts(page: number = 1, limit: number = 100): Promise<BlingProduct[]> {
-  const response = await blingApiRequest<{ data: BlingProduct[] }>(
+export async function fetchBlingProductsList(page: number = 1, limit: number = 100): Promise<BlingProductBasic[]> {
+  const response = await blingApiRequest<{ data: BlingProductBasic[] }>(
     `/produtos?pagina=${page}&limite=${limit}&tipo=P&criterio=1`
   );
   return response.data || [];
+}
+
+export async function fetchBlingProductDetails(productId: number): Promise<BlingProductFull | null> {
+  try {
+    const response = await blingApiRequest<{ data: BlingProductFull }>(`/produtos/${productId}`);
+    return response.data || null;
+  } catch (error) {
+    console.error(`Failed to fetch product ${productId}:`, error);
+    return null;
+  }
 }
 
 export async function fetchBlingCategories(): Promise<BlingCategory[]> {
@@ -221,21 +250,31 @@ export async function syncCategories(): Promise<{ created: number; updated: numb
 }
 
 export async function syncProducts(): Promise<{ created: number; updated: number; errors: string[] }> {
-  let allProducts: BlingProduct[] = [];
+  let productIds: number[] = [];
   let page = 1;
   const limit = 100;
   
+  console.log("Fetching product list from Bling...");
   while (true) {
-    const pageProducts = await fetchBlingProducts(page, limit);
+    const pageProducts = await fetchBlingProductsList(page, limit);
     if (pageProducts.length === 0) break;
-    allProducts = allProducts.concat(pageProducts);
+    
+    for (const p of pageProducts) {
+      if (p.situacao === "A") {
+        productIds.push(p.id);
+      }
+    }
+    
     if (pageProducts.length < limit) break;
     page++;
     await new Promise(resolve => setTimeout(resolve, 200));
   }
+  
+  console.log(`Found ${productIds.length} active products. Fetching details...`);
 
   const existingCategories = await db.select().from(categories);
   const categoryMap: Record<string, number> = {};
+  const categoryIdMap: Record<number, number> = {};
   existingCategories.forEach(c => {
     categoryMap[c.name.toLowerCase()] = c.id;
   });
@@ -243,44 +282,77 @@ export async function syncProducts(): Promise<{ created: number; updated: number
   let created = 0;
   let updated = 0;
   const errors: string[] = [];
+  let processed = 0;
 
-  for (const blingProduct of allProducts) {
+  for (const productId of productIds) {
     try {
-      if (blingProduct.situacao !== "A") continue;
+      const blingProduct = await fetchBlingProductDetails(productId);
+      if (!blingProduct) {
+        errors.push(`Product ${productId}: Failed to fetch details`);
+        continue;
+      }
+      
+      processed++;
+      if (processed % 100 === 0) {
+        console.log(`Processed ${processed}/${productIds.length} products...`);
+      }
 
       let categoryId: number | null = null;
-      if (blingProduct.categoria?.descricao) {
-        const catName = blingProduct.categoria.descricao.toLowerCase();
-        categoryId = categoryMap[catName] || null;
+      
+      if (blingProduct.categoria?.id) {
+        const blingCatId = blingProduct.categoria.id;
         
-        if (!categoryId) {
-          const slug = blingProduct.categoria.descricao
-            .toLowerCase()
-            .normalize("NFD")
-            .replace(/[\u0300-\u036f]/g, "")
-            .replace(/[^a-z0-9]+/g, "-")
-            .replace(/(^-|-$)/g, "");
+        if (categoryIdMap[blingCatId]) {
+          categoryId = categoryIdMap[blingCatId];
+        } else if (blingProduct.categoria.descricao) {
+          const catName = blingProduct.categoria.descricao.toLowerCase();
+          categoryId = categoryMap[catName] || null;
           
-          const [newCat] = await db.insert(categories).values({
-            name: blingProduct.categoria.descricao,
-            slug,
-          }).returning();
+          if (!categoryId) {
+            const slug = blingProduct.categoria.descricao
+              .toLowerCase()
+              .normalize("NFD")
+              .replace(/[\u0300-\u036f]/g, "")
+              .replace(/[^a-z0-9]+/g, "-")
+              .replace(/(^-|-$)/g, "");
+            
+            const [newCat] = await db.insert(categories).values({
+              name: blingProduct.categoria.descricao,
+              slug,
+            }).returning();
+            
+            categoryId = newCat.id;
+            categoryMap[catName] = categoryId;
+          }
           
-          categoryId = newCat.id;
-          categoryMap[catName] = categoryId;
+          if (categoryId) {
+            categoryIdMap[blingCatId] = categoryId;
+          }
         }
       }
 
-      const imageUrl = blingProduct.midia?.imagens?.externas?.[0]?.link || null;
+      let imageUrl: string | null = null;
+      if (blingProduct.imagens && blingProduct.imagens.length > 0) {
+        const sortedImages = [...blingProduct.imagens].sort((a, b) => (a.ordem || 0) - (b.ordem || 0));
+        imageUrl = sortedImages[0]?.linkExterno || sortedImages[0]?.link || null;
+      }
+      if (!imageUrl && blingProduct.midia?.imagens?.externas?.[0]?.link) {
+        imageUrl = blingProduct.midia.imagens.externas[0].link;
+      }
+      if (!imageUrl && blingProduct.midia?.imagens?.internas?.[0]?.link) {
+        imageUrl = blingProduct.midia.imagens.internas[0].link;
+      }
+
+      const description = blingProduct.descricaoComplementar || blingProduct.descricaoCurta || null;
 
       const productData: InsertProduct = {
         name: blingProduct.nome,
         sku: blingProduct.codigo || `BLING-${blingProduct.id}`,
         categoryId,
         brand: blingProduct.marca || null,
-        description: blingProduct.descricaoCurta || null,
+        description,
         price: String(blingProduct.preco || 0),
-        stock: blingProduct.estoque?.saldoVirtual || 0,
+        stock: blingProduct.estoque?.saldoVirtual || blingProduct.estoque?.saldoFisico || 0,
         image: imageUrl,
       };
 
@@ -303,11 +375,15 @@ export async function syncProducts(): Promise<{ created: number; updated: number
           .where(eq(products.sku, productData.sku));
         updated++;
       }
+      
+      await new Promise(resolve => setTimeout(resolve, 100));
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
-      errors.push(`Product ${blingProduct.codigo}: ${message}`);
+      errors.push(`Product ${productId}: ${message}`);
     }
   }
+  
+  console.log(`Sync complete: ${created} created, ${updated} updated, ${errors.length} errors`);
 
   return { created, updated, errors };
 }
