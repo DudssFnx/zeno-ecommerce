@@ -209,14 +209,17 @@ export default function PublicCatalogPage() {
                 alt="Lojamadrugadao" 
                 className="h-10 w-10 rounded-full border-2 border-white/20 cursor-pointer"
                 onClick={() => setLocation("/")}
-                onDoubleClick={() => setLocation("/login")}
                 data-testid="img-logo"
               />
               <div className="hidden sm:block">
                 <h1 className="font-bold text-sm tracking-wide cursor-pointer" onClick={() => setLocation("/")}>
                   LOJAMADRUGADAO
                 </h1>
-                <div className="flex items-center gap-1 text-zinc-400 text-xs">
+                <div 
+                  className="flex items-center gap-1 text-zinc-400 text-xs cursor-pointer select-none"
+                  onDoubleClick={() => setLocation("/login")}
+                  data-testid="phone-employee-login"
+                >
                   <Phone className="h-3 w-3" />
                   <span>11 99294-0168</span>
                 </div>
