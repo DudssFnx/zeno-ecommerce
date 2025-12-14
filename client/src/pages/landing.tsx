@@ -251,6 +251,9 @@ export default function LandingPage() {
               </div>
             </div>
           </div>
+          <p className="text-center text-xs text-muted-foreground mt-3">
+            *Condicoes validas apenas para compras no varejo
+          </p>
         </div>
       </section>
 
