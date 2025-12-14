@@ -519,14 +519,23 @@ export async function syncProducts(): Promise<{ created: number; updated: number
   try {
     updateProgress({
       status: 'running',
-      phase: 'Buscando lista de produtos',
+      phase: 'Sincronizando categorias',
       currentStep: 0,
       totalSteps: 100,
-      message: 'Iniciando sincronização...',
+      message: 'Sincronizando categorias do Bling...',
       created: 0,
       updated: 0,
       errors: 0,
       startTime,
+    });
+    
+    console.log("Syncing categories from Bling first...");
+    const catResult = await syncCategories();
+    console.log(`Categories synced: ${catResult.created} created, ${catResult.updated} updated`);
+    
+    updateProgress({
+      phase: 'Buscando lista de produtos',
+      message: `Categorias sincronizadas. Buscando produtos...`,
     });
     
     console.log("Fetching product list from Bling (with rate limit handling)...");
@@ -552,17 +561,9 @@ export async function syncProducts(): Promise<{ created: number; updated: number
     const totalSteps = totalProducts * 2;
     
     updateProgress({
-      phase: 'Buscando categorias',
+      phase: 'Carregando categorias locais',
       totalSteps,
-      message: `${totalProducts} produtos encontrados. Buscando categorias...`,
-    });
-
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    console.log("Fetching categories from Bling for mapping...");
-    const blingCategories = await fetchCategoriesWithRetry();
-    const blingCatIdToName: Record<number, string> = {};
-    blingCategories.forEach(bc => {
-      blingCatIdToName[bc.id] = bc.descricao;
+      message: `${totalProducts} produtos encontrados. Carregando categorias...`,
     });
 
     const existingCategories = await db.select().from(categories);
@@ -574,7 +575,7 @@ export async function syncProducts(): Promise<{ created: number; updated: number
         blingIdToCategoryId[c.blingId] = c.id;
       }
     });
-    console.log(`Loaded ${Object.keys(categoryMap).length} local categories`);
+    console.log(`Loaded ${Object.keys(categoryMap).length} local categories with ${Object.keys(blingIdToCategoryId).length} Bling IDs mapped`);
 
     updateProgress({
       phase: 'Buscando detalhes dos produtos',
@@ -629,11 +630,11 @@ export async function syncProducts(): Promise<{ created: number; updated: number
         const blingCat = blingProduct.categoria;
         if (blingCat && blingCat.id) {
           categoryId = blingIdToCategoryId[blingCat.id] || null;
+          if (!categoryId && blingCat.descricao) {
+            categoryId = categoryMap[blingCat.descricao.toLowerCase()] || null;
+          }
           if (!categoryId) {
-            const blingCatName = blingCatIdToName[blingCat.id] || blingCat.descricao;
-            if (blingCatName) {
-              categoryId = categoryMap[blingCatName.toLowerCase()] || null;
-            }
+            console.log(`Category not found for product ${blingProduct.codigo}: Bling category ID ${blingCat.id}, desc: ${blingCat.descricao}`);
           }
         }
 
@@ -651,6 +652,10 @@ export async function syncProducts(): Promise<{ created: number; updated: number
 
         const description = blingProduct.descricaoComplementar || blingProduct.descricaoCurta || null;
         const stock = blingProduct.estoque?.saldoVirtual ?? blingProduct.estoque?.saldoFisico ?? 0;
+        
+        if (i < 5) {
+          console.log(`Product ${blingProduct.codigo}: image=${imageUrl ? 'YES' : 'NO'}, stock=${stock}, category=${categoryId}, estoque data:`, blingProduct.estoque);
+        }
 
         const productData: InsertProduct = {
           name: blingProduct.nome,
