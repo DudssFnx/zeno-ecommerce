@@ -1,7 +1,7 @@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { StatusBadge, StageBadge } from "./StatusBadge";
-import { Eye, Printer } from "lucide-react";
+import { Eye, Printer, Edit2 } from "lucide-react";
 import { Link } from "wouter";
 import { Checkbox } from "@/components/ui/checkbox";
 
@@ -24,6 +24,8 @@ interface OrderTableProps {
   onSelectionChange?: (orderId: string, selected: boolean) => void;
   onSelectAll?: (selected: boolean) => void;
   onPrintOrder?: (order: Order) => void;
+  onEditOrder?: (order: Order) => void;
+  canEdit?: boolean;
 }
 
 
@@ -34,6 +36,8 @@ export function OrderTable({
   onSelectionChange,
   onSelectAll,
   onPrintOrder,
+  onEditOrder,
+  canEdit = false,
 }: OrderTableProps) {
   const allSelected = orders.length > 0 && selectedOrderIds && orders.every(o => selectedOrderIds.has(o.id));
   const someSelected = selectedOrderIds && orders.some(o => selectedOrderIds.has(o.id)) && !allSelected;
@@ -112,6 +116,16 @@ export function OrderTable({
               </TableCell>
               <TableCell>
                 <div className="flex items-center gap-1 justify-end">
+                  {canEdit && onEditOrder && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => onEditOrder(order)}
+                      data-testid={`button-edit-order-${order.id}`}
+                    >
+                      <Edit2 className="h-4 w-4" />
+                    </Button>
+                  )}
                   <Link href={`/orders/${order.id}`}>
                     <Button
                       variant="ghost"

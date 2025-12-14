@@ -73,6 +73,7 @@ export default function OrdersPage() {
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [productSearch, setProductSearch] = useState("");
   const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set());
+  const [orderSearch, setOrderSearch] = useState("");
 
   const showAllOrders = isAdmin || isSales;
 
@@ -186,17 +187,24 @@ export default function OrdersPage() {
     id: String(order.id),
     orderNumber: order.orderNumber,
     customer: order.customerName || order.userId.substring(0, 8) + "...",
-    date: format(new Date(order.createdAt), "MMM d, yyyy"),
+    date: format(new Date(order.createdAt), "dd/MM/yyyy", { locale: ptBR }),
     status: order.status as Order["status"],
     stage: order.printed ? "IMPRESSO" : "AGUARDANDO_IMPRESSAO",
     total: parseFloat(order.total),
-    itemCount: order.items?.length || 0,
+    itemCount: order.items?.reduce((sum: number, item: any) => sum + (item.quantity || 1), 0) || 0,
     printed: order.printed || false,
   }));
 
   const newStatuses = ["ORCAMENTO", "PEDIDO_GERADO", "COBRADO", "FATURADO", "PEDIDO_FATURADO", "CANCELADO", "PEDIDO_CANCELADO"];
   
   const filteredOrders = orders.filter((order) => {
+    if (orderSearch.trim()) {
+      const search = orderSearch.toLowerCase();
+      const matchesSearch = 
+        order.orderNumber.toLowerCase().includes(search) ||
+        order.customer.toLowerCase().includes(search);
+      if (!matchesSearch) return false;
+    }
     if (activeTab === "all") return true;
     if (activeTab === "legacy") return !newStatuses.includes(order.status);
     if (activeTab === "FATURADO") return order.status === "FATURADO" || order.status === "PEDIDO_FATURADO";
@@ -821,6 +829,30 @@ export default function OrdersPage() {
         </div>
       </div>
 
+      <div className="flex items-center gap-2 mb-4">
+        <div className="relative flex-1 max-w-sm">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Pesquisar por número ou cliente..."
+            value={orderSearch}
+            onChange={(e) => setOrderSearch(e.target.value)}
+            className="pl-10"
+            data-testid="input-order-search"
+          />
+          {orderSearch && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="absolute right-1 top-1/2 transform -translate-y-1/2 h-7 w-7"
+              onClick={() => setOrderSearch("")}
+              data-testid="button-clear-search"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
+      </div>
+
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="flex-wrap">
           <TabsTrigger value="all" data-testid="tab-all">Todos ({orders.length})</TabsTrigger>
@@ -858,6 +890,8 @@ export default function OrdersPage() {
               onSelectionChange={handleSelectionChange}
               onSelectAll={handleSelectAll}
               onPrintOrder={handlePrintOrder}
+              canEdit={showAllOrders}
+              onEditOrder={(order) => { window.location.href = `/orders/${order.id}/edit`; }}
             />
           )}
         </TabsContent>

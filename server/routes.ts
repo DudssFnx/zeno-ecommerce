@@ -496,8 +496,14 @@ export async function registerRoutes(
 
   app.post('/api/orders', isAuthenticated, isApproved, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
-      const { items, notes, subtotal, shippingCost, shippingAddress, shippingMethod, paymentMethod, paymentNotes } = req.body;
+      const loggedUserId = req.user.claims.sub;
+      const loggedUser = await storage.getUser(loggedUserId);
+      const { items, notes, subtotal, shippingCost, shippingAddress, shippingMethod, paymentMethod, paymentNotes, userId: targetUserId } = req.body;
+      
+      // Admin/Sales can create orders for other customers
+      const userId = (loggedUser?.role === 'admin' || loggedUser?.role === 'sales') && targetUserId 
+        ? targetUserId 
+        : loggedUserId;
       
       if (!items || !Array.isArray(items) || items.length === 0) {
         return res.status(400).json({ message: "Order must have at least one item" });
@@ -1333,11 +1339,13 @@ export async function registerRoutes(
 
           const tableTop = doc.y;
           const colCheck = 40;
-          const colCode = 70;
-          const colProduct = 130;
+          const colImg = 65;
+          const colCode = 115;
+          const colProduct = 165;
           const colQty = 480;
 
           doc.text('OK', colCheck, tableTop);
+          doc.text('Foto', colImg, tableTop);
           doc.text('SKU', colCode, tableTop);
           doc.text('Produto', colProduct, tableTop);
           doc.text('QTD', colQty, tableTop);
@@ -1347,11 +1355,12 @@ export async function registerRoutes(
 
           doc.font('Helvetica').fontSize(9);
           let totalQty = 0;
+          const imgHeight = 40;
 
           for (const item of items) {
             totalQty += item.quantity;
 
-            if (doc.y > 700) {
+            if (doc.y > 680) {
               doc.addPage();
             }
 
@@ -1360,15 +1369,29 @@ export async function registerRoutes(
             // Checkbox grande
             doc.rect(colCheck, rowY, 15, 15).stroke();
             
-            doc.text(item.product?.sku || '-', colCode, rowY + 3, { width: 55 });
-            doc.text(item.product?.name || `Produto #${item.productId}`, colProduct, rowY + 3, { width: 340 });
+            // Foto do produto
+            if (item.product?.imageUrl) {
+              try {
+                const imgBuffer = await fetchImageBuffer(item.product.imageUrl);
+                if (imgBuffer) {
+                  doc.image(imgBuffer, colImg, rowY, { width: 40, height: imgHeight, fit: [40, imgHeight] });
+                }
+              } catch (e) {
+                doc.rect(colImg, rowY, 40, imgHeight).stroke();
+              }
+            } else {
+              doc.rect(colImg, rowY, 40, imgHeight).stroke();
+            }
+            
+            doc.text(item.product?.sku || '-', colCode, rowY + 12, { width: 45 });
+            doc.text(item.product?.name || `Produto #${item.productId}`, colProduct, rowY + 12, { width: 305 });
             
             // Quantidade em fonte grande e destacada
             doc.font('Helvetica-Bold').fontSize(14);
-            doc.text(item.quantity.toString(), colQty, rowY);
+            doc.text(item.quantity.toString(), colQty, rowY + 10);
             doc.font('Helvetica').fontSize(9);
 
-            doc.y = rowY + 22;
+            doc.y = rowY + imgHeight + 5;
           }
 
           doc.moveTo(40, doc.y).lineTo(555, doc.y).stroke();
@@ -1555,14 +1578,16 @@ export async function registerRoutes(
           doc.moveDown(0.3);
 
           const tableTop = doc.y;
-          const colCode = 40;
-          const colProduct = 90;
-          const colQtyPedido = 380;
-          const colQtyConferido = 480;
+          const colImg = 40;
+          const colCode = 90;
+          const colProduct = 140;
+          const colQtyPedido = 400;
+          const colQtyConferido = 490;
 
+          doc.text('Foto', colImg, tableTop);
           doc.text('SKU', colCode, tableTop);
           doc.text('Produto', colProduct, tableTop);
-          doc.text('Qtd Pedido', colQtyPedido, tableTop);
+          doc.text('Qtd', colQtyPedido, tableTop);
           doc.text('Conferido', colQtyConferido, tableTop);
 
           doc.moveTo(40, doc.y + 3).lineTo(555, doc.y + 3).stroke();
@@ -1570,27 +1595,42 @@ export async function registerRoutes(
 
           doc.font('Helvetica').fontSize(9);
           let totalQty = 0;
+          const imgHeight = 40;
 
           for (const item of items) {
             totalQty += item.quantity;
 
-            if (doc.y > 650) {
+            if (doc.y > 640) {
               doc.addPage();
             }
 
             const rowY = doc.y;
 
-            doc.text(item.product?.sku || '-', colCode, rowY, { width: 45 });
-            doc.text(item.product?.name || `Produto #${item.productId}`, colProduct, rowY, { width: 280 });
+            // Foto do produto
+            if (item.product?.imageUrl) {
+              try {
+                const imgBuffer = await fetchImageBuffer(item.product.imageUrl);
+                if (imgBuffer) {
+                  doc.image(imgBuffer, colImg, rowY, { width: 40, height: imgHeight, fit: [40, imgHeight] });
+                }
+              } catch (e) {
+                doc.rect(colImg, rowY, 40, imgHeight).stroke();
+              }
+            } else {
+              doc.rect(colImg, rowY, 40, imgHeight).stroke();
+            }
+
+            doc.text(item.product?.sku || '-', colCode, rowY + 12, { width: 45 });
+            doc.text(item.product?.name || `Produto #${item.productId}`, colProduct, rowY + 12, { width: 250 });
             
             doc.font('Helvetica-Bold').fontSize(11);
-            doc.text(item.quantity.toString(), colQtyPedido + 20, rowY);
+            doc.text(item.quantity.toString(), colQtyPedido + 10, rowY + 12);
             doc.font('Helvetica').fontSize(9);
             
             // Campo vazio para preencher manualmente
-            doc.rect(colQtyConferido, rowY - 2, 40, 16).stroke();
+            doc.rect(colQtyConferido, rowY + 8, 40, 20).stroke();
 
-            doc.y = rowY + 22;
+            doc.y = rowY + imgHeight + 5;
           }
 
           doc.moveTo(40, doc.y).lineTo(555, doc.y).stroke();
