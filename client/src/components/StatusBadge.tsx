@@ -46,7 +46,7 @@ const statusConfig: Record<string, {
     icon: FileText
   },
   ORCAMENTO_CONCLUIDO: { 
-    label: "Orçamento Enviado", 
+    label: "Orçamento Concluído", 
     bgColor: "bg-blue-100 dark:bg-blue-900/40",
     textColor: "text-blue-700 dark:text-blue-300",
     borderColor: "border-blue-300 dark:border-blue-700",

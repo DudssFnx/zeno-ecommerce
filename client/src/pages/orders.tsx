@@ -778,26 +778,20 @@ export default function OrdersPage() {
                 onClick={() => handleBatchStatusChange('PEDIDO_GERADO')}
                 data-testid="batch-status-pedido-gerado"
               >
-                Marcar como Separado
-              </DropdownMenuItem>
-              <DropdownMenuItem 
-                onClick={() => handleBatchStatusChange('COBRADO')}
-                data-testid="batch-status-cobrado"
-              >
-                Marcar como Cobrado
+                Gerar Pedido (Reservar Estoque)
               </DropdownMenuItem>
               <DropdownMenuItem 
                 onClick={() => handleBatchStatusChange('FATURADO')}
                 data-testid="batch-status-faturado"
               >
-                Finalizar Pedido
+                Faturar (Baixar Estoque)
               </DropdownMenuItem>
               <DropdownMenuItem 
                 onClick={() => handleBatchStatusChange('CANCELADO')}
                 data-testid="batch-status-cancelado"
                 className="text-destructive"
               >
-                Cancelar Pedido (Devolver Estoque)
+                Cancelar Pedido
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
