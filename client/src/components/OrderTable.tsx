@@ -1,7 +1,7 @@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { StatusBadge, StageBadge } from "./StatusBadge";
-import { Eye } from "lucide-react";
+import { Eye, Printer } from "lucide-react";
 import { Link } from "wouter";
 import { Checkbox } from "@/components/ui/checkbox";
 
@@ -23,6 +23,7 @@ interface OrderTableProps {
   selectedOrderIds?: Set<string>;
   onSelectionChange?: (orderId: string, selected: boolean) => void;
   onSelectAll?: (selected: boolean) => void;
+  onPrintOrder?: (order: Order) => void;
 }
 
 
@@ -32,6 +33,7 @@ export function OrderTable({
   selectedOrderIds,
   onSelectionChange,
   onSelectAll,
+  onPrintOrder,
 }: OrderTableProps) {
   const allSelected = orders.length > 0 && selectedOrderIds && orders.every(o => selectedOrderIds.has(o.id));
   const someSelected = selectedOrderIds && orders.some(o => selectedOrderIds.has(o.id)) && !allSelected;
@@ -89,7 +91,21 @@ export function OrderTable({
                 <StatusBadge status={order.status as any} />
               </TableCell>
               <TableCell>
-                <StageBadge printed={order.printed || false} />
+                <div className="flex items-center gap-2">
+                  <StageBadge printed={order.printed || false} />
+                  {!order.printed && onPrintOrder && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => onPrintOrder(order)}
+                      className="gap-1"
+                      data-testid={`button-print-${order.id}`}
+                    >
+                      <Printer className="h-3 w-3" />
+                      <span className="hidden sm:inline">Imprimir</span>
+                    </Button>
+                  )}
+                </div>
               </TableCell>
               <TableCell className="text-right font-medium">
                 R$ {order.total.toFixed(2)}

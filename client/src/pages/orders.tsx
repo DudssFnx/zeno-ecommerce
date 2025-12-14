@@ -863,6 +863,7 @@ export default function OrdersPage() {
               selectedOrderIds={selectedOrders}
               onSelectionChange={handleSelectionChange}
               onSelectAll={handleSelectAll}
+              onPrintOrder={handlePrintOrder}
             />
           )}
         </TabsContent>
