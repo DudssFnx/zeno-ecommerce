@@ -17,11 +17,16 @@ import {
   Grid3X3,
   List,
   Home,
-  Filter
+  Filter,
+  ShoppingCart,
+  Plus,
+  Minus
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import type { Product as SchemaProduct, Category } from "@shared/schema";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { useCart } from "@/contexts/CartContext";
+import { useToast } from "@/hooks/use-toast";
 import logoImage from "@assets/image_1765659931449.png";
 
 interface ProductsResponse {
@@ -41,6 +46,10 @@ export default function PublicCatalogPage() {
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | undefined>(undefined);
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [showMobileFilters, setShowMobileFilters] = useState(false);
+  const [quantities, setQuantities] = useState<Record<number, number>>({});
+  
+  const { addItem, totalItems } = useCart();
+  const { toast } = useToast();
 
   const { data: categoriesData = [] } = useQuery<Category[]>({
     queryKey: ['/api/public/categories'],
@@ -153,6 +162,35 @@ export default function PublicCatalogPage() {
     setShowMobileFilters(false);
   };
 
+  const getQuantity = (productId: number) => quantities[productId] || 1;
+
+  const setQuantity = (productId: number, qty: number) => {
+    if (qty < 1) qty = 1;
+    if (qty > 999) qty = 999;
+    setQuantities(prev => ({ ...prev, [productId]: qty }));
+  };
+
+  const handleAddToCart = (product: SchemaProduct) => {
+    const qty = getQuantity(product.id);
+    const price = typeof product.price === 'string' ? parseFloat(product.price) : product.price;
+    
+    addItem({
+      productId: product.id,
+      name: product.name,
+      sku: product.sku,
+      price: price,
+      quantity: qty,
+      image: product.image || undefined,
+    });
+
+    toast({
+      title: "Adicionado ao carrinho",
+      description: `${qty}x ${product.name}`,
+    });
+
+    setQuantities(prev => ({ ...prev, [product.id]: 1 }));
+  };
+
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <header className="sticky top-0 z-50 bg-zinc-900 text-white">
@@ -200,6 +238,22 @@ export default function PublicCatalogPage() {
               >
                 <Home className="h-5 w-5" />
               </Button>
+              
+              <Button 
+                variant="ghost"
+                size="icon"
+                className="text-white hover:bg-zinc-800 relative"
+                onClick={() => setLocation("/login")}
+                data-testid="button-cart"
+              >
+                <ShoppingCart className="h-5 w-5" />
+                {totalItems > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-orange-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-medium">
+                    {totalItems > 99 ? "99+" : totalItems}
+                  </span>
+                )}
+              </Button>
+              
               <Button 
                 onClick={() => setLocation("/login")}
                 className="bg-orange-500 hover:bg-orange-600 text-white"
@@ -436,13 +490,51 @@ export default function PublicCatalogPage() {
                       <h3 className="font-medium text-sm line-clamp-2 min-h-[2.5rem] leading-tight mb-2">
                         {product.name}
                       </h3>
-                      <p className="text-base font-bold text-orange-600 dark:text-orange-500" data-testid={`text-price-${product.id}`}>
+                      <p className="text-base font-bold text-orange-600 dark:text-orange-500 mb-3" data-testid={`text-price-${product.id}`}>
                         {formatPrice(product.price)}
                       </p>
-                      {product.categoryId && categoryMap[product.categoryId] && (
-                        <p className="text-xs text-muted-foreground mt-1">
-                          {categoryMap[product.categoryId]}
-                        </p>
+                      
+                      {product.stock > 0 && (
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-1">
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              className="h-8 w-8 shrink-0"
+                              onClick={() => setQuantity(product.id, getQuantity(product.id) - 1)}
+                              disabled={getQuantity(product.id) <= 1}
+                              data-testid={`button-qty-minus-${product.id}`}
+                            >
+                              <Minus className="h-3 w-3" />
+                            </Button>
+                            <Input
+                              type="number"
+                              min="1"
+                              max="999"
+                              value={getQuantity(product.id)}
+                              onChange={(e) => setQuantity(product.id, parseInt(e.target.value) || 1)}
+                              className="h-8 w-12 text-center px-1 text-sm"
+                              data-testid={`input-qty-${product.id}`}
+                            />
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              className="h-8 w-8 shrink-0"
+                              onClick={() => setQuantity(product.id, getQuantity(product.id) + 1)}
+                              data-testid={`button-qty-plus-${product.id}`}
+                            >
+                              <Plus className="h-3 w-3" />
+                            </Button>
+                          </div>
+                          <Button
+                            className="w-full bg-orange-500 hover:bg-orange-600 text-white h-9"
+                            onClick={() => handleAddToCart(product)}
+                            data-testid={`button-add-cart-${product.id}`}
+                          >
+                            <ShoppingCart className="h-4 w-4 mr-1" />
+                            Comprar
+                          </Button>
+                        </div>
                       )}
                     </CardContent>
                   </Card>
@@ -487,15 +579,55 @@ export default function PublicCatalogPage() {
                             <p className="text-base font-bold text-orange-600 dark:text-orange-500" data-testid={`text-price-${product.id}`}>
                               {formatPrice(product.price)}
                             </p>
-                            {product.stock === 0 ? (
-                              <Badge variant="destructive" className="mt-1">Indisponivel</Badge>
-                            ) : (
-                              <p className="text-xs text-muted-foreground mt-1">
-                                Em estoque
-                              </p>
-                            )}
                           </div>
                         </div>
+                        
+                        {product.stock > 0 && (
+                          <div className="flex items-center gap-2 mt-2">
+                            <div className="flex items-center gap-1">
+                              <Button
+                                variant="outline"
+                                size="icon"
+                                className="h-7 w-7"
+                                onClick={() => setQuantity(product.id, getQuantity(product.id) - 1)}
+                                disabled={getQuantity(product.id) <= 1}
+                                data-testid={`button-qty-minus-${product.id}`}
+                              >
+                                <Minus className="h-3 w-3" />
+                              </Button>
+                              <Input
+                                type="number"
+                                min="1"
+                                max="999"
+                                value={getQuantity(product.id)}
+                                onChange={(e) => setQuantity(product.id, parseInt(e.target.value) || 1)}
+                                className="h-7 w-12 text-center px-1 text-sm"
+                                data-testid={`input-qty-${product.id}`}
+                              />
+                              <Button
+                                variant="outline"
+                                size="icon"
+                                className="h-7 w-7"
+                                onClick={() => setQuantity(product.id, getQuantity(product.id) + 1)}
+                                data-testid={`button-qty-plus-${product.id}`}
+                              >
+                                <Plus className="h-3 w-3" />
+                              </Button>
+                            </div>
+                            <Button
+                              className="bg-orange-500 hover:bg-orange-600 text-white h-7 text-xs"
+                              onClick={() => handleAddToCart(product)}
+                              data-testid={`button-add-cart-${product.id}`}
+                            >
+                              <ShoppingCart className="h-3 w-3 mr-1" />
+                              Comprar
+                            </Button>
+                          </div>
+                        )}
+                        
+                        {product.stock === 0 && (
+                          <Badge variant="destructive" className="mt-2">Indisponivel</Badge>
+                        )}
                       </div>
                     </div>
                   </Card>
@@ -562,7 +694,7 @@ export default function PublicCatalogPage() {
           <p className="text-zinc-400">
             Precos de varejo. Para precos de atacado, 
             <span 
-              className="text-orange-500 cursor-pointer hover:underline"
+              className="text-orange-500 cursor-pointer hover:underline ml-1"
               onClick={() => setLocation("/login")}
             >
               faca login
