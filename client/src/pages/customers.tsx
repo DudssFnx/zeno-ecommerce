@@ -18,7 +18,9 @@ import {
   Phone,
   MapPin,
   Pencil,
-  Trash2
+  Trash2,
+  Store,
+  ShoppingCart
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -52,12 +54,16 @@ export default function CustomersPage() {
     const approved = customers.filter(c => c.approved).length;
     const pending = customers.filter(c => !c.approved).length;
     const withCompany = customers.filter(c => c.company).length;
+    const atacado = customers.filter(c => c.customerType === "atacado").length;
+    const varejo = customers.filter(c => c.customerType === "varejo" || !c.customerType).length;
     
     return {
       total,
       approved,
       pending,
       withCompany,
+      atacado,
+      varejo,
       approvedPercent: total > 0 ? Math.round((approved / total) * 100) : 0,
       pendingPercent: total > 0 ? Math.round((pending / total) * 100) : 0,
     };
@@ -128,6 +134,24 @@ export default function CustomersPage() {
         },
         onError: () => {
           toast({ title: "Erro", description: "Falha ao bloquear cliente", variant: "destructive" });
+        },
+      }
+    );
+  };
+
+  const handleToggleCustomerType = (user: User) => {
+    const newType = user.customerType === "atacado" ? "varejo" : "atacado";
+    updateUserMutation.mutate(
+      { id: user.id, data: { customerType: newType } },
+      {
+        onSuccess: () => {
+          toast({ 
+            title: "Tipo Atualizado", 
+            description: `${user.firstName || user.email} agora e ${newType === "atacado" ? "Atacado" : "Varejo"}.` 
+          });
+        },
+        onError: () => {
+          toast({ title: "Erro", description: "Falha ao atualizar tipo de cliente", variant: "destructive" });
         },
       }
     );
@@ -230,7 +254,7 @@ export default function CustomersPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
@@ -267,7 +291,35 @@ export default function CustomersPage() {
               </div>
               <div>
                 <p className="text-2xl font-bold text-yellow-600" data-testid="stat-pending-customers">{stats.pending}</p>
-                <p className="text-xs text-muted-foreground">Aguardando Aprovação</p>
+                <p className="text-xs text-muted-foreground">Aguardando Aprovacao</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-purple-500/10">
+                <Store className="h-5 w-5 text-purple-500" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-purple-600" data-testid="stat-atacado">{stats.atacado}</p>
+                <p className="text-xs text-muted-foreground">Atacado</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-orange-500/10">
+                <ShoppingCart className="h-5 w-5 text-orange-500" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-orange-600" data-testid="stat-varejo">{stats.varejo}</p>
+                <p className="text-xs text-muted-foreground">Varejo</p>
               </div>
             </div>
           </CardContent>
@@ -319,12 +371,19 @@ export default function CustomersPage() {
                   <CardContent className="p-4">
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
+                        <div className="flex items-center gap-2 mb-1 flex-wrap">
                           <Badge 
                             variant={customer.approved ? "default" : "secondary"}
                             className={customer.approved ? "bg-green-500" : "bg-yellow-500"}
                           >
                             {customer.approved ? "Ativo" : "Pendente"}
+                          </Badge>
+                          <Badge 
+                            variant="outline"
+                            className={customer.customerType === "atacado" ? "border-purple-500 text-purple-600" : "border-orange-500 text-orange-600"}
+                            data-testid={`badge-type-${customer.id}`}
+                          >
+                            {customer.customerType === "atacado" ? "Atacado" : "Varejo"}
                           </Badge>
                           {customer.company && (
                             <span className="text-sm font-semibold truncate">
@@ -346,6 +405,16 @@ export default function CustomersPage() {
                         </div>
                       </div>
                       <div className="flex items-center gap-1">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleToggleCustomerType(customer)}
+                          disabled={updateUserMutation.isPending}
+                          data-testid={`button-toggle-type-${customer.id}`}
+                          className={customer.customerType === "atacado" ? "border-orange-500 text-orange-600" : "border-purple-500 text-purple-600"}
+                        >
+                          {customer.customerType === "atacado" ? "Mudar p/ Varejo" : "Mudar p/ Atacado"}
+                        </Button>
                         {!customer.approved && (
                           <Button
                             size="sm"
