@@ -61,7 +61,10 @@ interface BlingProductFull {
 interface BlingCategory {
   id: number;
   descricao: string;
-  idCategoriaPai?: number;
+  categoriaPai?: {
+    id: number;
+    descricao?: string;
+  };
 }
 
 let cachedTokens: BlingTokens | null = null;
@@ -362,8 +365,9 @@ export async function syncCategories(): Promise<{ created: number; updated: numb
       if (visited.has(cat.id)) return;
       visited.add(cat.id);
       
-      if (cat.idCategoriaPai && blingCatMap.has(cat.idCategoriaPai)) {
-        visit(blingCatMap.get(cat.idCategoriaPai)!);
+      const parentBlingId = cat.categoriaPai?.id;
+      if (parentBlingId && blingCatMap.has(parentBlingId)) {
+        visit(blingCatMap.get(parentBlingId)!);
       }
       
       sorted.push(cat);
@@ -383,7 +387,8 @@ export async function syncCategories(): Promise<{ created: number; updated: numb
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/(^-|-$)/g, "") || `cat-${cat.id}`;
 
-    const parentLocalId = cat.idCategoriaPai ? blingIdToLocalId[cat.idCategoriaPai] || null : null;
+    const parentBlingId = cat.categoriaPai?.id;
+    const parentLocalId = parentBlingId ? blingIdToLocalId[parentBlingId] || null : null;
 
     let existing = await db.select().from(categories).where(eq(categories.blingId, cat.id)).limit(1);
     
