@@ -31,6 +31,7 @@ import {
   BarChart3,
   TrendingUp,
   ChevronRight,
+  ExternalLink,
 } from "lucide-react";
 import logoImage from "@assets/image_1765659931449.png";
 type UserRole = "admin" | "sales" | "customer";
@@ -104,6 +105,16 @@ export function AppSidebar({ userRole = "customer", userName = "User", onLogout 
             <p className="text-xs text-muted-foreground capitalize">Portal Atacado</p>
           </div>
         </div>
+        <Button
+          variant="outline"
+          size="sm"
+          className="w-full mt-3"
+          onClick={() => window.open('/', '_blank')}
+          data-testid="button-ver-catalogo"
+        >
+          <ExternalLink className="h-4 w-4 mr-2" />
+          Ver Catalogo
+        </Button>
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
