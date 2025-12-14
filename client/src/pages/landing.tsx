@@ -1,9 +1,15 @@
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { 
   Carousel,
   CarouselContent,
@@ -51,8 +57,28 @@ export default function LandingPage() {
   const [, setLocation] = useLocation();
   const [searchQuery, setSearchQuery] = useState("");
   const [quantities, setQuantities] = useState<Record<number, number>>({});
+  const [showEmployeeLogin, setShowEmployeeLogin] = useState(false);
+  const logoClickCount = useRef(0);
+  const logoClickTimer = useRef<NodeJS.Timeout | null>(null);
   const { addItem, itemCount, openCart } = useCart();
   const { toast } = useToast();
+
+  const handleLogoClick = useCallback(() => {
+    logoClickCount.current += 1;
+    
+    if (logoClickTimer.current) {
+      clearTimeout(logoClickTimer.current);
+    }
+    
+    if (logoClickCount.current >= 3) {
+      setShowEmployeeLogin(true);
+      logoClickCount.current = 0;
+    } else {
+      logoClickTimer.current = setTimeout(() => {
+        logoClickCount.current = 0;
+      }, 1000);
+    }
+  }, []);
 
   const { data: categoriesData = [], isLoading: categoriesLoading } = useQuery<Category[]>({
     queryKey: ['/api/public/categories'],
@@ -154,7 +180,8 @@ export default function LandingPage() {
               <img 
                 src={logoImage} 
                 alt="Lojamadrugadao" 
-                className="h-12 w-12 rounded-full border-2 border-white/20"
+                className="h-12 w-12 rounded-full border-2 border-white/20 cursor-pointer select-none"
+                onClick={handleLogoClick}
                 data-testid="img-logo"
               />
               <div className="hidden sm:block">
@@ -703,6 +730,30 @@ export default function LandingPage() {
           </div>
         </div>
       </footer>
+
+      <Dialog open={showEmployeeLogin} onOpenChange={setShowEmployeeLogin}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Acesso Funcionario</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-4 py-4">
+            <p className="text-sm text-muted-foreground">
+              Area restrita para funcionarios da empresa.
+            </p>
+            <Button 
+              onClick={() => {
+                setShowEmployeeLogin(false);
+                setLocation("/login");
+              }}
+              className="w-full"
+              data-testid="button-employee-login-confirm"
+            >
+              <User className="h-4 w-4 mr-2" />
+              Entrar como Funcionario
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
