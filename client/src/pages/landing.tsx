@@ -24,11 +24,15 @@ import {
   Truck,
   CreditCard,
   Shield,
-  Percent
+  Percent,
+  ShoppingCart,
+  User,
+  UserPlus
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import type { Product as SchemaProduct, Category } from "@shared/schema";
+import { useCart } from "@/contexts/CartContext";
 import logoImage from "@assets/image_1765659931449.png";
 import bannerImage1 from "@assets/image_1765676126936.png";
 import bannerImage2 from "@assets/image_1765676145067.png";
@@ -43,6 +47,7 @@ interface ProductsResponse {
 export default function LandingPage() {
   const [, setLocation] = useLocation();
   const [searchQuery, setSearchQuery] = useState("");
+  const { totalItems } = useCart();
 
   const { data: categoriesData = [], isLoading: categoriesLoading } = useQuery<Category[]>({
     queryKey: ['/api/public/categories'],
@@ -137,12 +142,49 @@ export default function LandingPage() {
 
             <div className="flex items-center gap-2">
               <Button 
+                variant="ghost"
+                size="icon"
+                onClick={() => setLocation("/login")}
+                className="text-white hover:bg-zinc-800 relative"
+                data-testid="button-cart"
+              >
+                <ShoppingCart className="h-5 w-5" />
+                {totalItems > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-orange-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-medium">
+                    {totalItems > 99 ? "99+" : totalItems}
+                  </span>
+                )}
+              </Button>
+              
+              <Button 
+                variant="ghost"
+                size="sm"
+                onClick={() => setLocation("/login")}
+                className="text-white hover:bg-zinc-800 hidden sm:flex"
+                data-testid="button-login"
+              >
+                <User className="h-4 w-4 mr-1" />
+                Entrar
+              </Button>
+              
+              <Button 
+                variant="ghost"
+                size="sm"
+                onClick={() => setLocation("/register")}
+                className="text-white hover:bg-zinc-800 hidden sm:flex"
+                data-testid="button-register"
+              >
+                <UserPlus className="h-4 w-4 mr-1" />
+                Cadastrar
+              </Button>
+              
+              <Button 
                 onClick={() => setLocation("/login")}
                 className="bg-orange-500 hover:bg-orange-600 text-white"
                 data-testid="button-atacado-login"
               >
                 <Store className="h-4 w-4 mr-2" />
-                Atacado
+                <span className="hidden sm:inline">Atacado</span>
               </Button>
               <ThemeToggle />
             </div>

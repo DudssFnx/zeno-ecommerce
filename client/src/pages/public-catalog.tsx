@@ -18,7 +18,9 @@ import {
   List,
   Home,
   Filter,
-  ShoppingCart
+  ShoppingCart,
+  User,
+  UserPlus
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import type { Product as SchemaProduct, Category } from "@shared/schema";
@@ -263,6 +265,28 @@ export default function PublicCatalogPage() {
                     {totalItems > 99 ? "99+" : totalItems}
                   </span>
                 )}
+              </Button>
+              
+              <Button 
+                variant="ghost"
+                size="sm"
+                onClick={() => setLocation("/login")}
+                className="text-white hover:bg-zinc-800 hidden sm:flex"
+                data-testid="button-login"
+              >
+                <User className="h-4 w-4 mr-1" />
+                Entrar
+              </Button>
+              
+              <Button 
+                variant="ghost"
+                size="sm"
+                onClick={() => setLocation("/register")}
+                className="text-white hover:bg-zinc-800 hidden sm:flex"
+                data-testid="button-register"
+              >
+                <UserPlus className="h-4 w-4 mr-1" />
+                Cadastrar
               </Button>
               
               <Button 
