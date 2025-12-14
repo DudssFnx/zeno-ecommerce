@@ -491,22 +491,35 @@ export async function registerRoutes(
   app.post('/api/orders', isAuthenticated, isApproved, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
-      const { items, notes } = req.body;
+      const { items, notes, subtotal, shippingCost, shippingAddress, shippingMethod, paymentMethod, paymentNotes } = req.body;
       
       if (!items || !Array.isArray(items) || items.length === 0) {
         return res.status(400).json({ message: "Order must have at least one item" });
       }
       
-      // Calculate total
-      let total = 0;
-      const productIds = items.map((item: any) => item.productId);
-      
+      // Calculate total from items
+      let calculatedSubtotal = 0;
       for (const item of items) {
         const product = await storage.getProduct(item.productId);
         if (!product) {
           return res.status(400).json({ message: `Product ${item.productId} not found` });
         }
-        total += parseFloat(product.price) * item.quantity;
+        calculatedSubtotal += parseFloat(product.price) * item.quantity;
+      }
+      
+      // Use calculated subtotal or provided subtotal
+      const finalSubtotal = subtotal || calculatedSubtotal;
+      const finalShippingCost = shippingCost || 0;
+      const total = finalSubtotal + finalShippingCost;
+      
+      // Format shipping address as string if it's an object
+      let shippingAddressStr = null;
+      if (shippingAddress) {
+        if (typeof shippingAddress === 'object' && shippingAddress.fullAddress) {
+          shippingAddressStr = shippingAddress.fullAddress;
+        } else if (typeof shippingAddress === 'string') {
+          shippingAddressStr = shippingAddress;
+        }
       }
       
       // Create order with ORCAMENTO status
@@ -514,7 +527,13 @@ export async function registerRoutes(
         userId,
         orderNumber: await generateOrderNumber(),
         status: 'ORCAMENTO',
+        subtotal: finalSubtotal.toFixed(2),
+        shippingCost: finalShippingCost.toFixed(2),
         total: total.toFixed(2),
+        shippingAddress: shippingAddressStr,
+        shippingMethod: shippingMethod || null,
+        paymentMethod: paymentMethod || null,
+        paymentNotes: paymentNotes || null,
         notes: notes || null,
       });
       

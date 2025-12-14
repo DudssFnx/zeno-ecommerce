@@ -104,7 +104,15 @@ export const orders = pgTable("orders", {
   userId: varchar("user_id").notNull().references(() => users.id),
   orderNumber: text("order_number").notNull().unique(),
   status: text("status").notNull().default("pending"),
+  subtotal: decimal("subtotal", { precision: 10, scale: 2 }),
+  shippingCost: decimal("shipping_cost", { precision: 10, scale: 2 }),
   total: decimal("total", { precision: 10, scale: 2 }).notNull(),
+  // Shipping info
+  shippingAddress: text("shipping_address"),
+  shippingMethod: text("shipping_method"),
+  // Payment info
+  paymentMethod: text("payment_method"),
+  paymentNotes: text("payment_notes"),
   notes: text("notes"),
   printed: boolean("printed").notNull().default(false),
   printedAt: timestamp("printed_at"),
