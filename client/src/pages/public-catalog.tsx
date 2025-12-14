@@ -48,7 +48,7 @@ export default function PublicCatalogPage() {
   const [showMobileFilters, setShowMobileFilters] = useState(false);
   const [quantities, setQuantities] = useState<Record<number, number>>({});
   
-  const { addItem, totalItems } = useCart();
+  const { addItem, itemCount, openCart } = useCart();
   const { toast } = useToast();
 
   const { data: categoriesData = [] } = useQuery<Category[]>({
@@ -184,7 +184,7 @@ export default function PublicCatalogPage() {
     const price = typeof product.price === 'string' ? parseFloat(product.price) : product.price;
     
     addItem({
-      productId: product.id,
+      productId: String(product.id),
       name: product.name,
       sku: product.sku,
       price: price,
@@ -256,13 +256,13 @@ export default function PublicCatalogPage() {
                 variant="ghost"
                 size="icon"
                 className="text-white hover:bg-zinc-800 relative"
-                onClick={() => setLocation("/login")}
+                onClick={openCart}
                 data-testid="button-cart"
               >
                 <ShoppingCart className="h-5 w-5" />
-                {totalItems > 0 && (
+                {itemCount > 0 && (
                   <span className="absolute -top-1 -right-1 bg-orange-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-medium">
-                    {totalItems > 99 ? "99+" : totalItems}
+                    {itemCount > 99 ? "99+" : itemCount}
                   </span>
                 )}
               </Button>
