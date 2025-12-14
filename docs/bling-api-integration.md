@@ -228,9 +228,91 @@ A API do Bling tem limite de requisições. Implementar:
    - Manter tabela de referência `blingId` -> `productId`
    - Permitir atualização sem duplicar produtos
 
+## Webhooks (Sincronização Automática)
+
+Os webhooks do Bling permitem receber notificações em tempo real quando produtos são criados, atualizados ou excluídos no ERP.
+
+### Configuração no Bling
+
+1. Acesse seu aplicativo em https://developer.bling.com.br/aplicativos
+2. Navegue até a aba "Webhooks"
+3. Configure o servidor de destino (URL do webhook)
+4. Selecione os recursos que deseja receber notificações:
+   - `product.created` - Produto criado
+   - `product.updated` - Produto atualizado
+   - `product.deleted` - Produto excluído
+   - `stock.created` - Estoque atualizado
+   - `stock.updated` - Estoque atualizado
+
+### URL do Webhook
+
+```
+https://seu-dominio.replit.dev/api/bling/webhook
+```
+
+### Verificação de Assinatura
+
+O Bling envia uma assinatura HMAC-SHA256 no header `X-Bling-Signature-256` para validar a autenticidade da requisição.
+
+```typescript
+import crypto from "crypto";
+
+function verifyWebhookSignature(payload: string, signature: string): boolean {
+  const clientSecret = process.env.BLING_CLIENT_SECRET;
+  
+  const expectedSignature = crypto
+    .createHmac("sha256", clientSecret)
+    .update(payload, "utf8")
+    .digest("hex");
+
+  return crypto.timingSafeEqual(
+    Buffer.from(expectedSignature, "hex"),
+    Buffer.from(signature, "hex")
+  );
+}
+```
+
+### Estrutura do Payload
+
+```json
+{
+  "eventId": "uuid-do-evento",
+  "date": "2024-01-15T10:30:00Z",
+  "version": "3",
+  "event": "product.created",
+  "companyId": "12345",
+  "data": {
+    "id": 67890,
+    "nome": "Novo Produto",
+    "codigo": "SKU-001",
+    "preco": 99.90,
+    "situacao": "A"
+  }
+}
+```
+
+### Boas Práticas
+
+1. **Responder rapidamente:** Retorne HTTP 2xx imediatamente e processe o webhook de forma assíncrona
+2. **Idempotência:** O mesmo webhook pode ser enviado mais de uma vez
+3. **Ordem dos eventos:** Eventos podem chegar fora de ordem (ex: update antes de create)
+4. **Retries:** O Bling tenta reenviar por até 3 dias com intervalos crescentes
+5. **Desativação automática:** Se todas as tentativas falharem, o webhook é desativado
+
+### Eventos Suportados na Aplicação
+
+| Evento | Ação |
+|--------|------|
+| `product.created` | Cria produto no catálogo |
+| `product.updated` | Atualiza produto existente |
+| `product.deleted` | Remove produto do catálogo |
+| `stock.created` | Atualiza estoque do produto |
+| `stock.updated` | Atualiza estoque do produto |
+
 ## Links Úteis
 
 - [Documentação Oficial](https://developer.bling.com.br/)
+- [Documentação de Webhooks](https://developer.bling.com.br/webhooks)
 - [Referência da API](https://developer.bling.com.br/referencia)
 - [SDK JavaScript](https://github.com/AlexandreBellas/bling-erp-api-js)
 - [OpenAPI Spec](https://developer.bling.com.br/build/assets/openapi-CilBfHrw.json)

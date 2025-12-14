@@ -623,11 +623,24 @@ export function verifyWebhookSignature(payload: string, signature: string): bool
     .update(payload, "utf8")
     .digest("hex");
 
-  const providedHash = signature.replace("sha256=", "");
-  return crypto.timingSafeEqual(
-    Buffer.from(expectedSignature, "hex"),
-    Buffer.from(providedHash, "hex")
-  );
+  // Handle both formats: "sha256=HASH" or just "HASH"
+  const providedHash = signature.replace(/^sha256=/i, "");
+  
+  // Ensure both signatures have same length before comparing
+  if (expectedSignature.length !== providedHash.length) {
+    console.error("Signature length mismatch");
+    return false;
+  }
+  
+  try {
+    return crypto.timingSafeEqual(
+      Buffer.from(expectedSignature, "hex"),
+      Buffer.from(providedHash, "hex")
+    );
+  } catch (error) {
+    console.error("Signature comparison error:", error);
+    return false;
+  }
 }
 
 export async function handleWebhook(payload: BlingWebhookPayload): Promise<{ success: boolean; message: string }> {
