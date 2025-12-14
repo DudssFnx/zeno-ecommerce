@@ -30,35 +30,35 @@ import {
 } from "@/components/ui/select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Store, ArrowRight, ArrowLeft, Loader2, CheckCircle } from "lucide-react";
+import { Store, ArrowRight, ArrowLeft, Loader2, CheckCircle, Zap } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 
 const BRAZILIAN_STATES = [
   { value: "AC", label: "Acre" },
   { value: "AL", label: "Alagoas" },
-  { value: "AP", label: "Amapá" },
+  { value: "AP", label: "Amapa" },
   { value: "AM", label: "Amazonas" },
   { value: "BA", label: "Bahia" },
-  { value: "CE", label: "Ceará" },
+  { value: "CE", label: "Ceara" },
   { value: "DF", label: "Distrito Federal" },
-  { value: "ES", label: "Espírito Santo" },
-  { value: "GO", label: "Goiás" },
-  { value: "MA", label: "Maranhão" },
+  { value: "ES", label: "Espirito Santo" },
+  { value: "GO", label: "Goias" },
+  { value: "MA", label: "Maranhao" },
   { value: "MT", label: "Mato Grosso" },
   { value: "MS", label: "Mato Grosso do Sul" },
   { value: "MG", label: "Minas Gerais" },
-  { value: "PA", label: "Pará" },
-  { value: "PB", label: "Paraíba" },
-  { value: "PR", label: "Paraná" },
+  { value: "PA", label: "Para" },
+  { value: "PB", label: "Paraiba" },
+  { value: "PR", label: "Parana" },
   { value: "PE", label: "Pernambuco" },
-  { value: "PI", label: "Piauí" },
+  { value: "PI", label: "Piaui" },
   { value: "RJ", label: "Rio de Janeiro" },
   { value: "RN", label: "Rio Grande do Norte" },
   { value: "RS", label: "Rio Grande do Sul" },
-  { value: "RO", label: "Rondônia" },
+  { value: "RO", label: "Rondonia" },
   { value: "RR", label: "Roraima" },
   { value: "SC", label: "Santa Catarina" },
-  { value: "SP", label: "São Paulo" },
+  { value: "SP", label: "Sao Paulo" },
   { value: "SE", label: "Sergipe" },
   { value: "TO", label: "Tocantins" },
 ];
@@ -114,24 +114,41 @@ function validateCNPJ(cnpj: string): boolean {
   return true;
 }
 
+// Quick registration schema for retail (pessoa fisica) - simplified!
+const retailQuickSchema = z.object({
+  personType: z.literal("fisica"),
+  cpf: z.string().refine((val) => validateCPF(val), { message: "CPF invalido" }),
+  email: z.string().email("E-mail invalido"),
+  firstName: z.string().min(2, "Nome obrigatorio"),
+  phone: z.string().min(10, "Telefone com DDD obrigatorio"),
+  password: z.string().min(6, "Senha deve ter pelo menos 6 caracteres"),
+  confirmPassword: z.string().min(1, "Confirme a senha"),
+}).refine((data) => data.password === data.confirmPassword, {
+  message: "As senhas nao coincidem",
+  path: ["confirmPassword"],
+});
+
+type RetailQuickData = z.infer<typeof retailQuickSchema>;
+
+// Full registration schema for wholesale (pessoa juridica)
 const step1Schema = z.object({
   personType: z.enum(["juridica", "fisica"]),
   cnpj: z.string().optional(),
   cpf: z.string().optional(),
-  email: z.string().email("E-mail inválido"),
+  email: z.string().email("E-mail invalido"),
 }).superRefine((data, ctx) => {
   if (data.personType === "juridica") {
     const cleanCnpj = (data.cnpj || "").replace(/\D/g, "");
     if (!cleanCnpj || cleanCnpj.length < 14) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: "CNPJ obrigatório",
+        message: "CNPJ obrigatorio",
         path: ["cnpj"],
       });
     } else if (!validateCNPJ(data.cnpj || "")) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: "CNPJ inválido",
+        message: "CNPJ invalido",
         path: ["cnpj"],
       });
     }
@@ -140,13 +157,13 @@ const step1Schema = z.object({
     if (!cleanCpf || cleanCpf.length < 11) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: "CPF obrigatório",
+        message: "CPF obrigatorio",
         path: ["cpf"],
       });
     } else if (!validateCPF(data.cpf || "")) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: "CPF inválido",
+        message: "CPF invalido",
         path: ["cpf"],
       });
     }
@@ -154,22 +171,22 @@ const step1Schema = z.object({
 });
 
 const step2Schema = z.object({
-  firstName: z.string().min(2, "Nome obrigatório"),
-  phone: z.string().min(10, "Telefone com DDD obrigatório"),
+  firstName: z.string().min(2, "Nome obrigatorio"),
+  phone: z.string().min(10, "Telefone com DDD obrigatorio"),
   password: z.string().min(6, "Senha deve ter pelo menos 6 caracteres"),
   confirmPassword: z.string().min(1, "Confirme a senha"),
-  cep: z.string().min(8, "CEP obrigatório"),
-  address: z.string().min(3, "Endereço obrigatório"),
-  addressNumber: z.string().min(1, "Número obrigatório"),
+  cep: z.string().min(8, "CEP obrigatorio"),
+  address: z.string().min(3, "Endereco obrigatorio"),
+  addressNumber: z.string().min(1, "Numero obrigatorio"),
   complement: z.string().optional(),
-  neighborhood: z.string().min(2, "Bairro obrigatório"),
-  city: z.string().min(2, "Cidade obrigatória"),
-  state: z.string().min(2, "Estado obrigatório"),
+  neighborhood: z.string().min(2, "Bairro obrigatorio"),
+  city: z.string().min(2, "Cidade obrigatoria"),
+  state: z.string().min(2, "Estado obrigatorio"),
   company: z.string().optional(),
   tradingName: z.string().optional(),
   stateRegistration: z.string().optional(),
 }).refine((data) => data.password === data.confirmPassword, {
-  message: "As senhas não coincidem",
+  message: "As senhas nao coincidem",
   path: ["confirmPassword"],
 });
 
@@ -178,6 +195,7 @@ type Step2Data = z.infer<typeof step2Schema>;
 
 export default function RegisterPage() {
   const [, setLocation] = useLocation();
+  const [registrationType, setRegistrationType] = useState<"retail" | "wholesale" | null>(null);
   const [step, setStep] = useState(1);
   const [step1Data, setStep1Data] = useState<Step1Data | null>(null);
   const [success, setSuccess] = useState(false);
@@ -187,6 +205,20 @@ export default function RegisterPage() {
   const [honeypot, setHoneypot] = useState("");
   
   const captcha = useMemo(() => generateMathCaptcha(), []);
+
+  // Quick retail form
+  const retailForm = useForm<RetailQuickData>({
+    resolver: zodResolver(retailQuickSchema),
+    defaultValues: {
+      personType: "fisica",
+      cpf: "",
+      email: "",
+      firstName: "",
+      phone: "",
+      password: "",
+      confirmPassword: "",
+    },
+  });
 
   const form1 = useForm<Step1Data>({
     resolver: zodResolver(step1Schema),
@@ -219,7 +251,7 @@ export default function RegisterPage() {
   });
 
   const registerMutation = useMutation({
-    mutationFn: async (data: Step1Data & Step2Data) => {
+    mutationFn: async (data: any) => {
       const response = await apiRequest("POST", "/api/register", data);
       return response.json();
     },
@@ -227,15 +259,14 @@ export default function RegisterPage() {
       setSuccess(true);
       setIsAutoApproved(data.approved);
       
-      // If auto-approved (retail customer), redirect to login with checkout redirect
       if (data.approved) {
         const urlParams = new URLSearchParams(window.location.search);
         const redirectTo = urlParams.get('redirect');
-        const step = urlParams.get('step');
+        const stepParam = urlParams.get('step');
         
         if (redirectTo) {
-          const loginUrl = step 
-            ? `/login?redirect=${encodeURIComponent(redirectTo)}&step=${step}&registered=true`
+          const loginUrl = stepParam 
+            ? `/login?redirect=${encodeURIComponent(redirectTo)}&step=${stepParam}&registered=true`
             : `/login?redirect=${encodeURIComponent(redirectTo)}&registered=true`;
           setTimeout(() => setLocation(loginUrl), 2000);
         }
@@ -246,6 +277,22 @@ export default function RegisterPage() {
     },
   });
 
+  // Handle quick retail registration
+  const handleRetailSubmit = (data: RetailQuickData) => {
+    if (honeypot) {
+      setError("Verificacao de seguranca falhou");
+      return;
+    }
+    
+    if (parseInt(captchaAnswer) !== captcha.answer) {
+      setError("Resposta da verificacao incorreta. Tente novamente.");
+      return;
+    }
+    
+    setError(null);
+    registerMutation.mutate(data);
+  };
+
   const handleStep1Submit = (data: Step1Data) => {
     setStep1Data(data);
     setStep(2);
@@ -254,15 +301,13 @@ export default function RegisterPage() {
   const handleStep2Submit = (data: Step2Data) => {
     if (!step1Data) return;
     
-    // Honeypot check - if filled, it's a bot
     if (honeypot) {
-      setError("Verificação de segurança falhou");
+      setError("Verificacao de seguranca falhou");
       return;
     }
     
-    // Captcha validation
     if (parseInt(captchaAnswer) !== captcha.answer) {
-      setError("Resposta da verificação incorreta. Tente novamente.");
+      setError("Resposta da verificacao incorreta. Tente novamente.");
       return;
     }
     
@@ -321,10 +366,10 @@ export default function RegisterPage() {
               <Button 
                 onClick={() => {
                   const redirect = urlParams.get('redirect');
-                  const step = urlParams.get('step');
+                  const stepParam = urlParams.get('step');
                   if (redirect) {
-                    const loginUrl = step 
-                      ? `/login?redirect=${encodeURIComponent(redirect)}&step=${step}`
+                    const loginUrl = stepParam 
+                      ? `/login?redirect=${encodeURIComponent(redirect)}&step=${stepParam}`
                       : `/login?redirect=${encodeURIComponent(redirect)}`;
                     setLocation(loginUrl);
                   } else {
@@ -349,6 +394,288 @@ export default function RegisterPage() {
     );
   }
 
+  // Selection screen - choose between retail and wholesale
+  if (registrationType === null) {
+    return (
+      <div className="min-h-screen bg-background">
+        <div className="container mx-auto px-4 py-8">
+          <div className="max-w-lg mx-auto">
+            <div className="text-center mb-8">
+              <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
+                <Store className="h-10 w-10 text-primary" />
+              </div>
+              <h1 className="text-xl font-bold mb-1">LOJAMADRUGADAO</h1>
+              <p className="text-muted-foreground text-sm">11 99284-5596</p>
+            </div>
+
+            <Card>
+              <CardHeader className="text-center">
+                <CardTitle>Como voce quer comprar?</CardTitle>
+                <CardDescription>
+                  Escolha o tipo de cadastro
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <Card 
+                  className="hover-elevate cursor-pointer border-orange-500/50"
+                  onClick={() => setRegistrationType("retail")}
+                  data-testid="card-retail"
+                >
+                  <CardContent className="pt-6">
+                    <div className="flex items-center gap-4">
+                      <div className="p-3 rounded-full bg-orange-500/10">
+                        <Zap className="h-8 w-8 text-orange-500" />
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="font-bold text-lg">Varejo (Pessoa Fisica)</h3>
+                        <p className="text-sm text-muted-foreground">
+                          Cadastro rapido - aprovacao automatica
+                        </p>
+                        <div className="flex items-center gap-2 mt-2">
+                          <span className="text-xs bg-green-500/20 text-green-600 dark:text-green-400 px-2 py-1 rounded-full">
+                            Compre ja!
+                          </span>
+                        </div>
+                      </div>
+                      <ArrowRight className="h-5 w-5 text-muted-foreground" />
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card 
+                  className="hover-elevate cursor-pointer"
+                  onClick={() => setRegistrationType("wholesale")}
+                  data-testid="card-wholesale"
+                >
+                  <CardContent className="pt-6">
+                    <div className="flex items-center gap-4">
+                      <div className="p-3 rounded-full bg-primary/10">
+                        <Store className="h-8 w-8 text-primary" />
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="font-bold text-lg">Atacado (Pessoa Juridica)</h3>
+                        <p className="text-sm text-muted-foreground">
+                          Cadastro completo com CNPJ
+                        </p>
+                        <div className="flex items-center gap-2 mt-2">
+                          <span className="text-xs bg-muted text-muted-foreground px-2 py-1 rounded-full">
+                            Precos especiais
+                          </span>
+                        </div>
+                      </div>
+                      <ArrowRight className="h-5 w-5 text-muted-foreground" />
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <div className="text-center pt-4">
+                  <Button variant="ghost" onClick={() => setLocation("/login")} data-testid="link-login">
+                    Ja tenho cadastro? Entrar
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Quick retail registration form
+  if (registrationType === "retail") {
+    return (
+      <div className="min-h-screen bg-background">
+        <div className="container mx-auto px-4 py-8">
+          <div className="max-w-lg mx-auto">
+            <div className="text-center mb-8">
+              <div className="w-20 h-20 rounded-full bg-orange-500/10 flex items-center justify-center mx-auto mb-4">
+                <Zap className="h-10 w-10 text-orange-500" />
+              </div>
+              <h1 className="text-xl font-bold mb-1">Cadastro Rapido</h1>
+              <p className="text-muted-foreground text-sm">Pessoa Fisica - Varejo</p>
+            </div>
+
+            <Card>
+              <CardHeader className="text-center">
+                <CardTitle className="flex items-center justify-center gap-2">
+                  <Zap className="h-5 w-5 text-orange-500" />
+                  Cadastro Expresso
+                </CardTitle>
+                <CardDescription>
+                  Preencha apenas o essencial e comece a comprar
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {error && (
+                  <Alert variant="destructive" className="mb-4">
+                    <AlertDescription>{error}</AlertDescription>
+                  </Alert>
+                )}
+
+                <Form {...retailForm}>
+                  <form onSubmit={retailForm.handleSubmit(handleRetailSubmit)} className="space-y-4">
+                    <FormField
+                      control={retailForm.control}
+                      name="cpf"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>CPF *</FormLabel>
+                          <FormControl>
+                            <Input 
+                              placeholder="000.000.000-00" 
+                              {...field}
+                              data-testid="input-cpf"
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={retailForm.control}
+                      name="email"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>E-mail *</FormLabel>
+                          <FormControl>
+                            <Input 
+                              type="email" 
+                              placeholder="seu@email.com" 
+                              {...field}
+                              data-testid="input-email"
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={retailForm.control}
+                      name="firstName"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Seu nome *</FormLabel>
+                          <FormControl>
+                            <Input {...field} data-testid="input-name" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={retailForm.control}
+                      name="phone"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Telefone/WhatsApp *</FormLabel>
+                          <FormControl>
+                            <Input 
+                              placeholder="(11) 99999-9999" 
+                              {...field}
+                              data-testid="input-phone"
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <FormField
+                        control={retailForm.control}
+                        name="password"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Senha *</FormLabel>
+                            <FormControl>
+                              <Input type="password" {...field} data-testid="input-password" />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={retailForm.control}
+                        name="confirmPassword"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Confirmar *</FormLabel>
+                            <FormControl>
+                              <Input type="password" {...field} data-testid="input-confirm-password" />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+
+                    {/* Honeypot field - hidden from users */}
+                    <div className="absolute -left-[9999px]" aria-hidden="true">
+                      <input
+                        type="text"
+                        name="website"
+                        tabIndex={-1}
+                        autoComplete="off"
+                        value={honeypot}
+                        onChange={(e) => setHoneypot(e.target.value)}
+                      />
+                    </div>
+
+                    {/* Simple math captcha */}
+                    <div className="p-3 rounded-lg bg-muted/50">
+                      <label className="text-sm font-medium">
+                        Verificacao: Quanto e {captcha.num1} + {captcha.num2}? *
+                      </label>
+                      <Input
+                        type="number"
+                        placeholder="Resposta"
+                        value={captchaAnswer}
+                        onChange={(e) => setCaptchaAnswer(e.target.value)}
+                        className="mt-2"
+                        data-testid="input-captcha"
+                      />
+                    </div>
+
+                    <Button 
+                      type="submit" 
+                      className="w-full gap-2 bg-orange-500 hover:bg-orange-600" 
+                      disabled={registerMutation.isPending}
+                      data-testid="button-register"
+                    >
+                      {registerMutation.isPending ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <>
+                          <Zap className="h-4 w-4" />
+                          Criar Conta e Comprar
+                        </>
+                      )}
+                    </Button>
+
+                    <Button 
+                      type="button"
+                      variant="ghost" 
+                      className="w-full" 
+                      onClick={() => setRegistrationType(null)}
+                    >
+                      <ArrowLeft className="h-4 w-4 mr-2" />
+                      Voltar
+                    </Button>
+                  </form>
+                </Form>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Full wholesale registration (existing flow)
   return (
     <div className="min-h-screen bg-background">
       <div className="container mx-auto px-4 py-8">
@@ -363,9 +690,9 @@ export default function RegisterPage() {
 
           <Card>
             <CardHeader className="text-center">
-              <CardTitle>Solicitar acesso</CardTitle>
+              <CardTitle>Cadastro Atacado</CardTitle>
               <CardDescription>
-                {step === 1 ? "Passo 1 de 2 - Identificação" : "Passo 2 de 2 - Dados completos"}
+                {step === 1 ? "Passo 1 de 2 - Identificacao" : "Passo 2 de 2 - Dados completos"}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -380,80 +707,25 @@ export default function RegisterPage() {
                   <form onSubmit={form1.handleSubmit(handleStep1Submit)} className="space-y-4">
                     <FormField
                       control={form1.control}
-                      name="personType"
+                      name="cnpj"
                       render={({ field }) => (
                         <FormItem>
+                          <FormLabel>CNPJ *</FormLabel>
                           <FormControl>
-                            <RadioGroup
-                              onValueChange={field.onChange}
-                              value={field.value}
-                              className="flex justify-center gap-6"
-                            >
-                              <div className="flex items-center space-x-2">
-                                <RadioGroupItem value="juridica" id="juridica" data-testid="radio-juridica" />
-                                <label htmlFor="juridica" className="text-sm font-medium cursor-pointer">
-                                  Pessoa jurídica
-                                </label>
-                              </div>
-                              <div className="flex items-center space-x-2">
-                                <RadioGroupItem value="fisica" id="fisica" data-testid="radio-fisica" />
-                                <label htmlFor="fisica" className="text-sm font-medium cursor-pointer">
-                                  Pessoa física
-                                </label>
-                              </div>
-                            </RadioGroup>
+                            <Input 
+                              placeholder="00.000.000/0000-00" 
+                              value={field.value || ""}
+                              onChange={field.onChange}
+                              onBlur={field.onBlur}
+                              name={field.name}
+                              ref={field.ref}
+                              data-testid="input-cnpj"
+                            />
                           </FormControl>
+                          <FormMessage />
                         </FormItem>
                       )}
                     />
-
-                    {personType === "juridica" ? (
-                      <FormField
-                        key="cnpj-field"
-                        control={form1.control}
-                        name="cnpj"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>CNPJ *</FormLabel>
-                            <FormControl>
-                              <Input 
-                                placeholder="00.000.000/0000-00" 
-                                value={field.value || ""}
-                                onChange={field.onChange}
-                                onBlur={field.onBlur}
-                                name={field.name}
-                                ref={field.ref}
-                                data-testid="input-cnpj"
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    ) : (
-                      <FormField
-                        key="cpf-field"
-                        control={form1.control}
-                        name="cpf"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>CPF *</FormLabel>
-                            <FormControl>
-                              <Input 
-                                placeholder="000.000.000-00" 
-                                value={field.value || ""}
-                                onChange={field.onChange}
-                                onBlur={field.onBlur}
-                                name={field.name}
-                                ref={field.ref}
-                                data-testid="input-cpf"
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    )}
 
                     <FormField
                       control={form1.control}
@@ -478,6 +750,16 @@ export default function RegisterPage() {
                       Continuar o cadastro
                       <ArrowRight className="h-4 w-4" />
                     </Button>
+
+                    <Button 
+                      type="button"
+                      variant="ghost" 
+                      className="w-full" 
+                      onClick={() => setRegistrationType(null)}
+                    >
+                      <ArrowLeft className="h-4 w-4 mr-2" />
+                      Voltar
+                    </Button>
                   </form>
                 </Form>
               )}
@@ -499,134 +781,58 @@ export default function RegisterPage() {
                       )}
                     />
 
-                    {personType === "juridica" && (
-                      <>
-                        <FormField
-                          control={form2.control}
-                          name="company"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Razão Social</FormLabel>
-                              <FormControl>
-                                <Input {...field} data-testid="input-company" />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                        <FormField
-                          control={form2.control}
-                          name="tradingName"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Nome Fantasia</FormLabel>
-                              <FormControl>
-                                <Input {...field} data-testid="input-trading-name" />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                        <FormField
-                          control={form2.control}
-                          name="stateRegistration"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Inscrição Estadual</FormLabel>
-                              <FormControl>
-                                <Input {...field} data-testid="input-state-registration" />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                      </>
-                    )}
+                    <FormField
+                      control={form2.control}
+                      name="company"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Razao Social</FormLabel>
+                          <FormControl>
+                            <Input {...field} data-testid="input-company" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form2.control}
+                      name="tradingName"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Nome Fantasia</FormLabel>
+                          <FormControl>
+                            <Input {...field} data-testid="input-trading-name" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form2.control}
+                      name="stateRegistration"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Inscricao Estadual</FormLabel>
+                          <FormControl>
+                            <Input {...field} data-testid="input-state-registration" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
 
                     <FormField
                       control={form2.control}
                       name="phone"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Telefone com DDD *</FormLabel>
+                          <FormLabel>Telefone/WhatsApp *</FormLabel>
                           <FormControl>
-                            <Input placeholder="(11) 99999-9999" {...field} data-testid="input-phone" />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    <FormField
-                      control={form2.control}
-                      name="password"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Senha *</FormLabel>
-                          <FormControl>
-                            <Input type="password" placeholder="Mínimo 6 caracteres" {...field} data-testid="input-password" />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    <FormField
-                      control={form2.control}
-                      name="confirmPassword"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Confirmar Senha *</FormLabel>
-                          <FormControl>
-                            <Input type="password" placeholder="Repita a senha" {...field} data-testid="input-confirm-password" />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    <div className="flex gap-2">
-                      <FormField
-                        control={form2.control}
-                        name="cep"
-                        render={({ field }) => (
-                          <FormItem className="flex-1">
-                            <FormLabel>CEP *</FormLabel>
-                            <FormControl>
-                              <Input 
-                                placeholder="00000-000" 
-                                {...field}
-                                onBlur={(e) => {
-                                  field.onBlur();
-                                  fetchCep(e.target.value);
-                                }}
-                                data-testid="input-cep"
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <div className="flex items-end">
-                        <Button 
-                          type="button" 
-                          variant="link" 
-                          className="text-primary"
-                          onClick={() => window.open("https://buscacepinter.correios.com.br/", "_blank")}
-                        >
-                          Não sei o CEP
-                        </Button>
-                      </div>
-                    </div>
-
-                    <FormField
-                      control={form2.control}
-                      name="address"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Endereço *</FormLabel>
-                          <FormControl>
-                            <Input {...field} data-testid="input-address" />
+                            <Input 
+                              placeholder="(11) 99999-9999" 
+                              {...field}
+                              data-testid="input-phone"
+                            />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -636,12 +842,12 @@ export default function RegisterPage() {
                     <div className="grid grid-cols-2 gap-4">
                       <FormField
                         control={form2.control}
-                        name="addressNumber"
+                        name="password"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Número *</FormLabel>
+                            <FormLabel>Senha *</FormLabel>
                             <FormControl>
-                              <Input {...field} data-testid="input-number" />
+                              <Input type="password" {...field} data-testid="input-password" />
                             </FormControl>
                             <FormMessage />
                           </FormItem>
@@ -650,12 +856,12 @@ export default function RegisterPage() {
 
                       <FormField
                         control={form2.control}
-                        name="complement"
+                        name="confirmPassword"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Complemento</FormLabel>
+                            <FormLabel>Confirmar *</FormLabel>
                             <FormControl>
-                              <Input {...field} data-testid="input-complement" />
+                              <Input type="password" {...field} data-testid="input-confirm-password" />
                             </FormControl>
                             <FormMessage />
                           </FormItem>
@@ -663,131 +869,190 @@ export default function RegisterPage() {
                       />
                     </div>
 
-                    <FormField
-                      control={form2.control}
-                      name="neighborhood"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Bairro *</FormLabel>
-                          <FormControl>
-                            <Input {...field} data-testid="input-neighborhood" />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    <FormField
-                      control={form2.control}
-                      name="city"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Cidade *</FormLabel>
-                          <FormControl>
-                            <Input {...field} data-testid="input-city" />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    <FormField
-                      control={form2.control}
-                      name="state"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Estado *</FormLabel>
-                          <Select onValueChange={field.onChange} value={field.value}>
-                            <FormControl>
-                              <SelectTrigger data-testid="select-state">
-                                <SelectValue placeholder="Selecione um item" />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              {BRAZILIAN_STATES.map((state) => (
-                                <SelectItem key={state.value} value={state.value}>
-                                  {state.label}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    {/* Honeypot - hidden field to catch bots */}
-                    <div className="absolute -left-[9999px]" aria-hidden="true">
-                      <Input
-                        type="text"
-                        name="website"
-                        value={honeypot}
-                        onChange={(e) => setHoneypot(e.target.value)}
-                        tabIndex={-1}
-                        autoComplete="off"
-                      />
-                    </div>
-
-                    {/* Math Captcha */}
-                    <div className="space-y-2">
-                      <FormLabel>Verificação de segurança *</FormLabel>
-                      <div className="flex items-center gap-3">
-                        <span className="text-sm font-medium bg-muted px-3 py-2 rounded-md">
-                          {captcha.num1} + {captcha.num2} = ?
-                        </span>
-                        <Input
-                          type="number"
-                          value={captchaAnswer}
-                          onChange={(e) => setCaptchaAnswer(e.target.value)}
-                          placeholder="Resposta"
-                          className="w-24"
-                          data-testid="input-captcha"
+                    <div className="pt-2">
+                      <h3 className="text-sm font-medium mb-3">Endereco</h3>
+                      
+                      <div className="space-y-4">
+                        <FormField
+                          control={form2.control}
+                          name="cep"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>CEP *</FormLabel>
+                              <FormControl>
+                                <Input 
+                                  placeholder="00000-000"
+                                  {...field}
+                                  onBlur={(e) => {
+                                    field.onBlur();
+                                    fetchCep(e.target.value);
+                                  }}
+                                  data-testid="input-cep"
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
                         />
+
+                        <FormField
+                          control={form2.control}
+                          name="address"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Endereco *</FormLabel>
+                              <FormControl>
+                                <Input {...field} data-testid="input-address" />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+
+                        <div className="grid grid-cols-2 gap-4">
+                          <FormField
+                            control={form2.control}
+                            name="addressNumber"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Numero *</FormLabel>
+                                <FormControl>
+                                  <Input {...field} data-testid="input-number" />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+
+                          <FormField
+                            control={form2.control}
+                            name="complement"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Complemento</FormLabel>
+                                <FormControl>
+                                  <Input {...field} data-testid="input-complement" />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                        </div>
+
+                        <FormField
+                          control={form2.control}
+                          name="neighborhood"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Bairro *</FormLabel>
+                              <FormControl>
+                                <Input {...field} data-testid="input-neighborhood" />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+
+                        <div className="grid grid-cols-2 gap-4">
+                          <FormField
+                            control={form2.control}
+                            name="city"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Cidade *</FormLabel>
+                                <FormControl>
+                                  <Input {...field} data-testid="input-city" />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+
+                          <FormField
+                            control={form2.control}
+                            name="state"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Estado *</FormLabel>
+                                <Select onValueChange={field.onChange} value={field.value}>
+                                  <FormControl>
+                                    <SelectTrigger data-testid="select-state">
+                                      <SelectValue placeholder="Selecione" />
+                                    </SelectTrigger>
+                                  </FormControl>
+                                  <SelectContent>
+                                    {BRAZILIAN_STATES.map((state) => (
+                                      <SelectItem key={state.value} value={state.value}>
+                                        {state.label}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                        </div>
                       </div>
                     </div>
 
-                    <div className="flex gap-2 pt-4">
-                      <Button 
-                        type="button" 
-                        variant="outline" 
-                        onClick={() => setStep(1)}
-                        data-testid="button-back"
-                      >
-                        <ArrowLeft className="h-4 w-4 mr-2" />
-                        Voltar
-                      </Button>
-                      <Button 
-                        type="submit" 
-                        className="flex-1 gap-2"
-                        disabled={registerMutation.isPending || !captchaAnswer}
-                        data-testid="button-submit"
-                      >
-                        {registerMutation.isPending ? (
-                          <>
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                            Enviando...
-                          </>
-                        ) : (
-                          "Solicitar acesso"
-                        )}
-                      </Button>
+                    {/* Honeypot field - hidden from users */}
+                    <div className="absolute -left-[9999px]" aria-hidden="true">
+                      <input
+                        type="text"
+                        name="website"
+                        tabIndex={-1}
+                        autoComplete="off"
+                        value={honeypot}
+                        onChange={(e) => setHoneypot(e.target.value)}
+                      />
                     </div>
+
+                    {/* Simple math captcha */}
+                    <div className="p-3 rounded-lg bg-muted/50">
+                      <label className="text-sm font-medium">
+                        Verificacao: Quanto e {captcha.num1} + {captcha.num2}? *
+                      </label>
+                      <Input
+                        type="number"
+                        placeholder="Resposta"
+                        value={captchaAnswer}
+                        onChange={(e) => setCaptchaAnswer(e.target.value)}
+                        className="mt-2"
+                        data-testid="input-captcha"
+                      />
+                    </div>
+
+                    <Button 
+                      type="submit" 
+                      className="w-full gap-2" 
+                      disabled={registerMutation.isPending}
+                      data-testid="button-register"
+                    >
+                      {registerMutation.isPending ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <>
+                          Solicitar Acesso
+                          <ArrowRight className="h-4 w-4" />
+                        </>
+                      )}
+                    </Button>
+
+                    <Button 
+                      type="button"
+                      variant="ghost" 
+                      className="w-full" 
+                      onClick={() => setStep(1)}
+                    >
+                      <ArrowLeft className="h-4 w-4 mr-2" />
+                      Voltar
+                    </Button>
                   </form>
                 </Form>
               )}
             </CardContent>
           </Card>
-
-          <div className="text-center mt-6">
-            <Button 
-              variant="link" 
-              onClick={() => setLocation("/")}
-              className="text-primary"
-              data-testid="link-catalog"
-            >
-              Continuar visualizando o catálogo sem preços
-            </Button>
-          </div>
         </div>
       </div>
     </div>
