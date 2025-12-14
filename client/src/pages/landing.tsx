@@ -1,9 +1,17 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { 
+  Carousel,
+  CarouselContent,
+  CarouselItem,
+  CarouselPrevious,
+  CarouselNext,
+  type CarouselApi
+} from "@/components/ui/carousel";
 import { 
   Phone, 
   Store, 
@@ -22,7 +30,8 @@ import { useQuery } from "@tanstack/react-query";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import type { Product as SchemaProduct, Category } from "@shared/schema";
 import logoImage from "@assets/image_1765659931449.png";
-import bannerImage from "@assets/image_1765675881591.png";
+import bannerImage1 from "@assets/image_1765675881591.png";
+import bannerImage2 from "@assets/image_1765676031320.png";
 
 interface ProductsResponse {
   products: SchemaProduct[];
@@ -138,35 +147,109 @@ export default function LandingPage() {
       </header>
 
       <section className="relative">
-        <div className="aspect-[21/9] md:aspect-[3/1] w-full overflow-hidden">
-          <img 
-            src={bannerImage} 
-            alt="Promocoes" 
-            className="w-full h-full object-cover"
-            data-testid="img-banner"
-          />
-        </div>
-        <div className="absolute inset-0 bg-gradient-to-r from-black/60 to-transparent flex items-center">
-          <div className="container mx-auto px-4">
-            <div className="max-w-lg">
-              <h2 className="text-2xl md:text-4xl font-bold text-white mb-2">
-                Bem-vindo ao Madrugadao
-              </h2>
-              <p className="text-white/80 text-sm md:text-base mb-4">
-                Os melhores produtos com os melhores precos
-              </p>
-              <Button 
-                size="lg"
-                onClick={() => setLocation("/catalogo")}
-                className="bg-orange-500 hover:bg-orange-600"
-                data-testid="button-ver-catalogo"
-              >
-                <ShoppingBag className="h-5 w-5 mr-2" />
-                Ver Catalogo Completo
-              </Button>
-            </div>
-          </div>
-        </div>
+        <Carousel 
+          opts={{ loop: true }} 
+          className="w-full"
+          data-testid="carousel-banner"
+        >
+          <CarouselContent>
+            <CarouselItem>
+              <div className="relative aspect-[21/9] md:aspect-[3/1] w-full overflow-hidden">
+                <img 
+                  src={bannerImage1} 
+                  alt="Promocao Bem Bolado" 
+                  className="w-full h-full object-cover"
+                  data-testid="img-banner-1"
+                />
+                <div className="absolute inset-0 bg-gradient-to-r from-black/60 to-transparent flex items-center">
+                  <div className="container mx-auto px-4">
+                    <div className="max-w-lg">
+                      <h2 className="text-2xl md:text-4xl font-bold text-white mb-2">
+                        Bem-vindo ao Madrugadao
+                      </h2>
+                      <p className="text-white/80 text-sm md:text-base mb-4">
+                        Os melhores produtos com os melhores precos
+                      </p>
+                      <Button 
+                        size="lg"
+                        onClick={() => setLocation("/catalogo")}
+                        className="bg-orange-500 hover:bg-orange-600"
+                        data-testid="button-ver-catalogo"
+                      >
+                        <ShoppingBag className="h-5 w-5 mr-2" />
+                        Ver Catalogo Completo
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </CarouselItem>
+            <CarouselItem>
+              <div className="relative aspect-[21/9] md:aspect-[3/1] w-full overflow-hidden">
+                <img 
+                  src={bannerImage2} 
+                  alt="Promocao Especial" 
+                  className="w-full h-full object-cover"
+                  data-testid="img-banner-2"
+                />
+                <div className="absolute inset-0 bg-gradient-to-r from-black/60 to-transparent flex items-center">
+                  <div className="container mx-auto px-4">
+                    <div className="max-w-lg">
+                      <h2 className="text-2xl md:text-4xl font-bold text-white mb-2">
+                        Ofertas Especiais
+                      </h2>
+                      <p className="text-white/80 text-sm md:text-base mb-4">
+                        Confira nossas promocoes exclusivas
+                      </p>
+                      <Button 
+                        size="lg"
+                        onClick={() => setLocation("/catalogo")}
+                        className="bg-orange-500 hover:bg-orange-600"
+                        data-testid="button-ver-ofertas"
+                      >
+                        <ShoppingBag className="h-5 w-5 mr-2" />
+                        Ver Ofertas
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </CarouselItem>
+            <CarouselItem>
+              <div className="relative aspect-[21/9] md:aspect-[3/1] w-full overflow-hidden">
+                <img 
+                  src={bannerImage1} 
+                  alt="Atacado" 
+                  className="w-full h-full object-cover"
+                  data-testid="img-banner-3"
+                />
+                <div className="absolute inset-0 bg-gradient-to-r from-black/60 to-transparent flex items-center">
+                  <div className="container mx-auto px-4">
+                    <div className="max-w-lg">
+                      <h2 className="text-2xl md:text-4xl font-bold text-white mb-2">
+                        Precos de Atacado
+                      </h2>
+                      <p className="text-white/80 text-sm md:text-base mb-4">
+                        Cadastre-se e tenha acesso a precos exclusivos
+                      </p>
+                      <Button 
+                        size="lg"
+                        onClick={() => setLocation("/register")}
+                        className="bg-orange-500 hover:bg-orange-600"
+                        data-testid="button-cadastrar-atacado"
+                      >
+                        <Store className="h-5 w-5 mr-2" />
+                        Solicitar Cadastro
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </CarouselItem>
+          </CarouselContent>
+          <CarouselPrevious className="left-4" />
+          <CarouselNext className="right-4" />
+        </Carousel>
       </section>
 
       <form onSubmit={handleSearch} className="md:hidden container mx-auto px-4 py-4">
