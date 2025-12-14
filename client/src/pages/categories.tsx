@@ -510,6 +510,7 @@ export default function CategoriesPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [deletingCategory, setDeletingCategory] = useState<Category | null>(null);
+  const [showFilter, setShowFilter] = useState<"all" | "visible" | "hidden">("all");
 
   const { data: categoriesData = [], isLoading: categoriesLoading } = useQuery<Category[]>({
     queryKey: ['/api/categories'],
@@ -522,9 +523,17 @@ export default function CategoriesPage() {
   const productsData = productsResponse?.products || [];
 
   const filteredCategories = useMemo(() => {
-    // Admins and sales always see ALL categories (including hidden ones)
-    // This is the management panel - must show everything for proper management
-    return categoriesData;
+    if (showFilter === "all") {
+      return categoriesData;
+    } else if (showFilter === "visible") {
+      return categoriesData.filter(c => !c.hideFromVarejo);
+    } else {
+      return categoriesData.filter(c => c.hideFromVarejo);
+    }
+  }, [categoriesData, showFilter]);
+
+  const hiddenCount = useMemo(() => {
+    return categoriesData.filter(c => c.hideFromVarejo).length;
   }, [categoriesData]);
 
   const countMap = useMemo(() => {
@@ -661,7 +670,7 @@ export default function CategoriesPage() {
       </div>
 
       {viewMode === "hierarchy" && categoryTree.length > 0 && (
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <Button variant="outline" size="sm" onClick={expandAll} data-testid="button-expand-all">
             Expandir Tudo
           </Button>
@@ -692,7 +701,38 @@ export default function CategoriesPage() {
             </Button>
           )}
         </div>
-      ) : viewMode === "hierarchy" ? (
+      ) : (
+        <>
+          {/* Filter buttons for both views */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button 
+              variant={showFilter === "all" ? "default" : "outline"} 
+              size="sm" 
+              onClick={() => setShowFilter("all")}
+              data-testid="button-filter-all-flat"
+            >
+              Todas ({categoriesData.length})
+            </Button>
+            <Button 
+              variant={showFilter === "visible" ? "default" : "outline"} 
+              size="sm" 
+              onClick={() => setShowFilter("visible")}
+              data-testid="button-filter-visible-flat"
+            >
+              <Eye className="h-3.5 w-3.5 mr-1" />
+              Visiveis ({categoriesData.length - hiddenCount})
+            </Button>
+            <Button 
+              variant={showFilter === "hidden" ? "default" : "outline"} 
+              size="sm" 
+              onClick={() => setShowFilter("hidden")}
+              data-testid="button-filter-hidden-flat"
+            >
+              <EyeOff className="h-3.5 w-3.5 mr-1" />
+              Ocultas ({hiddenCount})
+            </Button>
+          </div>
+          {viewMode === "hierarchy" ? (
         <div className="space-y-4">
           {categoryTree.map((category) => (
             <CategoryCard 
@@ -854,6 +894,8 @@ export default function CategoriesPage() {
             </Card>
           </Link>
         </div>
+          )}
+        </>
       )}
 
       {!isLoading && filteredCategories.length > 0 && (
