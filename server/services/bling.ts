@@ -719,6 +719,13 @@ async function handleProductEvent(data: WebhookProductData): Promise<{ success: 
     }
   }
 
+  // Debug: log what Bling API returned for images and stock
+  console.log(`Product ${sku} API response:`, {
+    imagens: fullProduct.imagens,
+    midia: fullProduct.midia,
+    estoque: fullProduct.estoque,
+  });
+
   // Extract image URL
   let imageUrl: string | null = null;
   if (fullProduct.imagens && fullProduct.imagens.length > 0) {
@@ -731,6 +738,8 @@ async function handleProductEvent(data: WebhookProductData): Promise<{ success: 
   if (!imageUrl && fullProduct.midia?.imagens?.internas?.[0]?.link) {
     imageUrl = fullProduct.midia.imagens.internas[0].link;
   }
+  
+  console.log(`Product ${sku} extracted imageUrl:`, imageUrl);
 
   // Find category by blingId
   let categoryId: number | null = null;
