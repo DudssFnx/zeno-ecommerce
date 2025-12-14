@@ -106,7 +106,8 @@ export default function LandingPage() {
               <img 
                 src={logoImage} 
                 alt="Lojamadrugadao" 
-                className="h-12 w-12 rounded-full border-2 border-white/20"
+                className="h-12 w-12 rounded-full border-2 border-white/20 cursor-pointer"
+                onDoubleClick={() => setLocation("/login")}
                 data-testid="img-logo"
               />
               <div className="hidden sm:block">
