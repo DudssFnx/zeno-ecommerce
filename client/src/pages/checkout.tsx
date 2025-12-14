@@ -82,6 +82,10 @@ export default function CheckoutPage() {
   // Payment state
   const [paymentMethod, setPaymentMethod] = useState<string>("");
   const [paymentNotes, setPaymentNotes] = useState("");
+  
+  // Guest checkout state
+  const [isGuestCheckout, setIsGuestCheckout] = useState(false);
+  const [guestCpf, setGuestCpf] = useState("");
 
   // Handle step from URL query parameter (after login/register redirect)
   useEffect(() => {
@@ -227,13 +231,23 @@ export default function CheckoutPage() {
 
   // Generate order
   const handleGenerateOrder = async () => {
-    if (!isAuthenticated || !user) {
+    if (!isGuestCheckout && (!isAuthenticated || !user)) {
       toast({
         title: "Faca login",
         description: "Voce precisa estar logado para gerar o orcamento",
         variant: "destructive",
       });
       setLocation("/login?redirect=/checkout&step=orcamento");
+      return;
+    }
+    
+    // Validate guest CPF
+    if (isGuestCheckout && (!guestCpf || guestCpf.replace(/\D/g, '').length !== 11)) {
+      toast({
+        title: "CPF invalido",
+        description: "Informe um CPF valido com 11 digitos",
+        variant: "destructive",
+      });
       return;
     }
 
@@ -257,7 +271,7 @@ export default function CheckoutPage() {
 
     setIsSubmitting(true);
     try {
-      const orderData = {
+      const orderData: any = {
         items: items.map(item => ({
           productId: item.id,
           quantity: item.quantity,
@@ -276,8 +290,14 @@ export default function CheckoutPage() {
         paymentNotes: paymentNotes,
         notes: `Frete: ${selectedFreight} | Pagamento: ${paymentMethod}${paymentNotes ? ` | Obs: ${paymentNotes}` : ''}`,
       };
+      
+      // Add guest info if guest checkout
+      if (isGuestCheckout) {
+        orderData.guestCpf = guestCpf;
+      }
 
-      await apiRequest("POST", "/api/orders", orderData);
+      const endpoint = isGuestCheckout ? "/api/orders/guest" : "/api/orders";
+      await apiRequest("POST", endpoint, orderData);
       
       // Clear cart and redirect
       clearCart();
@@ -288,7 +308,8 @@ export default function CheckoutPage() {
         description: "Entraremos em contato em breve",
       });
       
-      setLocation("/minha-conta");
+      // Guest users go to catalog, logged users go to account
+      setLocation(isGuestCheckout ? "/catalogo" : "/minha-conta");
     } catch (error) {
       toast({
         title: "Erro ao gerar orcamento",
@@ -483,11 +504,11 @@ export default function CheckoutPage() {
                     Identificacao
                   </CardTitle>
                   <CardDescription>
-                    Faca login ou cadastre-se para continuar com a compra
+                    Escolha como deseja continuar
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
-                  <div className="grid md:grid-cols-2 gap-4">
+                  <div className="grid md:grid-cols-3 gap-4">
                     <Card className="hover-elevate cursor-pointer" onClick={handleLoginRedirect}>
                       <CardContent className="pt-6 text-center">
                         <User className="h-12 w-12 mx-auto mb-4 text-orange-500" />
@@ -501,15 +522,34 @@ export default function CheckoutPage() {
                       </CardContent>
                     </Card>
 
-                    <Card className="hover-elevate cursor-pointer border-orange-500/50" onClick={handleContinueToRegister}>
+                    <Card className="hover-elevate cursor-pointer" onClick={handleContinueToRegister}>
                       <CardContent className="pt-6 text-center">
                         <User className="h-12 w-12 mx-auto mb-4 text-orange-500" />
                         <h3 className="font-semibold mb-2">Criar conta</h3>
                         <p className="text-sm text-muted-foreground mb-4">
                           Cadastre-se para comprar
                         </p>
-                        <Button className="w-full bg-orange-500 hover:bg-orange-600" data-testid="button-register-checkout">
+                        <Button variant="outline" className="w-full" data-testid="button-register-checkout">
                           Cadastrar
+                        </Button>
+                      </CardContent>
+                    </Card>
+
+                    <Card 
+                      className="hover-elevate cursor-pointer border-orange-500/50" 
+                      onClick={() => {
+                        setIsGuestCheckout(true);
+                        setCurrentStep("frete");
+                      }}
+                    >
+                      <CardContent className="pt-6 text-center">
+                        <ShoppingCart className="h-12 w-12 mx-auto mb-4 text-orange-500" />
+                        <h3 className="font-semibold mb-2">Comprar sem cadastro</h3>
+                        <p className="text-sm text-muted-foreground mb-4">
+                          Informe apenas CPF e endereco
+                        </p>
+                        <Button className="w-full bg-orange-500 hover:bg-orange-600" data-testid="button-guest-checkout">
+                          Continuar
                         </Button>
                       </CardContent>
                     </Card>
@@ -537,6 +577,23 @@ export default function CheckoutPage() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
+                  {isGuestCheckout && (
+                    <div className="p-4 rounded-lg bg-orange-500/10 border border-orange-500/30">
+                      <Label htmlFor="guestCpf" className="text-orange-600 dark:text-orange-500 font-medium">CPF *</Label>
+                      <Input
+                        id="guestCpf"
+                        placeholder="000.000.000-00"
+                        value={guestCpf}
+                        onChange={(e) => setGuestCpf(e.target.value)}
+                        className="mt-2"
+                        data-testid="input-guest-cpf"
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Necessario para emissao de nota fiscal
+                      </p>
+                    </div>
+                  )}
+                  
                   <div className="grid gap-4">
                     <div className="grid grid-cols-3 gap-4">
                       <div className="col-span-2">
