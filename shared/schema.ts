@@ -101,12 +101,18 @@ export type Product = typeof products.$inferSelect;
 // pedido_gerado: stock RESERVED, faturado: stock DEDUCTED + sent to ERP
 export const orders = pgTable("orders", {
   id: serial("id").primaryKey(),
-  userId: varchar("user_id").notNull().references(() => users.id),
+  userId: varchar("user_id").references(() => users.id), // nullable for guest orders
   orderNumber: text("order_number").notNull().unique(),
   status: text("status").notNull().default("pending"),
   subtotal: decimal("subtotal", { precision: 10, scale: 2 }),
   shippingCost: decimal("shipping_cost", { precision: 10, scale: 2 }),
   total: decimal("total", { precision: 10, scale: 2 }).notNull(),
+  // Guest checkout info (when no userId)
+  isGuestOrder: boolean("is_guest_order").notNull().default(false),
+  guestCpf: text("guest_cpf"),
+  guestName: text("guest_name"),
+  guestEmail: text("guest_email"),
+  guestPhone: text("guest_phone"),
   // Shipping info
   shippingAddress: text("shipping_address"),
   shippingMethod: text("shipping_method"),

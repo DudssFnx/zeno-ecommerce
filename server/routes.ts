@@ -535,6 +535,7 @@ export async function registerRoutes(
         paymentMethod: paymentMethod || null,
         paymentNotes: paymentNotes || null,
         notes: notes || null,
+        isGuestOrder: false,
       });
       
       // Create order items
@@ -552,6 +553,84 @@ export async function registerRoutes(
       res.status(201).json({ ...order, items: orderItems });
     } catch (error) {
       console.error("Error creating order:", error);
+      res.status(500).json({ message: "Failed to create order" });
+    }
+  });
+
+  // Guest checkout - no authentication required
+  app.post('/api/orders/guest', async (req: any, res) => {
+    try {
+      const { items, notes, subtotal, shippingCost, shippingAddress, shippingMethod, paymentMethod, paymentNotes, guestCpf, guestName, guestEmail, guestPhone } = req.body;
+      
+      if (!items || !Array.isArray(items) || items.length === 0) {
+        return res.status(400).json({ message: "Order must have at least one item" });
+      }
+      
+      // Validate guest CPF (required)
+      if (!guestCpf || guestCpf.replace(/\D/g, '').length !== 11) {
+        return res.status(400).json({ message: "CPF valido e obrigatorio" });
+      }
+      
+      // Calculate total from items
+      let calculatedSubtotal = 0;
+      for (const item of items) {
+        const product = await storage.getProduct(item.productId);
+        if (!product) {
+          return res.status(400).json({ message: `Product ${item.productId} not found` });
+        }
+        calculatedSubtotal += parseFloat(product.price) * item.quantity;
+      }
+      
+      // Use calculated subtotal or provided subtotal
+      const finalSubtotal = subtotal || calculatedSubtotal;
+      const finalShippingCost = shippingCost || 0;
+      const total = finalSubtotal + finalShippingCost;
+      
+      // Format shipping address as string if it's an object
+      let shippingAddressStr = null;
+      if (shippingAddress) {
+        if (typeof shippingAddress === 'object' && shippingAddress.fullAddress) {
+          shippingAddressStr = shippingAddress.fullAddress;
+        } else if (typeof shippingAddress === 'string') {
+          shippingAddressStr = shippingAddress;
+        }
+      }
+      
+      // Create guest order with ORCAMENTO status
+      const order = await storage.createOrder({
+        userId: null, // No user for guest orders
+        orderNumber: await generateOrderNumber(),
+        status: 'ORCAMENTO',
+        subtotal: finalSubtotal.toFixed(2),
+        shippingCost: finalShippingCost.toFixed(2),
+        total: total.toFixed(2),
+        shippingAddress: shippingAddressStr,
+        shippingMethod: shippingMethod || null,
+        paymentMethod: paymentMethod || null,
+        paymentNotes: paymentNotes || null,
+        notes: notes || null,
+        isGuestOrder: true,
+        guestCpf: guestCpf.replace(/\D/g, ''),
+        guestName: guestName || null,
+        guestEmail: guestEmail || null,
+        guestPhone: guestPhone || null,
+      });
+      
+      // Create order items
+      for (const item of items) {
+        const product = await storage.getProduct(item.productId);
+        await storage.createOrderItem({
+          orderId: order.id,
+          productId: item.productId,
+          quantity: item.quantity,
+          price: product!.price,
+        });
+      }
+      
+      const orderItems = await storage.getOrderItems(order.id);
+      res.status(201).json({ ...order, items: orderItems });
+    } catch (error) {
+      console.error("Error creating guest order:", error);
       res.status(500).json({ message: "Failed to create order" });
     }
   });
