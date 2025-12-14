@@ -32,6 +32,7 @@ import {
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { SiWhatsapp, SiMercadopago } from "react-icons/si";
 import type { Product as SchemaProduct, Category } from "@shared/schema";
 import { useCart } from "@/contexts/CartContext";
 import { useToast } from "@/hooks/use-toast";
@@ -650,6 +651,30 @@ export default function LandingPage() {
               data-testid="button-seguir-instagram"
             >
               SEGUIR NO INSTAGRAM
+            </Button>
+          </div>
+        </div>
+      </section>
+
+      <section className="bg-fuchsia-600 py-12">
+        <div className="container mx-auto px-4">
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+            <Button 
+              size="lg"
+              onClick={() => window.open("https://www.mercadolivre.com.br/pagina/loja420#from=share_eshop", "_blank")}
+              className="bg-white hover:bg-gray-100 text-indigo-900 font-bold px-8 py-6 text-base border-2 border-black min-w-[280px]"
+              data-testid="button-mercado-livre"
+            >
+              COMPRE NO MERCADO LIVRE
+            </Button>
+            <Button 
+              size="lg"
+              onClick={() => window.open("https://wa.me/5511992845596", "_blank")}
+              className="bg-emerald-500 hover:bg-emerald-600 text-white font-bold px-8 py-6 text-base border-2 border-black min-w-[280px]"
+              data-testid="button-whatsapp"
+            >
+              <SiWhatsapp className="h-5 w-5 mr-2" />
+              FALAR COM DISTRIBUIDOR
             </Button>
           </div>
         </div>
