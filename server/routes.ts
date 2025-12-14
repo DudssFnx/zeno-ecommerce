@@ -1135,6 +1135,18 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/bling/disconnect", isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      // Clear the access token to disconnect
+      delete process.env.BLING_ACCESS_TOKEN;
+      delete process.env.BLING_REFRESH_TOKEN;
+      res.json({ success: true, message: "Desconectado do Bling" });
+    } catch (error: any) {
+      console.error("Bling disconnect error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // ========== PDF GENERATION ==========
   
   // Batch PDF - generates a single PDF with multiple orders

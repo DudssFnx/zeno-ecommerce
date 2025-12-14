@@ -6,7 +6,7 @@ import { useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, CheckCircle, XCircle, RefreshCw, Link as LinkIcon, FolderSync, Package } from "lucide-react";
+import { Loader2, CheckCircle, XCircle, RefreshCw, Link as LinkIcon, FolderSync, Package, Unlink } from "lucide-react";
 
 interface BlingStatus {
   authenticated: boolean;
@@ -90,6 +90,27 @@ export default function BlingPage() {
     },
   });
 
+  const disconnectMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest("POST", "/api/bling/disconnect");
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Desconectado",
+        description: "Sua conta Bling foi desconectada.",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/bling/status"] });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Erro",
+        description: error.message || "Falha ao desconectar",
+        variant: "destructive",
+      });
+    },
+  });
+
   const handleConnect = () => {
     window.location.href = "/api/bling/auth";
   };
@@ -153,12 +174,30 @@ export default function BlingPage() {
             </div>
           </div>
 
-          {status?.hasCredentials && !status?.authenticated && (
-            <Button onClick={handleConnect} data-testid="button-bling-connect">
-              <LinkIcon className="h-4 w-4 mr-2" />
-              Conectar ao Bling
-            </Button>
-          )}
+          <div className="flex flex-wrap gap-2">
+            {status?.hasCredentials && !status?.authenticated && (
+              <Button onClick={handleConnect} data-testid="button-bling-connect">
+                <LinkIcon className="h-4 w-4 mr-2" />
+                Conectar ao Bling
+              </Button>
+            )}
+
+            {status?.authenticated && (
+              <Button 
+                variant="destructive" 
+                onClick={() => disconnectMutation.mutate()}
+                disabled={disconnectMutation.isPending}
+                data-testid="button-bling-disconnect"
+              >
+                {disconnectMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Unlink className="h-4 w-4 mr-2" />
+                )}
+                Desconectar
+              </Button>
+            )}
+          </div>
 
           {!status?.hasCredentials && (
             <p className="text-sm text-muted-foreground">
