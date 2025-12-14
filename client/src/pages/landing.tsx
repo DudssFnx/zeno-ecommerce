@@ -12,7 +12,11 @@ import {
   ChevronRight,
   Loader2,
   ShoppingBag,
-  Sparkles
+  Sparkles,
+  Truck,
+  CreditCard,
+  Shield,
+  Percent
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -212,6 +216,63 @@ export default function LandingPage() {
               ))}
             </div>
           )}
+        </section>
+      )}
+
+      <section className="bg-muted/50 py-4 border-y">
+        <div className="container mx-auto px-4">
+          <div className="flex flex-wrap justify-center gap-6 md:gap-12 text-sm">
+            <div className="flex items-center gap-2">
+              <Truck className="h-5 w-5 text-orange-500" />
+              <div>
+                <p className="font-semibold">Frete Gratis</p>
+                <p className="text-xs text-muted-foreground">Acima de R$299</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <CreditCard className="h-5 w-5 text-orange-500" />
+              <div>
+                <p className="font-semibold">12x no Cartao</p>
+                <p className="text-xs text-muted-foreground">Sem juros</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Shield className="h-5 w-5 text-orange-500" />
+              <div>
+                <p className="font-semibold">100% Seguro</p>
+                <p className="text-xs text-muted-foreground">Compra protegida</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Percent className="h-5 w-5 text-orange-500" />
+              <div>
+                <p className="font-semibold">5% Desconto</p>
+                <p className="text-xs text-muted-foreground">Pagamento via PIX</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {categoriesData.length >= 3 && (
+        <section className="container mx-auto px-4 py-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {categoriesData.slice(0, 3).map((category, index) => (
+              <Card 
+                key={category.id}
+                className="overflow-hidden cursor-pointer group hover-elevate"
+                onClick={() => setLocation(`/catalogo?category=${encodeURIComponent(category.name)}`)}
+                data-testid={`banner-category-${category.id}`}
+              >
+                <div className="relative h-32 md:h-40 bg-gradient-to-br from-zinc-800 to-zinc-900 flex items-center justify-center">
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+                  <h3 className="relative text-xl md:text-2xl font-bold text-white text-center px-4 group-hover:scale-105 transition-transform">
+                    {category.name.toUpperCase()}
+                  </h3>
+                </div>
+              </Card>
+            ))}
+          </div>
         </section>
       )}
 
