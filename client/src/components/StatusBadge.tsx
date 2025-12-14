@@ -18,14 +18,15 @@ export type OrderStage =
   | "PEDIDO_IMPRESSO"
   | "PEDIDO_SEPARADO"
   | "COBRADO"
-  | "CONFERIR_COMPROVANTE"
-  | "EM_CONFERENCIA"
+  | "CONFERENCIA"
   | "AGUARDANDO_ENVIO"
-  | "PEDIDO_ENVIADO"
+  | "FINALIZADO"
   | "PENDENTE_IMPRESSAO"
   | "IMPRESSO"
   | "SEPARADO"
-  | "FINALIZADO";
+  | "CONFERIR_COMPROVANTE"
+  | "EM_CONFERENCIA"
+  | "PEDIDO_ENVIADO";
 
 export type UserStatus = "pending" | "approved" | "rejected";
 
@@ -168,17 +169,18 @@ const STAGES = [
   { key: "PEDIDO_IMPRESSO", label: "Impresso", shortLabel: "Impresso" },
   { key: "PEDIDO_SEPARADO", label: "Separado", shortLabel: "Separado" },
   { key: "COBRADO", label: "Cobrado", shortLabel: "Cobrado" },
-  { key: "CONFERIR_COMPROVANTE", label: "Conferir Comprovante", shortLabel: "Comprovante" },
-  { key: "EM_CONFERENCIA", label: "Em Conferência", shortLabel: "Conferência" },
+  { key: "CONFERENCIA", label: "Conferência", shortLabel: "Conferência" },
   { key: "AGUARDANDO_ENVIO", label: "Aguardando Envio", shortLabel: "Envio" },
-  { key: "PEDIDO_ENVIADO", label: "Enviado", shortLabel: "Enviado" },
+  { key: "FINALIZADO", label: "Finalizado", shortLabel: "Finalizado" },
 ];
 
 const STAGE_MAPPING: Record<string, string> = {
   "PENDENTE_IMPRESSAO": "AGUARDANDO_IMPRESSAO",
   "IMPRESSO": "PEDIDO_IMPRESSO",
   "SEPARADO": "PEDIDO_SEPARADO",
-  "FINALIZADO": "PEDIDO_ENVIADO",
+  "PEDIDO_ENVIADO": "FINALIZADO",
+  "EM_CONFERENCIA": "CONFERENCIA",
+  "CONFERIR_COMPROVANTE": "CONFERENCIA",
 };
 
 export function getStageIndex(stage: string): number {
@@ -242,4 +244,4 @@ export function StageProgress({ currentStage, className }: StageProgressProps) {
   );
 }
 
-export { STAGES };
+export { STAGES, STAGE_MAPPING };
