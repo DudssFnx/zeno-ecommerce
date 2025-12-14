@@ -445,15 +445,17 @@ export async function registerRoutes(
         ordersData = await storage.getOrders();
       }
       
-      // Fetch customer info for each order
+      // Fetch customer info and item count for each order
       const ordersWithCustomers = await Promise.all(
         ordersData.map(async (order) => {
           const customer = await storage.getUser(order.userId);
+          const orderItems = await storage.getOrderItems(order.id);
           return {
             ...order,
             customerName: customer ? 
               (customer.tradingName || customer.company || `${customer.firstName || ''} ${customer.lastName || ''}`.trim() || customer.email) 
               : order.userId.substring(0, 8) + "...",
+            items: orderItems,
           };
         })
       );
