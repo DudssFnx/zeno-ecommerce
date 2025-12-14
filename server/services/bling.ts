@@ -389,15 +389,52 @@ async function fetchProductDetailsWithRetry(productId: number): Promise<BlingPro
   return null;
 }
 
+async function fetchProductListWithRetry(page: number, limit: number): Promise<BlingProductBasic[]> {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      return await fetchBlingProductsList(page, limit);
+    } catch (error) {
+      const message = String(error);
+      if (message.includes("429")) {
+        const waitTime = Math.pow(2, attempt) * 3000 + Math.random() * 2000;
+        console.log(`Rate limit on product list page ${page}, attempt ${attempt + 1}/5, waiting ${(waitTime/1000).toFixed(1)}s...`);
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+      } else {
+        throw error;
+      }
+    }
+  }
+  throw new Error(`Failed to fetch product list page ${page} after 5 retries`);
+}
+
+async function fetchCategoriesWithRetry(): Promise<BlingCategory[]> {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      return await fetchBlingCategories();
+    } catch (error) {
+      const message = String(error);
+      if (message.includes("429")) {
+        const waitTime = Math.pow(2, attempt) * 3000 + Math.random() * 2000;
+        console.log(`Rate limit on categories, attempt ${attempt + 1}/5, waiting ${(waitTime/1000).toFixed(1)}s...`);
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+      } else {
+        throw error;
+      }
+    }
+  }
+  throw new Error("Failed to fetch categories after 5 retries");
+}
+
 export async function syncProducts(): Promise<{ created: number; updated: number; errors: string[] }> {
   const startTime = Date.now();
   let basicProducts: BlingProductBasic[] = [];
   let page = 1;
   const limit = 100;
   
-  console.log("Fetching product list from Bling...");
+  console.log("Fetching product list from Bling (with rate limit handling)...");
   while (true) {
-    const pageProducts = await fetchBlingProductsList(page, limit);
+    await new Promise(resolve => setTimeout(resolve, 600));
+    const pageProducts = await fetchProductListWithRetry(page, limit);
     if (pageProducts.length === 0) break;
     
     for (const p of pageProducts) {
@@ -405,16 +442,17 @@ export async function syncProducts(): Promise<{ created: number; updated: number
         basicProducts.push(p);
       }
     }
+    console.log(`Page ${page}: ${pageProducts.length} products (${basicProducts.length} active total)`);
     
     if (pageProducts.length < limit) break;
     page++;
-    await new Promise(resolve => setTimeout(resolve, 350));
   }
   
   console.log(`Found ${basicProducts.length} active products.`);
 
+  await new Promise(resolve => setTimeout(resolve, 1000));
   console.log("Fetching categories from Bling for mapping...");
-  const blingCategories = await fetchBlingCategories();
+  const blingCategories = await fetchCategoriesWithRetry();
   const blingCatIdToName: Record<number, string> = {};
   blingCategories.forEach(bc => {
     blingCatIdToName[bc.id] = bc.descricao;
@@ -431,16 +469,16 @@ export async function syncProducts(): Promise<{ created: number; updated: number
   });
   console.log(`Loaded ${Object.keys(categoryMap).length} local categories`);
 
-  console.log(`Fetching product details with 2 parallel workers (respecting rate limit)...`);
+  console.log(`Fetching product details sequentially (1 req per 600ms = ~1.6 req/s)...`);
   const productIds = basicProducts.map(p => p.id);
   const blingProducts = await runWithConcurrency(
     productIds,
     async (id) => {
-      await new Promise(resolve => setTimeout(resolve, 400));
+      await new Promise(resolve => setTimeout(resolve, 600));
       return fetchProductDetailsWithRetry(id);
     },
-    2,
-    (done, total) => { if (done % 100 === 0) console.log(`Fetched ${done}/${total} product details...`); }
+    1,
+    (done, total) => { if (done % 50 === 0) console.log(`Fetched ${done}/${total} product details...`); }
   );
   console.log(`Fetched all product details.`);
 
