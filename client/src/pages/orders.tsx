@@ -188,6 +188,7 @@ export default function OrdersPage() {
     customer: order.customerName || order.userId.substring(0, 8) + "...",
     date: format(new Date(order.createdAt), "MMM d, yyyy"),
     status: order.status as Order["status"],
+    stage: order.stage || "PENDENTE_IMPRESSAO",
     total: parseFloat(order.total),
     itemCount: order.items?.length || 0,
     printed: order.printed || false,
@@ -251,6 +252,19 @@ export default function OrdersPage() {
     },
   });
 
+  const updateStageMutation = useMutation({
+    mutationFn: async ({ orderId, stage }: { orderId: string; stage: string }) => {
+      await apiRequest("PATCH", `/api/orders/${orderId}/stage`, { stage });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/orders'] });
+      toast({ title: "Sucesso", description: "Etapa atualizada" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Erro", description: err.message || "Falha ao atualizar etapa", variant: "destructive" });
+    },
+  });
+
   const handlePrintOrder = (order: Order) => {
     printOrderMutation.mutate(order.id);
   };
@@ -261,6 +275,10 @@ export default function OrdersPage() {
 
   const handleInvoice = (order: Order) => {
     invoiceMutation.mutate(order.id);
+  };
+
+  const handleUpdateStage = (order: Order, stage: string) => {
+    updateStageMutation.mutate({ orderId: order.id, stage });
   };
 
   const handleSelectionChange = (orderId: string, selected: boolean) => {
@@ -851,6 +869,7 @@ export default function OrdersPage() {
               onViewOrder={(order) => console.log("View:", order.orderNumber)}
               onEditOrder={(order) => console.log("Edit:", order.orderNumber)}
               onUpdateStatus={handleUpdateStatus}
+              onUpdateStage={handleUpdateStage}
               onPrintOrder={handlePrintOrder}
               onReserveStock={handleReserveStock}
               onInvoice={handleInvoice}

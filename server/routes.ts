@@ -743,6 +743,7 @@ export async function registerRoutes(
         printed: true,
         printedAt: new Date(),
         printedBy: userId,
+        stage: 'IMPRESSO',
       });
       if (!order) {
         return res.status(404).json({ message: "Order not found" });
@@ -750,6 +751,28 @@ export async function registerRoutes(
       res.json(order);
     } catch (error) {
       res.status(500).json({ message: "Failed to mark order as printed" });
+    }
+  });
+
+  // Update order stage (etapa operacional)
+  app.patch('/api/orders/:id/stage', isAuthenticated, isAdminOrSales, async (req: any, res) => {
+    try {
+      const orderId = parseInt(req.params.id);
+      const { stage } = req.body;
+      
+      if (!stage) {
+        return res.status(400).json({ message: "Stage is required" });
+      }
+      
+      const result = await storage.updateOrderStage(orderId, stage);
+      if (!result.success) {
+        return res.status(400).json({ message: result.error });
+      }
+      
+      const order = await storage.getOrder(orderId);
+      res.json(order);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to update order stage" });
     }
   });
 

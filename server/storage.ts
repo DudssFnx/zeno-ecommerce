@@ -1587,7 +1587,7 @@ export class DatabaseStorage implements IStorage {
       }
       
       await db.update(orders)
-        .set({ status: 'PEDIDO_GERADO', reservedAt: new Date(), reservedBy: userId })
+        .set({ status: 'PEDIDO_GERADO', stage: 'SEPARADO', reservedAt: new Date(), reservedBy: userId })
         .where(eq(orders.id, orderId));
       
       return { success: true };

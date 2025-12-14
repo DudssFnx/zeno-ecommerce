@@ -12,6 +12,7 @@ export interface Order {
   customer: string;
   date: string;
   status: string;
+  stage: string;
   total: number;
   itemCount: number;
   printed?: boolean;
@@ -22,6 +23,7 @@ interface OrderTableProps {
   onViewOrder?: (order: Order) => void;
   onEditOrder?: (order: Order) => void;
   onUpdateStatus?: (order: Order, status: string) => void;
+  onUpdateStage?: (order: Order, stage: string) => void;
   onPrintOrder?: (order: Order) => void;
   onReserveStock?: (order: Order) => void;
   onInvoice?: (order: Order) => void;
@@ -31,11 +33,161 @@ interface OrderTableProps {
   onSelectAll?: (selected: boolean) => void;
 }
 
+function getStageBadge(stage: string) {
+  switch (stage) {
+    case "PENDENTE_IMPRESSAO":
+      return (
+        <Badge 
+          variant="outline" 
+          className="bg-yellow-50 dark:bg-yellow-950/30 text-yellow-700 dark:text-yellow-400 border-yellow-200 dark:border-yellow-800 text-xs"
+        >
+          Pendente Impressao
+        </Badge>
+      );
+    case "IMPRESSO":
+      return (
+        <Badge 
+          variant="outline" 
+          className="bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-800 text-xs gap-1"
+        >
+          <Check className="h-3 w-3" />
+          Impresso
+        </Badge>
+      );
+    case "SEPARADO":
+      return (
+        <Badge 
+          variant="outline" 
+          className="bg-purple-50 dark:bg-purple-950/30 text-purple-700 dark:text-purple-400 border-purple-200 dark:border-purple-800 text-xs gap-1"
+        >
+          <Check className="h-3 w-3" />
+          Separado
+        </Badge>
+      );
+    case "COBRADO":
+      return (
+        <Badge 
+          variant="outline" 
+          className="bg-orange-50 dark:bg-orange-950/30 text-orange-700 dark:text-orange-400 border-orange-200 dark:border-orange-800 text-xs gap-1"
+        >
+          <Check className="h-3 w-3" />
+          Cobrado
+        </Badge>
+      );
+    case "FINALIZADO":
+      return (
+        <Badge 
+          variant="outline" 
+          className="bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green-400 border-green-200 dark:border-green-800 text-xs gap-1"
+        >
+          <Check className="h-3 w-3" />
+          Finalizado
+        </Badge>
+      );
+    default:
+      return <span className="text-xs text-muted-foreground">{stage || "-"}</span>;
+  }
+}
+
+function getStageActions(
+  order: Order, 
+  onPrintOrder?: (order: Order) => void,
+  onReserveStock?: (order: Order) => void,
+  onUpdateStage?: (order: Order, stage: string) => void,
+  onInvoice?: (order: Order) => void
+) {
+  const { status, stage } = order;
+
+  if (status === "CANCELADO" || status === "PEDIDO_CANCELADO") {
+    return (
+      <Badge 
+        variant="outline" 
+        className="bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-400 border-red-200 dark:border-red-800 text-xs"
+      >
+        Cancelado
+      </Badge>
+    );
+  }
+
+  if (status === "FATURADO" || status === "PEDIDO_FATURADO") {
+    return getStageBadge("FINALIZADO");
+  }
+
+  switch (stage) {
+    case "PENDENTE_IMPRESSAO":
+      return (
+        <div className="flex items-center gap-2">
+          {getStageBadge(stage)}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => onPrintOrder?.(order)}
+            data-testid={`button-imprimir-${order.id}`}
+          >
+            <Printer className="h-3 w-3 mr-1" />
+            Imprimir
+          </Button>
+        </div>
+      );
+    case "IMPRESSO":
+      return (
+        <div className="flex items-center gap-2">
+          {getStageBadge(stage)}
+          <Button
+            variant="default"
+            size="sm"
+            className="bg-emerald-600 text-white font-semibold"
+            onClick={() => onReserveStock?.(order)}
+            data-testid={`button-separar-${order.id}`}
+          >
+            Eu Separei Pedido
+          </Button>
+        </div>
+      );
+    case "SEPARADO":
+      return (
+        <div className="flex items-center gap-2">
+          {getStageBadge(stage)}
+          <Button
+            variant="default"
+            size="sm"
+            className="bg-amber-600 text-white font-semibold"
+            onClick={() => onUpdateStage?.(order, "COBRADO")}
+            data-testid={`button-cobrar-${order.id}`}
+          >
+            <DollarSign className="h-3 w-3 mr-1" />
+            Cobrar
+          </Button>
+        </div>
+      );
+    case "COBRADO":
+      return (
+        <div className="flex items-center gap-2">
+          {getStageBadge(stage)}
+          <Button
+            variant="default"
+            size="sm"
+            onClick={() => onInvoice?.(order)}
+            data-testid={`button-faturar-${order.id}`}
+          >
+            <FileText className="h-3 w-3 mr-1" />
+            Faturar
+          </Button>
+        </div>
+      );
+    case "FINALIZADO":
+      return getStageBadge(stage);
+    default:
+      return getStageBadge(stage);
+  }
+}
+
 export function OrderTable({ 
   orders, 
   onViewOrder, 
   onEditOrder, 
   onUpdateStatus,
+  onUpdateStage,
   onPrintOrder,
   onReserveStock,
   onInvoice,
@@ -100,100 +252,7 @@ export function OrderTable({
                 <StatusBadge status={order.status as any} />
               </TableCell>
               <TableCell>
-                {order.status === "ORCAMENTO" && !order.printed ? (
-                  <div className="flex items-center gap-2">
-                    <Badge 
-                      variant="outline" 
-                      className="bg-yellow-50 dark:bg-yellow-950/30 text-yellow-700 dark:text-yellow-400 border-yellow-200 dark:border-yellow-800 text-xs"
-                    >
-                      Orçamento
-                    </Badge>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => onPrintOrder?.(order)}
-                      data-testid={`button-imprimir-${order.id}`}
-                    >
-                      <Printer className="h-3 w-3 mr-1" />
-                      Imprimir
-                    </Button>
-                  </div>
-                ) : order.status === "ORCAMENTO" && order.printed ? (
-                  <div className="flex items-center gap-2">
-                    <Badge 
-                      variant="outline" 
-                      className="bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-800 text-xs gap-1"
-                    >
-                      <Check className="h-3 w-3" />
-                      Impresso
-                    </Badge>
-                    <Button
-                      variant="default"
-                      size="sm"
-                      className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
-                      onClick={() => onReserveStock ? onReserveStock(order) : onUpdateStatus?.(order, "PEDIDO_GERADO")}
-                      data-testid={`button-separar-${order.id}`}
-                    >
-                      Eu Separei Pedido
-                    </Button>
-                  </div>
-                ) : order.status === "PEDIDO_GERADO" ? (
-                  <div className="flex items-center gap-2">
-                    <Badge 
-                      variant="outline" 
-                      className="bg-purple-50 dark:bg-purple-950/30 text-purple-700 dark:text-purple-400 border-purple-200 dark:border-purple-800 text-xs gap-1"
-                    >
-                      <Check className="h-3 w-3" />
-                      Separado
-                    </Badge>
-                    <Button
-                      variant="default"
-                      size="sm"
-                      className="bg-amber-600 hover:bg-amber-700 text-white font-semibold"
-                      onClick={() => onUpdateStatus?.(order, "COBRADO")}
-                      data-testid={`button-cobrar-${order.id}`}
-                    >
-                      <DollarSign className="h-3 w-3 mr-1" />
-                      Cobrar
-                    </Button>
-                  </div>
-                ) : order.status === "COBRADO" ? (
-                  <div className="flex items-center gap-2">
-                    <Badge 
-                      variant="outline" 
-                      className="bg-orange-50 dark:bg-orange-950/30 text-orange-700 dark:text-orange-400 border-orange-200 dark:border-orange-800 text-xs gap-1"
-                    >
-                      <Check className="h-3 w-3" />
-                      Cobrado
-                    </Badge>
-                    <Button
-                      variant="default"
-                      size="sm"
-                      onClick={() => onInvoice?.(order)}
-                      data-testid={`button-faturar-${order.id}`}
-                    >
-                      <FileText className="h-3 w-3 mr-1" />
-                      Faturar
-                    </Button>
-                  </div>
-                ) : order.status === "FATURADO" || order.status === "PEDIDO_FATURADO" ? (
-                  <Badge 
-                    variant="outline" 
-                    className="bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green-400 border-green-200 dark:border-green-800 text-xs gap-1"
-                  >
-                    <Check className="h-3 w-3" />
-                    Finalizado
-                  </Badge>
-                ) : order.status === "CANCELADO" || order.status === "PEDIDO_CANCELADO" ? (
-                  <Badge 
-                    variant="outline" 
-                    className="bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-400 border-red-200 dark:border-red-800 text-xs"
-                  >
-                    Cancelado
-                  </Badge>
-                ) : (
-                  <span className="text-xs text-muted-foreground">{order.status}</span>
-                )}
+                {getStageActions(order, onPrintOrder, onReserveStock, onUpdateStage, onInvoice)}
               </TableCell>
               <TableCell className="text-right font-medium">
                 R$ {order.total.toFixed(2)}
