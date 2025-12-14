@@ -258,27 +258,6 @@ export default function LandingPage() {
                   className="w-full h-full object-cover"
                   data-testid="img-banner-2"
                 />
-                <div className="absolute inset-0 bg-gradient-to-r from-black/60 to-transparent flex items-center">
-                  <div className="container mx-auto px-4">
-                    <div className="max-w-lg">
-                      <h2 className="text-2xl md:text-4xl font-bold text-white mb-2">
-                        Ofertas Especiais
-                      </h2>
-                      <p className="text-white/80 text-sm md:text-base mb-4">
-                        Confira nossas promocoes exclusivas
-                      </p>
-                      <Button 
-                        size="lg"
-                        onClick={() => setLocation("/catalogo")}
-                        className="bg-orange-500 hover:bg-orange-600"
-                        data-testid="button-ver-ofertas"
-                      >
-                        <ShoppingBag className="h-5 w-5 mr-2" />
-                        Ver Ofertas
-                      </Button>
-                    </div>
-                  </div>
-                </div>
               </div>
             </CarouselItem>
             <CarouselItem>
@@ -650,54 +629,48 @@ export default function LandingPage() {
         )}
       </section>
 
-      <section className="bg-zinc-900 text-white py-12">
+      <section className="bg-black text-white py-16">
         <div className="container mx-auto px-4">
           <div className="text-center max-w-2xl mx-auto">
-            <h2 className="text-2xl font-bold mb-4">Quer precos de atacado?</h2>
-            <p className="text-zinc-400 mb-6">
-              Faca seu cadastro e tenha acesso a precos exclusivos para revendedores
+            <img 
+              src={logoImage} 
+              alt="Lojamadrugadao" 
+              className="h-20 w-20 rounded-full mx-auto mb-6 border-2 border-white/20"
+            />
+            <h2 className="text-3xl md:text-4xl font-bold mb-4">@LOJAMADRUGADAO</h2>
+            <p className="text-zinc-400 mb-8">
+              Siga a gente e fique por dentro das novidades.
             </p>
-            <div className="flex flex-col sm:flex-row gap-3 justify-center">
-              <Button 
-                size="lg"
-                onClick={() => setLocation("/register")}
-                className="bg-orange-500 hover:bg-orange-600"
-                data-testid="button-cadastrar"
-              >
-                Solicitar Cadastro
-              </Button>
-              <Button 
-                size="lg"
-                variant="outline"
-                onClick={() => setLocation("/login")}
-                className="border-zinc-700 text-white hover:bg-zinc-800"
-                data-testid="button-entrar"
-              >
-                Ja tenho cadastro
-              </Button>
-            </div>
+            <Button 
+              size="lg"
+              onClick={() => window.open("https://instagram.com/lojamadrugadao", "_blank")}
+              className="bg-green-500 hover:bg-green-600 text-white font-bold px-8"
+              data-testid="button-seguir-instagram"
+            >
+              SEGUIR NO INSTAGRAM
+            </Button>
           </div>
         </div>
       </section>
 
-      <footer className="border-t py-6 bg-background">
+      <footer className="border-t py-4 bg-zinc-900 text-white">
         <div className="container mx-auto px-4">
           <div className="flex flex-col md:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-3">
               <img 
                 src={logoImage} 
                 alt="Lojamadrugadao" 
-                className="h-10 w-10 rounded-full"
+                className="h-8 w-8 rounded-full"
               />
               <div>
                 <p className="font-semibold text-sm">LOJAMADRUGADAO SAO PAULO</p>
-                <div className="flex items-center gap-1 text-muted-foreground text-xs">
+                <div className="flex items-center gap-1 text-zinc-400 text-xs">
                   <Phone className="h-3 w-3" />
                   <span>11 99294-0168</span>
                 </div>
               </div>
             </div>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs text-zinc-400">
               Precos de varejo. Para precos de atacado, faca login.
             </p>
           </div>
