@@ -340,6 +340,8 @@ function CategoryCard({
   isAdmin,
   onEdit,
   onDelete,
+  onToggleVarejo,
+  isTogglingVarejo,
 }: { 
   category: CategoryWithHierarchy; 
   depth?: number;
@@ -348,6 +350,8 @@ function CategoryCard({
   isAdmin: boolean;
   onEdit: (cat: Category) => void;
   onDelete: (cat: Category) => void;
+  onToggleVarejo: (cat: Category) => void;
+  isTogglingVarejo: boolean;
 }) {
   const Icon = getCategoryIcon(category.slug);
   const bgGradient = getCategoryColor(category.slug);
@@ -434,6 +438,21 @@ function CategoryCard({
                       <Button
                         size="icon"
                         variant="ghost"
+                        className={`h-7 w-7 ${category.hideFromVarejo ? 'text-orange-500' : 'text-muted-foreground'}`}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          onToggleVarejo(category);
+                        }}
+                        disabled={isTogglingVarejo}
+                        title={category.hideFromVarejo ? "Mostrar para Varejo" : "Ocultar do Varejo"}
+                        data-testid={`button-toggle-varejo-${category.id}`}
+                      >
+                        <EyeOff className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
                         className="h-7 w-7"
                         onClick={(e) => {
                           e.preventDefault();
@@ -478,6 +497,8 @@ function CategoryCard({
               isAdmin={isAdmin}
               onEdit={onEdit}
               onDelete={onDelete}
+              onToggleVarejo={onToggleVarejo}
+              isTogglingVarejo={isTogglingVarejo}
             />
           ))}
         </div>
@@ -577,6 +598,32 @@ export default function CategoriesPage() {
     setDialogOpen(true);
   };
 
+  const { toast } = useToast();
+
+  const toggleVarejoMutation = useMutation({
+    mutationFn: async (category: Category) => {
+      return apiRequest(`/api/categories/${category.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ hideFromVarejo: !category.hideFromVarejo }),
+      });
+    },
+    onSuccess: (_, category) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/categories'] });
+      toast({ 
+        title: category.hideFromVarejo 
+          ? "Categoria visivel para varejo" 
+          : "Categoria oculta do varejo" 
+      });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Erro ao atualizar categoria", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const handleToggleVarejo = (category: Category) => {
+    toggleVarejoMutation.mutate(category);
+  };
+
   const rootCategoriesCount = categoryTree.length;
   const subcategoriesCount = filteredCategories.length - rootCategoriesCount;
   const totalProducts = productsData.length;
@@ -666,6 +713,8 @@ export default function CategoriesPage() {
               isAdmin={isAdmin}
               onEdit={handleEdit}
               onDelete={handleDelete}
+              onToggleVarejo={handleToggleVarejo}
+              isTogglingVarejo={toggleVarejoMutation.isPending}
             />
           ))}
 
@@ -744,6 +793,20 @@ export default function CategoriesPage() {
                         </p>
                         {isAdmin && (
                           <div className="flex items-center gap-1">
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className={`h-7 w-7 ${category.hideFromVarejo ? 'text-orange-500' : 'text-muted-foreground'}`}
+                              onClick={(e) => {
+                                e.preventDefault();
+                                handleToggleVarejo(category);
+                              }}
+                              disabled={toggleVarejoMutation.isPending}
+                              title={category.hideFromVarejo ? "Mostrar para Varejo" : "Ocultar do Varejo"}
+                              data-testid={`button-toggle-varejo-${category.id}`}
+                            >
+                              <EyeOff className="h-3.5 w-3.5" />
+                            </Button>
                             <Button
                               size="icon"
                               variant="ghost"
