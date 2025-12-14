@@ -12,6 +12,7 @@ import {
   CarouselNext,
   type CarouselApi
 } from "@/components/ui/carousel";
+import Autoplay from "embla-carousel-autoplay";
 import { 
   Phone, 
   Store, 
@@ -236,6 +237,7 @@ export default function LandingPage() {
       <section className="relative">
         <Carousel 
           opts={{ loop: true }} 
+          plugins={[Autoplay({ delay: 4000, stopOnInteraction: false })]}
           className="w-full"
           data-testid="carousel-banner"
         >
