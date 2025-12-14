@@ -1622,8 +1622,8 @@ export class DatabaseStorage implements IStorage {
     try {
       const order = await this.getOrder(orderId);
       if (!order) return { success: false, error: 'Pedido não encontrado' };
-      if (order.status !== 'PEDIDO_GERADO') {
-        return { success: false, error: 'Pedido precisa estar com estoque reservado antes de faturar' };
+      if (order.status !== 'PEDIDO_GERADO' && order.status !== 'COBRADO') {
+        return { success: false, error: 'Pedido precisa estar separado ou cobrado antes de faturar' };
       }
       
       const orderItems = await this.getOrderItems(orderId);

@@ -193,11 +193,13 @@ export default function OrdersPage() {
     printed: order.printed || false,
   }));
 
-  const newStatuses = ["ORCAMENTO", "PEDIDO_GERADO", "FATURADO", "CANCELADO"];
+  const newStatuses = ["ORCAMENTO", "PEDIDO_GERADO", "COBRADO", "FATURADO", "PEDIDO_FATURADO", "CANCELADO", "PEDIDO_CANCELADO"];
   
   const filteredOrders = orders.filter((order) => {
     if (activeTab === "all") return true;
     if (activeTab === "legacy") return !newStatuses.includes(order.status);
+    if (activeTab === "FATURADO") return order.status === "FATURADO" || order.status === "PEDIDO_FATURADO";
+    if (activeTab === "CANCELADO") return order.status === "CANCELADO" || order.status === "PEDIDO_CANCELADO";
     return order.status === activeTab;
   });
 
@@ -758,7 +760,13 @@ export default function OrdersPage() {
                 onClick={() => handleBatchStatusChange('PEDIDO_GERADO')}
                 data-testid="batch-status-pedido-gerado"
               >
-                Gerar Pedido (Reservar Estoque)
+                Marcar como Separado
+              </DropdownMenuItem>
+              <DropdownMenuItem 
+                onClick={() => handleBatchStatusChange('COBRADO')}
+                data-testid="batch-status-cobrado"
+              >
+                Marcar como Cobrado
               </DropdownMenuItem>
               <DropdownMenuItem 
                 onClick={() => handleBatchStatusChange('FATURADO')}
@@ -808,13 +816,16 @@ export default function OrdersPage() {
             Orçamentos ({orders.filter(o => o.status === "ORCAMENTO").length})
           </TabsTrigger>
           <TabsTrigger value="PEDIDO_GERADO" data-testid="tab-pedido-gerado">
-            Pedidos ({orders.filter(o => o.status === "PEDIDO_GERADO").length})
+            Separados ({orders.filter(o => o.status === "PEDIDO_GERADO").length})
+          </TabsTrigger>
+          <TabsTrigger value="COBRADO" data-testid="tab-cobrado">
+            Cobrados ({orders.filter(o => o.status === "COBRADO").length})
           </TabsTrigger>
           <TabsTrigger value="FATURADO" data-testid="tab-faturado">
-            Faturados ({orders.filter(o => o.status === "FATURADO").length})
+            Finalizados ({orders.filter(o => o.status === "FATURADO" || o.status === "PEDIDO_FATURADO").length})
           </TabsTrigger>
           <TabsTrigger value="CANCELADO" data-testid="tab-cancelado">
-            Cancelados ({orders.filter(o => o.status === "CANCELADO").length})
+            Cancelados ({orders.filter(o => o.status === "CANCELADO" || o.status === "PEDIDO_CANCELADO").length})
           </TabsTrigger>
           <TabsTrigger value="legacy" data-testid="tab-legacy">
             Outros ({orders.filter(o => !newStatuses.includes(o.status)).length})
