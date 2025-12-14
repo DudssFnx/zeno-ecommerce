@@ -85,7 +85,11 @@ export default function CheckoutPage() {
   
   // Guest checkout state
   const [isGuestCheckout, setIsGuestCheckout] = useState(false);
+  const [showGuestForm, setShowGuestForm] = useState(false);
   const [guestCpf, setGuestCpf] = useState("");
+  const [guestName, setGuestName] = useState("");
+  const [guestPhone, setGuestPhone] = useState("");
+  const [guestEmail, setGuestEmail] = useState("");
 
   // Handle step from URL query parameter (after login/register redirect)
   useEffect(() => {
@@ -294,6 +298,9 @@ export default function CheckoutPage() {
       // Add guest info if guest checkout
       if (isGuestCheckout) {
         orderData.guestCpf = guestCpf;
+        orderData.guestName = guestName;
+        orderData.guestPhone = guestPhone;
+        orderData.guestEmail = guestEmail || null;
       }
 
       const endpoint = isGuestCheckout ? "/api/orders/guest" : "/api/orders";
@@ -504,63 +511,157 @@ export default function CheckoutPage() {
                     Identificacao
                   </CardTitle>
                   <CardDescription>
-                    Escolha como deseja continuar
+                    {showGuestForm ? "Preencha seus dados para continuar" : "Escolha como deseja continuar"}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
-                  <div className="grid md:grid-cols-3 gap-4">
-                    <Card className="hover-elevate cursor-pointer" onClick={handleLoginRedirect}>
-                      <CardContent className="pt-6 text-center">
-                        <User className="h-12 w-12 mx-auto mb-4 text-orange-500" />
-                        <h3 className="font-semibold mb-2">Ja tenho conta</h3>
-                        <p className="text-sm text-muted-foreground mb-4">
-                          Faca login para continuar
-                        </p>
-                        <Button variant="outline" className="w-full" data-testid="button-login-checkout">
-                          Entrar
-                        </Button>
-                      </CardContent>
-                    </Card>
+                  {!showGuestForm ? (
+                    <div className="grid md:grid-cols-3 gap-4">
+                      <Card className="hover-elevate cursor-pointer" onClick={handleLoginRedirect}>
+                        <CardContent className="pt-6 text-center">
+                          <User className="h-12 w-12 mx-auto mb-4 text-orange-500" />
+                          <h3 className="font-semibold mb-2">Ja tenho conta</h3>
+                          <p className="text-sm text-muted-foreground mb-4">
+                            Faca login para continuar
+                          </p>
+                          <Button variant="outline" className="w-full" data-testid="button-login-checkout">
+                            Entrar
+                          </Button>
+                        </CardContent>
+                      </Card>
 
-                    <Card className="hover-elevate cursor-pointer" onClick={handleContinueToRegister}>
-                      <CardContent className="pt-6 text-center">
-                        <User className="h-12 w-12 mx-auto mb-4 text-orange-500" />
-                        <h3 className="font-semibold mb-2">Criar conta</h3>
-                        <p className="text-sm text-muted-foreground mb-4">
-                          Cadastre-se para comprar
-                        </p>
-                        <Button variant="outline" className="w-full" data-testid="button-register-checkout">
-                          Cadastrar
-                        </Button>
-                      </CardContent>
-                    </Card>
+                      <Card className="hover-elevate cursor-pointer" onClick={handleContinueToRegister}>
+                        <CardContent className="pt-6 text-center">
+                          <User className="h-12 w-12 mx-auto mb-4 text-orange-500" />
+                          <h3 className="font-semibold mb-2">Criar conta</h3>
+                          <p className="text-sm text-muted-foreground mb-4">
+                            Cadastre-se para comprar
+                          </p>
+                          <Button variant="outline" className="w-full" data-testid="button-register-checkout">
+                            Cadastrar
+                          </Button>
+                        </CardContent>
+                      </Card>
 
-                    <Card 
-                      className="hover-elevate cursor-pointer border-orange-500/50" 
-                      onClick={() => {
-                        setIsGuestCheckout(true);
-                        setCurrentStep("frete");
-                      }}
-                    >
-                      <CardContent className="pt-6 text-center">
-                        <ShoppingCart className="h-12 w-12 mx-auto mb-4 text-orange-500" />
-                        <h3 className="font-semibold mb-2">Comprar sem cadastro</h3>
-                        <p className="text-sm text-muted-foreground mb-4">
-                          Informe apenas CPF e endereco
+                      <Card 
+                        className="hover-elevate cursor-pointer border-orange-500/50" 
+                        onClick={() => {
+                          setShowGuestForm(true);
+                          setIsGuestCheckout(true);
+                        }}
+                      >
+                        <CardContent className="pt-6 text-center">
+                          <ShoppingCart className="h-12 w-12 mx-auto mb-4 text-orange-500" />
+                          <h3 className="font-semibold mb-2">Comprar sem cadastro</h3>
+                          <p className="text-sm text-muted-foreground mb-4">
+                            Informe apenas seus dados
+                          </p>
+                          <Button className="w-full bg-orange-500 hover:bg-orange-600" data-testid="button-guest-checkout">
+                            Continuar
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      <div className="p-4 rounded-lg bg-orange-500/10 border border-orange-500/30 mb-4">
+                        <p className="text-sm text-orange-600 dark:text-orange-500 font-medium">
+                          Compra como visitante - preencha seus dados abaixo
                         </p>
-                        <Button className="w-full bg-orange-500 hover:bg-orange-600" data-testid="button-guest-checkout">
+                      </div>
+                      
+                      <div className="grid md:grid-cols-2 gap-4">
+                        <div>
+                          <Label htmlFor="guestName">Nome completo *</Label>
+                          <Input
+                            id="guestName"
+                            placeholder="Seu nome"
+                            value={guestName}
+                            onChange={(e) => setGuestName(e.target.value)}
+                            data-testid="input-guest-name"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="guestCpf">CPF *</Label>
+                          <Input
+                            id="guestCpf"
+                            placeholder="000.000.000-00"
+                            value={guestCpf}
+                            onChange={(e) => setGuestCpf(e.target.value)}
+                            data-testid="input-guest-cpf"
+                          />
+                        </div>
+                      </div>
+                      
+                      <div className="grid md:grid-cols-2 gap-4">
+                        <div>
+                          <Label htmlFor="guestPhone">Telefone *</Label>
+                          <Input
+                            id="guestPhone"
+                            placeholder="(11) 99999-9999"
+                            value={guestPhone}
+                            onChange={(e) => setGuestPhone(e.target.value)}
+                            data-testid="input-guest-phone"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="guestEmail">E-mail (opcional)</Label>
+                          <Input
+                            id="guestEmail"
+                            type="email"
+                            placeholder="seu@email.com"
+                            value={guestEmail}
+                            onChange={(e) => setGuestEmail(e.target.value)}
+                            data-testid="input-guest-email"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between gap-2 pt-4">
+                        <Button 
+                          variant="ghost" 
+                          onClick={() => {
+                            setShowGuestForm(false);
+                            setIsGuestCheckout(false);
+                          }}
+                        >
+                          <ArrowLeft className="h-4 w-4 mr-2" />
+                          Voltar
+                        </Button>
+                        <Button 
+                          className="bg-orange-500 hover:bg-orange-600"
+                          onClick={() => {
+                            if (!guestName.trim()) {
+                              toast({ title: "Informe seu nome", variant: "destructive" });
+                              return;
+                            }
+                            if (!guestCpf || guestCpf.replace(/\D/g, '').length !== 11) {
+                              toast({ title: "CPF invalido", description: "Informe um CPF valido com 11 digitos", variant: "destructive" });
+                              return;
+                            }
+                            if (!guestPhone.trim()) {
+                              toast({ title: "Informe seu telefone", variant: "destructive" });
+                              return;
+                            }
+                            setCurrentStep("frete");
+                          }}
+                          data-testid="button-guest-continue"
+                        >
                           Continuar
+                          <ArrowRight className="h-4 w-4 ml-2" />
                         </Button>
-                      </CardContent>
-                    </Card>
-                  </div>
+                      </div>
+                    </div>
+                  )}
 
-                  <div className="flex items-center gap-2">
-                    <Button variant="ghost" onClick={goToPreviousStep}>
-                      <ArrowLeft className="h-4 w-4 mr-2" />
-                      Voltar
-                    </Button>
-                  </div>
+                  {!showGuestForm && (
+                    <div className="flex items-center gap-2">
+                      <Button variant="ghost" onClick={goToPreviousStep}>
+                        <ArrowLeft className="h-4 w-4 mr-2" />
+                        Voltar
+                      </Button>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             )}
@@ -578,18 +679,9 @@ export default function CheckoutPage() {
                 </CardHeader>
                 <CardContent className="space-y-6">
                   {isGuestCheckout && (
-                    <div className="p-4 rounded-lg bg-orange-500/10 border border-orange-500/30">
-                      <Label htmlFor="guestCpf" className="text-orange-600 dark:text-orange-500 font-medium">CPF *</Label>
-                      <Input
-                        id="guestCpf"
-                        placeholder="000.000.000-00"
-                        value={guestCpf}
-                        onChange={(e) => setGuestCpf(e.target.value)}
-                        className="mt-2"
-                        data-testid="input-guest-cpf"
-                      />
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Necessario para emissao de nota fiscal
+                    <div className="p-4 rounded-lg bg-orange-500/10 border border-orange-500/30 mb-2">
+                      <p className="text-sm text-orange-600 dark:text-orange-500 font-medium">
+                        Compra como visitante: {guestName} - CPF: {guestCpf}
                       </p>
                     </div>
                   )}
