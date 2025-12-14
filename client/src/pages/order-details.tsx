@@ -1,3 +1,4 @@
+import { useState, useMemo } from "react";
 import { useParams, Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
@@ -6,12 +7,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, Loader2, Package, User, Calendar, FileText, DollarSign, Printer, MapPin, Download } from "lucide-react";
+import { ArrowLeft, Loader2, Package, User, Calendar, FileText, DollarSign, Printer, MapPin, Download, Pencil, Plus, Minus, Trash2, Search, X, AlertTriangle, ChevronDown } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import type { Order, OrderItem } from "@shared/schema";
+import type { Order, OrderItem, Product as SchemaProduct } from "@shared/schema";
 
 interface ProductInfo {
   id: number;
@@ -87,10 +89,50 @@ export default function OrderDetailsPage() {
   const { isAdmin, isSales } = useAuth();
   const { toast } = useToast();
   const canEditStatus = isAdmin || isSales;
+  
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [editItems, setEditItems] = useState<Map<number, { productId: number; quantity: number; price: string; product: ProductInfo }>>(new Map());
+  const [productSearch, setProductSearch] = useState("");
+  const [visibleItems, setVisibleItems] = useState(10);
+  const ITEMS_PER_LOAD = 30;
 
   const { data: orderData, isLoading } = useQuery<OrderWithDetails>({
     queryKey: ["/api/orders", orderId],
     enabled: !!orderId,
+  });
+
+  const { data: productsData } = useQuery<{ products: { id: number; name: string; sku: string; price: string; image: string | null }[] }>({
+    queryKey: ["/api/products"],
+    queryFn: async () => {
+      const res = await fetch('/api/products?limit=1000', { credentials: 'include' });
+      if (!res.ok) throw new Error('Failed to fetch products');
+      return res.json();
+    },
+    enabled: isEditMode,
+  });
+
+  const updateItemsMutation = useMutation({
+    mutationFn: async (items: { productId: number; quantity: number; price: string }[]) => {
+      const response = await apiRequest("PUT", `/api/orders/${orderId}/items`, { items });
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/orders", orderId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
+      setIsEditMode(false);
+      setEditItems(new Map());
+      toast({
+        title: "Pedido Atualizado",
+        description: "Os itens do pedido foram atualizados com sucesso.",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Erro",
+        description: error.message || "Não foi possível atualizar o pedido.",
+        variant: "destructive",
+      });
+    },
   });
 
   const updateStatusMutation = useMutation({
@@ -194,6 +236,98 @@ export default function OrderDetailsPage() {
     return parts;
   };
 
+  const canEditItems = orderData?.status === 'ORCAMENTO_CONCLUIDO' || orderData?.status === 'ORCAMENTO_ABERTO';
+  const isFaturado = orderData?.status === 'PEDIDO_FATURADO';
+  const isPedidoGerado = orderData?.status === 'PEDIDO_GERADO';
+
+  const startEditMode = () => {
+    const initialItems = new Map<number, { productId: number; quantity: number; price: string; product: ProductInfo }>();
+    itemsWithProducts.forEach(item => {
+      initialItems.set(item.productId, {
+        productId: item.productId,
+        quantity: item.quantity,
+        price: item.price,
+        product: item.product,
+      });
+    });
+    setEditItems(initialItems);
+    setIsEditMode(true);
+  };
+
+  const cancelEditMode = () => {
+    setIsEditMode(false);
+    setEditItems(new Map());
+    setProductSearch("");
+  };
+
+  const updateEditItemQuantity = (productId: number, delta: number) => {
+    setEditItems(prev => {
+      const newMap = new Map(prev);
+      const item = newMap.get(productId);
+      if (item) {
+        const newQty = Math.max(1, item.quantity + delta);
+        newMap.set(productId, { ...item, quantity: newQty });
+      }
+      return newMap;
+    });
+  };
+
+  const removeEditItem = (productId: number) => {
+    setEditItems(prev => {
+      const newMap = new Map(prev);
+      newMap.delete(productId);
+      return newMap;
+    });
+  };
+
+  const addProductToEdit = (product: { id: number; name: string; sku: string; price: string; image: string | null }) => {
+    setEditItems(prev => {
+      const newMap = new Map(prev);
+      if (newMap.has(product.id)) {
+        const existing = newMap.get(product.id)!;
+        newMap.set(product.id, { ...existing, quantity: existing.quantity + 1 });
+      } else {
+        newMap.set(product.id, {
+          productId: product.id,
+          quantity: 1,
+          price: product.price,
+          product: { id: product.id, name: product.name, sku: product.sku, price: product.price, image: product.image },
+        });
+      }
+      return newMap;
+    });
+    setProductSearch("");
+  };
+
+  const saveEditItems = () => {
+    const items = Array.from(editItems.values()).map(item => ({
+      productId: item.productId,
+      quantity: item.quantity,
+      price: item.price,
+    }));
+    if (items.length === 0) {
+      toast({ title: "Erro", description: "O pedido deve ter pelo menos um item.", variant: "destructive" });
+      return;
+    }
+    updateItemsMutation.mutate(items);
+  };
+
+  const editTotal = useMemo(() => {
+    let total = 0;
+    editItems.forEach(item => {
+      total += parseFloat(item.price) * item.quantity;
+    });
+    return total;
+  }, [editItems]);
+
+  const filteredProducts = useMemo(() => {
+    if (!productsData?.products || !productSearch.trim()) return [];
+    const search = productSearch.toLowerCase();
+    return productsData.products
+      .filter(p => p.name.toLowerCase().includes(search) || p.sku.toLowerCase().includes(search))
+      .slice(0, 10);
+  }, [productsData?.products, productSearch]);
+
   return (
     <div className="p-6 lg:p-8 space-y-6">
       <div className="flex items-center gap-4 flex-wrap">
@@ -225,61 +359,176 @@ export default function OrderDetailsPage() {
 
       <div className="grid gap-6 md:grid-cols-3">
         <div className="md:col-span-2 space-y-6">
+          {isFaturado && (
+            <Card className="border-destructive/50 bg-destructive/5">
+              <CardContent className="flex items-center gap-3 py-4">
+                <AlertTriangle className="h-5 w-5 text-destructive flex-shrink-0" />
+                <p className="text-sm text-destructive font-medium" data-testid="alert-faturado">
+                  Pedidos faturados não podem ser modificados.
+                </p>
+              </CardContent>
+            </Card>
+          )}
+
+          {isPedidoGerado && (
+            <Card className="border-orange-500/50 bg-orange-500/5">
+              <CardContent className="flex items-center gap-3 py-4">
+                <AlertTriangle className="h-5 w-5 text-orange-600 dark:text-orange-400 flex-shrink-0" />
+                <p className="text-sm text-orange-700 dark:text-orange-300" data-testid="alert-gerado">
+                  Este pedido tem estoque reservado. Para editar, primeiro retorne o status para "Orçamento Enviado".
+                </p>
+              </CardContent>
+            </Card>
+          )}
+
           <Card>
             <CardHeader className="flex flex-row items-center justify-between gap-4 pb-4">
               <CardTitle className="flex items-center gap-2">
                 <Package className="h-5 w-5" />
                 Itens do Pedido
               </CardTitle>
-              <span className="text-sm text-muted-foreground">
-                {itemsWithProducts.length} {itemsWithProducts.length === 1 ? "item" : "itens"}
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">
+                  {isEditMode ? editItems.size : itemsWithProducts.length} {(isEditMode ? editItems.size : itemsWithProducts.length) === 1 ? "item" : "itens"}
+                </span>
+                {canEditStatus && canEditItems && !isEditMode && (
+                  <Button variant="outline" size="sm" onClick={startEditMode} data-testid="button-edit-items">
+                    <Pencil className="h-4 w-4 mr-2" />
+                    Editar
+                  </Button>
+                )}
+              </div>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                {itemsWithProducts.map((item) => (
-                  <div
-                    key={item.id}
-                    className="flex items-center gap-4"
-                    data-testid={`order-item-${item.id}`}
-                  >
-                    <div className="h-16 w-16 rounded-md bg-muted flex items-center justify-center overflow-hidden flex-shrink-0">
-                      {item.product?.image ? (
-                        <img
-                          src={item.product.image}
-                          alt={item.product.name}
-                          className="h-full w-full object-cover"
-                        />
-                      ) : (
-                        <Package className="h-6 w-6 text-muted-foreground" />
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium truncate" data-testid={`text-product-name-${item.id}`}>
-                        {item.product?.name || `Produto #${item.productId}`}
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        SKU: {item.product?.sku || "-"}
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <p className="font-medium" data-testid={`text-item-total-${item.id}`}>
-                        R$ {(parseFloat(item.price) * item.quantity).toFixed(2)}
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        {item.quantity}x R$ {parseFloat(item.price).toFixed(2)}
-                      </p>
-                    </div>
+              {isEditMode ? (
+                <div className="space-y-4">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Buscar produtos para adicionar..."
+                      value={productSearch}
+                      onChange={(e) => setProductSearch(e.target.value)}
+                      className="pl-9"
+                      data-testid="input-search-products"
+                    />
+                    {filteredProducts.length > 0 && (
+                      <div className="absolute z-10 w-full mt-1 bg-popover border rounded-md shadow-lg max-h-60 overflow-auto">
+                        {filteredProducts.map((product) => (
+                          <div
+                            key={product.id}
+                            className="flex items-center gap-3 p-3 cursor-pointer hover-elevate"
+                            onClick={() => addProductToEdit(product)}
+                            data-testid={`add-product-${product.id}`}
+                          >
+                            <div className="h-10 w-10 rounded bg-muted flex items-center justify-center overflow-hidden flex-shrink-0">
+                              {product.image ? (
+                                <img src={product.image} alt={product.name} className="h-full w-full object-cover" />
+                              ) : (
+                                <Package className="h-4 w-4 text-muted-foreground" />
+                              )}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="font-medium truncate text-sm">{product.name}</p>
+                              <p className="text-xs text-muted-foreground">{product.sku}</p>
+                            </div>
+                            <p className="text-sm font-medium">R$ {parseFloat(product.price).toFixed(2)}</p>
+                            <Plus className="h-4 w-4 text-muted-foreground" />
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                ))}
-              </div>
-              <Separator className="my-4" />
-              <div className="flex justify-between items-center">
-                <span className="font-medium">Total do Pedido</span>
-                <span className="text-lg font-semibold" data-testid="text-order-total">
-                  R$ {parseFloat(orderData.total).toFixed(2)}
-                </span>
-              </div>
+
+                  <Separator />
+
+                  {Array.from(editItems.values()).map((item) => (
+                    <div key={item.productId} className="flex items-center gap-4" data-testid={`edit-item-${item.productId}`}>
+                      <div className="h-16 w-16 rounded-md bg-muted flex items-center justify-center overflow-hidden flex-shrink-0">
+                        {item.product?.image ? (
+                          <img src={item.product.image} alt={item.product.name} className="h-full w-full object-cover" />
+                        ) : (
+                          <Package className="h-6 w-6 text-muted-foreground" />
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium truncate">{item.product?.name}</p>
+                        <p className="text-sm text-muted-foreground">SKU: {item.product?.sku}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button variant="outline" size="icon" onClick={() => updateEditItemQuantity(item.productId, -1)} data-testid={`btn-decrease-${item.productId}`}>
+                          <Minus className="h-4 w-4" />
+                        </Button>
+                        <span className="w-10 text-center font-medium">{item.quantity}</span>
+                        <Button variant="outline" size="icon" onClick={() => updateEditItemQuantity(item.productId, 1)} data-testid={`btn-increase-${item.productId}`}>
+                          <Plus className="h-4 w-4" />
+                        </Button>
+                      </div>
+                      <div className="text-right w-24">
+                        <p className="font-medium">R$ {(parseFloat(item.price) * item.quantity).toFixed(2)}</p>
+                        <p className="text-xs text-muted-foreground">R$ {parseFloat(item.price).toFixed(2)}/un</p>
+                      </div>
+                      <Button variant="ghost" size="icon" onClick={() => removeEditItem(item.productId)} data-testid={`btn-remove-${item.productId}`}>
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    </div>
+                  ))}
+
+                  {editItems.size === 0 && (
+                    <p className="text-center text-muted-foreground py-4">Nenhum item no pedido. Adicione produtos acima.</p>
+                  )}
+
+                  <Separator />
+
+                  <div className="flex justify-between items-center">
+                    <span className="font-medium">Novo Total</span>
+                    <span className="text-lg font-semibold">R$ {editTotal.toFixed(2)}</span>
+                  </div>
+
+                  <div className="flex gap-2 pt-2">
+                    <Button variant="outline" onClick={cancelEditMode} className="flex-1" data-testid="button-cancel-edit">
+                      <X className="h-4 w-4 mr-2" />
+                      Cancelar
+                    </Button>
+                    <Button onClick={saveEditItems} disabled={updateItemsMutation.isPending} className="flex-1" data-testid="button-save-edit">
+                      {updateItemsMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+                      Salvar Alterações
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="space-y-4">
+                    {itemsWithProducts.map((item) => (
+                      <div key={item.id} className="flex items-center gap-4" data-testid={`order-item-${item.id}`}>
+                        <div className="h-16 w-16 rounded-md bg-muted flex items-center justify-center overflow-hidden flex-shrink-0">
+                          {item.product?.image ? (
+                            <img src={item.product.image} alt={item.product.name} className="h-full w-full object-cover" />
+                          ) : (
+                            <Package className="h-6 w-6 text-muted-foreground" />
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium truncate" data-testid={`text-product-name-${item.id}`}>
+                            {item.product?.name || `Produto #${item.productId}`}
+                          </p>
+                          <p className="text-sm text-muted-foreground">SKU: {item.product?.sku || "-"}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-medium" data-testid={`text-item-total-${item.id}`}>
+                            R$ {(parseFloat(item.price) * item.quantity).toFixed(2)}
+                          </p>
+                          <p className="text-sm text-muted-foreground">{item.quantity}x R$ {parseFloat(item.price).toFixed(2)}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <Separator className="my-4" />
+                  <div className="flex justify-between items-center">
+                    <span className="font-medium">Total do Pedido</span>
+                    <span className="text-lg font-semibold" data-testid="text-order-total">R$ {parseFloat(orderData.total).toFixed(2)}</span>
+                  </div>
+                </>
+              )}
             </CardContent>
           </Card>
 

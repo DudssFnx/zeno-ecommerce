@@ -42,14 +42,14 @@ export function CartDrawer({ isAuthenticated = false }: CartDrawerProps) {
       clearCart();
       closeCart();
       toast({
-        title: "Pedido Criado",
-        description: `Pedido ${data.orderNumber} foi enviado com sucesso.`,
+        title: "Orçamento Criado",
+        description: `Orçamento ${data.orderNumber} foi criado com sucesso.`,
       });
     },
     onError: (error: Error) => {
       toast({
-        title: "Falha no Pedido",
-        description: error.message || "Falha ao criar pedido. Por favor, tente novamente.",
+        title: "Falha no Orçamento",
+        description: error.message || "Falha ao criar orçamento. Por favor, tente novamente.",
         variant: "destructive",
       });
     },
@@ -154,7 +154,7 @@ export function CartDrawer({ isAuthenticated = false }: CartDrawerProps) {
                     data-testid="button-generate-order"
                   >
                     {createOrderMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                    Gerar Pedido
+                    Gerar Orçamento
                   </Button>
                 ) : (
                   <Button 

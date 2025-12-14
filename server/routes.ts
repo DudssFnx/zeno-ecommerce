@@ -811,6 +811,75 @@ export async function registerRoutes(
     }
   });
 
+  app.put('/api/orders/:id/items', isAuthenticated, isAdminOrSales, async (req: any, res) => {
+    try {
+      const orderId = parseInt(req.params.id);
+      const { items } = req.body;
+      
+      if (!items || !Array.isArray(items) || items.length === 0) {
+        return res.status(400).json({ message: "O pedido deve ter pelo menos um item" });
+      }
+      
+      const existingOrder = await storage.getOrder(orderId);
+      if (!existingOrder) {
+        return res.status(404).json({ message: "Pedido não encontrado" });
+      }
+      
+      if (existingOrder.status === 'PEDIDO_FATURADO') {
+        return res.status(400).json({ message: "Pedidos faturados não podem ser modificados" });
+      }
+      
+      if (existingOrder.status === 'PEDIDO_GERADO') {
+        return res.status(400).json({ message: "Pedidos com estoque reservado não podem ser editados. Retorne para Orçamento Enviado primeiro." });
+      }
+      
+      if (existingOrder.status !== 'ORCAMENTO_CONCLUIDO' && existingOrder.status !== 'ORCAMENTO_ABERTO') {
+        return res.status(400).json({ message: "Apenas orçamentos podem ser editados" });
+      }
+      
+      const validatedItems: { productId: number; quantity: number; price: string }[] = [];
+      let newTotal = 0;
+      
+      for (const item of items) {
+        if (!item.productId || typeof item.productId !== 'number') {
+          return res.status(400).json({ message: "ID do produto inválido" });
+        }
+        if (!item.quantity || typeof item.quantity !== 'number' || item.quantity < 1 || !Number.isInteger(item.quantity)) {
+          return res.status(400).json({ message: "Quantidade deve ser um número inteiro positivo" });
+        }
+        
+        const product = await storage.getProduct(item.productId);
+        if (!product) {
+          return res.status(400).json({ message: `Produto ${item.productId} não encontrado` });
+        }
+        
+        const price = product.price;
+        validatedItems.push({ productId: item.productId, quantity: item.quantity, price });
+        newTotal += parseFloat(price) * item.quantity;
+      }
+      
+      await db.delete(orderItems).where(eq(orderItems.orderId, orderId));
+      
+      for (const item of validatedItems) {
+        await db.insert(orderItems).values({
+          orderId,
+          productId: item.productId,
+          quantity: item.quantity,
+          price: item.price,
+        });
+      }
+      
+      await storage.updateOrder(orderId, { total: newTotal.toFixed(2) });
+      
+      const updatedOrder = await storage.getOrder(orderId);
+      const updatedItems = await storage.getOrderItems(orderId);
+      res.json({ ...updatedOrder, items: updatedItems });
+    } catch (error) {
+      console.error("Error updating order items:", error);
+      res.status(500).json({ message: "Falha ao atualizar itens do pedido" });
+    }
+  });
+
   app.post('/api/orders/:id/invoice', isAuthenticated, isAdminOrSales, async (req: any, res) => {
     try {
       const userId = req.user?.claims?.sub;
