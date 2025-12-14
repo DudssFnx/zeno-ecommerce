@@ -9,7 +9,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { Order as SchemaOrder, Product, User } from "@shared/schema";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, Legend } from "recharts";
 
 interface OrderWithItems extends SchemaOrder {
   items?: { id: number; quantity: number }[];
@@ -33,6 +33,10 @@ interface AdminSalesStats {
   monthlyRevenue: Array<{ month: string; revenue: number; orders: number }>;
   topProducts: Array<{ productId: number; name: string; totalQuantity: number; totalValue: number }>;
   ordersByStatus: Array<{ status: string; count: number }>;
+  dailySales: Array<{ day: string; revenue: number; orders: number }>;
+  salesByCategory: Array<{ categoryId: number; categoryName: string; totalValue: number; totalQuantity: number }>;
+  customerPositivation: { totalCustomers: number; activeThisMonth: number; newThisMonth: number };
+  salesEvolution: Array<{ month: string; revenue: number; orders: number; avgTicket: number }>;
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -264,6 +268,42 @@ export default function DashboardPage() {
         </div>
       )}
 
+      {isAdmin && adminStats?.customerPositivation && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Total de Clientes</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold" data-testid="stat-total-customers">{adminStats.customerPositivation.totalCustomers}</div>
+              <p className="text-xs text-muted-foreground">Clientes cadastrados</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Clientes Ativos (Mes)</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-green-600" data-testid="stat-active-customers">{adminStats.customerPositivation.activeThisMonth}</div>
+              <p className="text-xs text-muted-foreground">
+                {adminStats.customerPositivation.totalCustomers > 0 
+                  ? `${((adminStats.customerPositivation.activeThisMonth / adminStats.customerPositivation.totalCustomers) * 100).toFixed(1)}% positivacao`
+                  : 'Positivacao'}
+              </p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Clientes Novos (Mes)</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-blue-600" data-testid="stat-new-customers">{adminStats.customerPositivation.newThisMonth}</div>
+              <p className="text-xs text-muted-foreground">Novos cadastros</p>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
           <CardHeader className="pb-3">
@@ -342,6 +382,44 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       </div>
+
+      {isAdmin && adminStats?.salesByCategory && adminStats.salesByCategory.length > 0 && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-lg flex items-center gap-2">
+              <PieChartIcon className="h-5 w-5 text-muted-foreground" />
+              Vendas por Categoria
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="h-[280px]" data-testid="chart-sales-by-category">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={adminStats.salesByCategory.map(c => ({ name: c.categoryName, value: c.totalValue }))}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={50}
+                    outerRadius={80}
+                    paddingAngle={2}
+                    dataKey="value"
+                    label={({ name, percent }) => `${name.substring(0, 12)}${name.length > 12 ? '...' : ''} ${(percent * 100).toFixed(0)}%`}
+                    labelLine={false}
+                  >
+                    {adminStats.salesByCategory.map((_, index) => (
+                      <Cell key={`cat-${index}`} fill={STATUS_COLORS[index % STATUS_COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip 
+                    formatter={(value: number) => [`R$ ${value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, 'Faturamento']}
+                    contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))' }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader className="pb-3">

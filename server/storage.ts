@@ -751,6 +751,10 @@ export class DatabaseStorage implements IStorage {
     monthlyRevenue: Array<{ month: string; revenue: number; orders: number }>;
     topProducts: Array<{ productId: number; name: string; totalQuantity: number; totalValue: number }>;
     ordersByStatus: Array<{ status: string; count: number }>;
+    dailySales: Array<{ day: string; revenue: number; orders: number }>;
+    salesByCategory: Array<{ categoryId: number; categoryName: string; totalValue: number; totalQuantity: number }>;
+    customerPositivation: { totalCustomers: number; activeThisMonth: number; newThisMonth: number };
+    salesEvolution: Array<{ month: string; revenue: number; orders: number; avgTicket: number }>;
   }> {
     const allOrders = await db.select().from(orders);
     const completedStatuses = ['PEDIDO_FATURADO', 'FATURADO', 'completed'];
@@ -810,7 +814,102 @@ export class DatabaseStorage implements IStorage {
         .slice(0, 10);
     }
 
-    return { totalRevenue, totalOrders, completedOrders, pendingOrders, averageOrderValue, monthlyRevenue, topProducts, ordersByStatus };
+    // Daily sales (current month)
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const dailyMap = new Map<string, { revenue: number; orders: number }>();
+    for (const o of faturadoOrders) {
+      const date = new Date(o.createdAt);
+      if (date >= startOfMonth) {
+        const key = `${date.getDate()}`;
+        const curr = dailyMap.get(key) || { revenue: 0, orders: 0 };
+        curr.revenue += parseFloat(o.total);
+        curr.orders += 1;
+        dailyMap.set(key, curr);
+      }
+    }
+    const dailySales = Array.from(dailyMap.entries())
+      .map(([day, data]) => ({ day, ...data }))
+      .sort((a, b) => parseInt(a.day) - parseInt(b.day));
+
+    // Sales by category
+    const allCategories = await db.select().from(categories);
+    const categoryNameMap = new Map<number, string>();
+    allCategories.forEach(c => categoryNameMap.set(c.id, c.name));
+    
+    let salesByCategory: Array<{ categoryId: number; categoryName: string; totalValue: number; totalQuantity: number }> = [];
+    if (faturadoOrderIds.length > 0) {
+      const itemsWithCategory = await db.select({
+        productId: orderItems.productId,
+        quantity: orderItems.quantity,
+        price: orderItems.price,
+        categoryId: products.categoryId,
+      }).from(orderItems)
+        .leftJoin(products, eq(orderItems.productId, products.id))
+        .where(sql`${orderItems.orderId} IN (${sql.join(faturadoOrderIds.map(id => sql`${id}`), sql`, `)})`);
+
+      const catMap = new Map<number, { totalValue: number; totalQuantity: number }>();
+      for (const item of itemsWithCategory) {
+        const catId = item.categoryId || 0;
+        const curr = catMap.get(catId) || { totalValue: 0, totalQuantity: 0 };
+        curr.totalQuantity += item.quantity;
+        curr.totalValue += item.quantity * parseFloat(item.price);
+        catMap.set(catId, curr);
+      }
+      salesByCategory = Array.from(catMap.entries())
+        .map(([categoryId, data]) => ({ 
+          categoryId, 
+          categoryName: categoryNameMap.get(categoryId) || 'Sem Categoria',
+          ...data 
+        }))
+        .sort((a, b) => b.totalValue - a.totalValue)
+        .slice(0, 10);
+    }
+
+    // Customer positivation (customers who made orders this month)
+    const allUsers = await db.select().from(users).where(eq(users.role, 'customer'));
+    const totalCustomers = allUsers.length;
+    
+    const thisMonthOrders = allOrders.filter(o => {
+      const date = new Date(o.createdAt);
+      return date >= startOfMonth && o.userId;
+    });
+    const activeCustomersThisMonth = new Set(thisMonthOrders.map(o => o.userId));
+    const activeThisMonth = activeCustomersThisMonth.size;
+    
+    const newCustomersThisMonth = allUsers.filter(u => {
+      const created = new Date(u.createdAt);
+      return created >= startOfMonth;
+    });
+    const newThisMonth = newCustomersThisMonth.length;
+    
+    const customerPositivation = { totalCustomers, activeThisMonth, newThisMonth };
+
+    // Sales evolution (last 12 months for comparison)
+    const salesEvolutionMap = new Map<string, { revenue: number; orders: number }>();
+    for (const o of faturadoOrders) {
+      const date = new Date(o.createdAt);
+      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      const curr = salesEvolutionMap.get(key) || { revenue: 0, orders: 0 };
+      curr.revenue += parseFloat(o.total);
+      curr.orders += 1;
+      salesEvolutionMap.set(key, curr);
+    }
+    const salesEvolution = Array.from(salesEvolutionMap.entries())
+      .map(([month, data]) => ({ 
+        month, 
+        revenue: data.revenue, 
+        orders: data.orders,
+        avgTicket: data.orders > 0 ? data.revenue / data.orders : 0
+      }))
+      .sort((a, b) => a.month.localeCompare(b.month))
+      .slice(-12);
+
+    return { 
+      totalRevenue, totalOrders, completedOrders, pendingOrders, averageOrderValue, 
+      monthlyRevenue, topProducts, ordersByStatus,
+      dailySales, salesByCategory, customerPositivation, salesEvolution
+    };
   }
 
   async getCustomerAnalytics(): Promise<CustomerAnalyticsData> {
