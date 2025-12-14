@@ -1,13 +1,11 @@
 import { useState } from "react";
 import { OrderTable, type Order } from "@/components/OrderTable";
-import { KanbanBoard } from "@/components/KanbanBoard";
-import { STAGE_MAPPING } from "@/components/StatusBadge";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Download, RefreshCw, Loader2, Package, Eye, Plus, Trash2, Search, X, User as UserIcon, Printer, Edit2, LayoutGrid, Table as TableIcon } from "lucide-react";
+import { Download, RefreshCw, Loader2, Package, Eye, Plus, Trash2, Search, X, User as UserIcon, Printer, Edit2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -75,7 +73,6 @@ export default function OrdersPage() {
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [productSearch, setProductSearch] = useState("");
   const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set());
-  const [viewMode, setViewMode] = useState<"table" | "kanban">("table");
 
   const showAllOrders = isAdmin || isSales;
 
@@ -185,22 +182,17 @@ export default function OrdersPage() {
 
   const cartTotal = cartItems.reduce((sum, item) => sum + (parseFloat(item.product.price) * item.quantity), 0);
 
-  const normalizeStage = (stage: string): string => STAGE_MAPPING[stage] || stage;
-
-  const orders: Order[] = ordersData.map((order: any) => {
-    const rawStage = order.stage || "PENDENTE_IMPRESSAO";
-    return {
-      id: String(order.id),
-      orderNumber: order.orderNumber,
-      customer: order.customerName || order.userId.substring(0, 8) + "...",
-      date: format(new Date(order.createdAt), "MMM d, yyyy"),
-      status: order.status as Order["status"],
-      stage: normalizeStage(rawStage),
-      total: parseFloat(order.total),
-      itemCount: order.items?.length || 0,
-      printed: order.printed || false,
-    };
-  });
+  const orders: Order[] = ordersData.map((order: any) => ({
+    id: String(order.id),
+    orderNumber: order.orderNumber,
+    customer: order.customerName || order.userId.substring(0, 8) + "...",
+    date: format(new Date(order.createdAt), "MMM d, yyyy"),
+    status: order.status as Order["status"],
+    stage: order.printed ? "IMPRESSO" : "AGUARDANDO_IMPRESSAO",
+    total: parseFloat(order.total),
+    itemCount: order.items?.length || 0,
+    printed: order.printed || false,
+  }));
 
   const newStatuses = ["ORCAMENTO", "PEDIDO_GERADO", "COBRADO", "FATURADO", "PEDIDO_FATURADO", "CANCELADO", "PEDIDO_CANCELADO"];
   
@@ -836,51 +828,26 @@ export default function OrdersPage() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <div className="flex items-center justify-between gap-4 flex-wrap mb-4">
-          <TabsList className="flex-wrap">
-            <TabsTrigger value="all" data-testid="tab-all">Todos ({orders.length})</TabsTrigger>
-            <TabsTrigger value="ORCAMENTO" data-testid="tab-orcamento">
-              Orçamentos ({orders.filter(o => o.status === "ORCAMENTO").length})
-            </TabsTrigger>
-            <TabsTrigger value="PEDIDO_GERADO" data-testid="tab-pedido-gerado">
-              Separados ({orders.filter(o => o.status === "PEDIDO_GERADO").length})
-            </TabsTrigger>
-            <TabsTrigger value="COBRADO" data-testid="tab-cobrado">
-              Cobrados ({orders.filter(o => o.status === "COBRADO").length})
-            </TabsTrigger>
-            <TabsTrigger value="FATURADO" data-testid="tab-faturado">
-              Finalizados ({orders.filter(o => o.status === "FATURADO" || o.status === "PEDIDO_FATURADO").length})
-            </TabsTrigger>
-            <TabsTrigger value="CANCELADO" data-testid="tab-cancelado">
-              Cancelados ({orders.filter(o => o.status === "CANCELADO" || o.status === "PEDIDO_CANCELADO").length})
-            </TabsTrigger>
-            <TabsTrigger value="legacy" data-testid="tab-legacy">
-              Outros ({orders.filter(o => !newStatuses.includes(o.status)).length})
-            </TabsTrigger>
-          </TabsList>
-          <div className="flex items-center gap-2">
-            <Button
-              variant={viewMode === "table" ? "default" : "outline"}
-              size="sm"
-              onClick={() => setViewMode("table")}
-              data-testid="button-view-table"
-            >
-              <TableIcon className="h-4 w-4 mr-2" />
-              Tabela
-            </Button>
-            <Button
-              variant={viewMode === "kanban" ? "default" : "outline"}
-              size="sm"
-              onClick={() => setViewMode("kanban")}
-              data-testid="button-view-kanban"
-            >
-              <LayoutGrid className="h-4 w-4 mr-2" />
-              Kanban
-            </Button>
-          </div>
-        </div>
+        <TabsList className="flex-wrap">
+          <TabsTrigger value="all" data-testid="tab-all">Todos ({orders.length})</TabsTrigger>
+          <TabsTrigger value="ORCAMENTO" data-testid="tab-orcamento">
+            Orçamentos ({orders.filter(o => o.status === "ORCAMENTO").length})
+          </TabsTrigger>
+          <TabsTrigger value="PEDIDO_GERADO" data-testid="tab-pedido-gerado">
+            Pedidos Gerados ({orders.filter(o => o.status === "PEDIDO_GERADO").length})
+          </TabsTrigger>
+          <TabsTrigger value="FATURADO" data-testid="tab-faturado">
+            Faturados ({orders.filter(o => o.status === "FATURADO" || o.status === "PEDIDO_FATURADO").length})
+          </TabsTrigger>
+          <TabsTrigger value="CANCELADO" data-testid="tab-cancelado">
+            Cancelados ({orders.filter(o => o.status === "CANCELADO" || o.status === "PEDIDO_CANCELADO").length})
+          </TabsTrigger>
+          <TabsTrigger value="legacy" data-testid="tab-legacy">
+            Outros ({orders.filter(o => !newStatuses.includes(o.status)).length})
+          </TabsTrigger>
+        </TabsList>
 
-        <TabsContent value={activeTab} className="mt-2">
+        <TabsContent value={activeTab} className="mt-6">
           {isLoading ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -889,12 +856,6 @@ export default function OrdersPage() {
             <div className="text-center py-12 text-muted-foreground">
               Nenhum pedido encontrado
             </div>
-          ) : viewMode === "kanban" ? (
-            <KanbanBoard
-              orders={filteredOrders}
-              onOrderClick={(order) => window.location.href = `/orders/${order.id}`}
-              onStageChange={(order, stage) => handleUpdateStage(order, stage)}
-            />
           ) : (
             <OrderTable
               orders={filteredOrders}
@@ -902,13 +863,6 @@ export default function OrdersPage() {
               selectedOrderIds={selectedOrders}
               onSelectionChange={handleSelectionChange}
               onSelectAll={handleSelectAll}
-              onViewOrder={(order) => console.log("View:", order.orderNumber)}
-              onEditOrder={(order) => console.log("Edit:", order.orderNumber)}
-              onUpdateStatus={handleUpdateStatus}
-              onUpdateStage={handleUpdateStage}
-              onPrintOrder={handlePrintOrder}
-              onReserveStock={handleReserveStock}
-              onInvoice={handleInvoice}
             />
           )}
         </TabsContent>

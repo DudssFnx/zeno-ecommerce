@@ -15,18 +15,7 @@ export type OrderStatus =
 
 export type OrderStage =
   | "AGUARDANDO_IMPRESSAO"
-  | "PEDIDO_IMPRESSO"
-  | "PEDIDO_SEPARADO"
-  | "COBRADO"
-  | "CONFERENCIA"
-  | "AGUARDANDO_ENVIO"
-  | "FINALIZADO"
-  | "PENDENTE_IMPRESSAO"
-  | "IMPRESSO"
-  | "SEPARADO"
-  | "CONFERIR_COMPROVANTE"
-  | "EM_CONFERENCIA"
-  | "PEDIDO_ENVIADO";
+  | "IMPRESSO";
 
 export type UserStatus = "pending" | "approved" | "rejected";
 
@@ -164,84 +153,43 @@ export function StatusBadge({ status, className }: StatusBadgeProps) {
   );
 }
 
-const STAGES = [
-  { key: "AGUARDANDO_IMPRESSAO", label: "Aguardando Impressão", shortLabel: "Impressão" },
-  { key: "PEDIDO_IMPRESSO", label: "Impresso", shortLabel: "Impresso" },
-  { key: "PEDIDO_SEPARADO", label: "Separado", shortLabel: "Separado" },
-  { key: "COBRADO", label: "Cobrado", shortLabel: "Cobrado" },
-  { key: "CONFERENCIA", label: "Conferência", shortLabel: "Conferência" },
-  { key: "AGUARDANDO_ENVIO", label: "Aguardando Envio", shortLabel: "Envio" },
-  { key: "FINALIZADO", label: "Finalizado", shortLabel: "Finalizado" },
-];
-
-const STAGE_MAPPING: Record<string, string> = {
-  "PENDENTE_IMPRESSAO": "AGUARDANDO_IMPRESSAO",
-  "IMPRESSO": "PEDIDO_IMPRESSO",
-  "SEPARADO": "PEDIDO_SEPARADO",
-  "PEDIDO_ENVIADO": "FINALIZADO",
-  "EM_CONFERENCIA": "CONFERENCIA",
-  "CONFERIR_COMPROVANTE": "CONFERENCIA",
-};
-
-export function getStageIndex(stage: string): number {
-  const normalizedStage = STAGE_MAPPING[stage] || stage;
-  const index = STAGES.findIndex(s => s.key === normalizedStage);
-  return index >= 0 ? index : 0;
-}
-
-export function getNextStage(currentStage: string): string | null {
-  const normalizedStage = STAGE_MAPPING[currentStage] || currentStage;
-  const currentIndex = getStageIndex(normalizedStage);
-  if (currentIndex < STAGES.length - 1) {
-    return STAGES[currentIndex + 1].key;
-  }
-  return null;
-}
-
-export function getStageLabel(stage: string): string {
-  const normalizedStage = STAGE_MAPPING[stage] || stage;
-  const stageConfig = STAGES.find(s => s.key === normalizedStage);
-  return stageConfig?.label || stage;
-}
-
-interface StageProgressProps {
-  currentStage: string;
+interface StageBadgeProps {
+  printed: boolean;
   className?: string;
 }
 
-export function StageProgress({ currentStage, className }: StageProgressProps) {
-  const currentIndex = getStageIndex(currentStage);
+export function StageBadge({ printed, className }: StageBadgeProps) {
+  if (printed) {
+    return (
+      <Badge 
+        variant="outline"
+        className={cn(
+          "text-xs font-medium gap-1 border",
+          "bg-emerald-100 dark:bg-emerald-900/40",
+          "text-emerald-700 dark:text-emerald-300",
+          "border-emerald-300 dark:border-emerald-700",
+          className
+        )}
+        data-testid="badge-stage-impresso"
+      >
+        Impresso
+      </Badge>
+    );
+  }
 
   return (
-    <div className={cn("flex items-center gap-1", className)}>
-      {STAGES.map((stage, index) => {
-        const isCompleted = index < currentIndex;
-        const isCurrent = index === currentIndex;
-        
-        return (
-          <div key={stage.key} className="flex items-center">
-            <div 
-              className={cn(
-                "w-2 h-2 rounded-full transition-all",
-                isCompleted && "bg-emerald-500 dark:bg-emerald-400",
-                isCurrent && "bg-blue-500 dark:bg-blue-400 ring-2 ring-blue-200 dark:ring-blue-800",
-                !isCompleted && !isCurrent && "bg-muted-foreground/30"
-              )}
-              title={stage.label}
-            />
-            {index < STAGES.length - 1 && (
-              <div 
-                className={cn(
-                  "w-3 h-0.5",
-                  index < currentIndex ? "bg-emerald-500 dark:bg-emerald-400" : "bg-muted-foreground/30"
-                )}
-              />
-            )}
-          </div>
-        );
-      })}
-    </div>
+    <Badge 
+      variant="outline"
+      className={cn(
+        "text-xs font-medium gap-1 border",
+        "bg-amber-100 dark:bg-amber-900/40",
+        "text-amber-700 dark:text-amber-300",
+        "border-amber-300 dark:border-amber-700",
+        className
+      )}
+      data-testid="badge-stage-aguardando"
+    >
+      Aguardando impressão
+    </Badge>
   );
 }
-
-export { STAGES, STAGE_MAPPING };
