@@ -291,16 +291,27 @@ export async function registerRoutes(
       const limit = req.query.limit ? parseInt(req.query.limit as string) : 50;
       const result = await storage.getProducts({ categoryId, search, page, limit });
       
+      // Get categories hidden from varejo
+      const allCategories = await storage.getCategories();
+      const hiddenCategoryIds = new Set(
+        allCategories.filter(c => c.hideFromVarejo).map(c => c.id)
+      );
+      
+      // Filter out products from hidden categories
+      const visibleProducts = result.products.filter(p => 
+        !p.categoryId || !hiddenCategoryIds.has(p.categoryId)
+      );
+      
       // Apply retail markup (40%) to all prices for public view
-      const productsWithRetailPrice = result.products.map(p => ({
+      const productsWithRetailPrice = visibleProducts.map(p => ({
         ...p,
         price: (parseFloat(p.price) * (1 + RETAIL_MARKUP)).toFixed(2),
-        basePrice: p.price, // Keep base price for reference (hidden from public)
       }));
       
       res.json({
         ...result,
-        products: productsWithRetailPrice.map(({ basePrice, ...rest }) => rest), // Remove basePrice from response
+        products: productsWithRetailPrice,
+        total: visibleProducts.length,
       });
     } catch (error) {
       console.error("Error fetching public products:", error);
