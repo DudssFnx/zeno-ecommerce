@@ -1,0 +1,121 @@
+Indicadores para todos os momentos da sua estratégia comercial
+
+VENDAS
+Quantidade ou valor vendido de um produto ou categoria
+Expansão
+Acompanhe a performance de vendas dos seus produtos e categorias.
+
+Valor diário em vendas de produtos
+Expansão
+Acompanhe o valor ou quantidade de uma categoria ou produto em cada dia do mês.
+
+Valor vendido em produtos comparado por vendedor
+Expansão
+Compare por vendedor o valor ou quantidade vendida no mês.
+
+Quantidade vendida em produtos comparado por categoria
+Expansão
+Compare por categoria de produto o valor ou quantidade vendida no mês.
+
+Evolução das vendas de um produto ou categoria
+Expansão
+Acompanhe o quanto já foi vendido dos produtos ou categorias e a previsão do resultado do mês, comparando com as vendas do ano e meses anteriores.
+
+Evolução de vendasAntigo
+Expansão
+Acompanhe o quanto já foi vendido e a previsão do resultado do mês, comparando com as vendas do ano e meses anteriores.
+
+POSITIVAÇÃO
+Positivação de clientes específica
+Aquisição
+Fidelização
+Acompanhe o número de clientes que fizeram pedidos no mês de um vendedor, plataforma ou situação de carteira específicos.
+
+Positivação de clientes diária
+Aquisição
+Fidelização
+Acompanhe o número de clientes que fizeram pedidos em cada dia do mês.
+
+Positivação de novos clientes comparada por vendedor
+Aquisição
+Compare por vendedor o número de novos clientes ativos que fizeram pedidos no mês.
+
+Positivação de clientes ativos comparada por vendedor
+Fidelização
+Compare por vendedor o número de clientes ativos que fizeram pedidos no mês.
+
+Positivação de clientes da categoria ou produto específico
+Expansão
+Acompanhe a quantidade de clientes positivados em uma categoria ou produto específico.
+
+Positivação de uma categoria ou produto diária
+Expansão
+Acompanhe quantos clientes compraram uma categoria ou produto em cada dia do mês.
+
+Positivação de clientes da categoria ou produto por vendedor
+Expansão
+Compare por vendedor o número de clientes positivados que compraram uma categoria ou produto no mês.
+
+Positivação de clientes por categoria de produto
+Expansão
+Compare por categoria de produto o número de clientes positivados no mês.
+
+Positivação de clientes geral
+Aquisição
+Fidelização
+Acompanhe o número de clientes que fizeram pedidos no mês e qual a situação destes clientes antes da positivação.
+
+FATURAMENTO
+Faturamento específico
+Expansão
+Acompanhe o faturamento da empresa ou tipo de pedido específico.
+
+Faturamento diário
+Expansão
+Acompanhe o valor faturado em cada dia do mês.
+
+Faturamento total
+Expansão
+Acompanhe o faturamento da empresa comparado com o ano anterior.
+
+Faturamento comparado por vendedor
+Expansão
+Compare por vendedor o valor faturado no mês.
+
+Evolução do faturamento
+Expansão
+Acompanhe o quanto já foi faturado e a previsão do resultado do mês, comparando com o faturamento do ano e meses anteriores.
+
+ATENDIMENTOS
+Volume de atendimentos
+Aquisição
+Fidelização
+Expansão
+Acompanhe os atendimentos realizados.
+
+Volume de atendimentos por vendedor
+Aquisição
+Fidelização
+Expansão
+Compare por vendedor os atendimentos realizados no mês.
+
+Volume de atendimentos diário
+Aquisição
+Fidelização
+Expansão
+Acompanhe o volume de atendimentos em cada dia do mês.
+
+OUTROS
+Situação de carteira
+Aquisição
+Fidelização
+Acompanhe a quantidade e a proporção de clientes ativos e inativos.
+
+Curva ABC de clientes
+Fidelização
+Acompanhe a concentração das vendas da sua empresa por meio das curvas A, B e C de clientes.
+
+Conversão do E-commerce
+Fidelização
+Aquisição
+Acompanhe a conversão das visitas recebidas no seu e-commerce em pedidos.

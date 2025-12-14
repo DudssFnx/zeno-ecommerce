@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 export type UserRole = "admin" | "sales" | "customer";
+export type CustomerType = "atacado" | "varejo";
 
 export interface UserData {
   id: string;
@@ -18,6 +19,7 @@ export interface UserData {
   email: string;
   company?: string;
   role: UserRole;
+  customerType: CustomerType;
   status: UserStatus;
 }
 
@@ -26,9 +28,10 @@ interface UserCardProps {
   onApprove?: (user: UserData) => void;
   onReject?: (user: UserData) => void;
   onChangeRole?: (user: UserData, role: UserRole) => void;
+  onChangeCustomerType?: (user: UserData, customerType: CustomerType) => void;
 }
 
-export function UserCard({ user, onApprove, onReject, onChangeRole }: UserCardProps) {
+export function UserCard({ user, onApprove, onReject, onChangeRole, onChangeCustomerType }: UserCardProps) {
   const initials = user.name
     .split(" ")
     .map((n) => n[0])
@@ -57,6 +60,11 @@ export function UserCard({ user, onApprove, onReject, onChangeRole }: UserCardPr
               <p className="text-sm text-muted-foreground">{user.company}</p>
             )}
             <p className="text-xs text-muted-foreground mt-1 capitalize">Função: {user.role}</p>
+            {user.role === "customer" && (
+              <p className="text-xs text-muted-foreground capitalize">
+                Tipo: {user.customerType === "atacado" ? "Atacado" : "Varejo"}
+              </p>
+            )}
           </div>
           <div className="flex items-center gap-1">
             {user.status === "pending" && (
@@ -97,6 +105,16 @@ export function UserCard({ user, onApprove, onReject, onChangeRole }: UserCardPr
                 <DropdownMenuItem onClick={() => onChangeRole?.(user, "customer")}>
                   Definir como Cliente
                 </DropdownMenuItem>
+                {user.role === "customer" && (
+                  <>
+                    <DropdownMenuItem onClick={() => onChangeCustomerType?.(user, "atacado")}>
+                      Tipo: Atacado
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => onChangeCustomerType?.(user, "varejo")}>
+                      Tipo: Varejo
+                    </DropdownMenuItem>
+                  </>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
           </div>

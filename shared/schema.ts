@@ -24,6 +24,7 @@ export const users = pgTable("users", {
   lastName: text("last_name"),
   profileImageUrl: text("profile_image_url"),
   role: text("role").notNull().default("customer"), // admin, sales, customer
+  customerType: text("customer_type").notNull().default("varejo"), // atacado, varejo
   company: text("company"),
   approved: boolean("approved").notNull().default(false),
   phone: text("phone"),

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { UserCard, type UserData, type UserRole } from "@/components/UserCard";
+import { UserCard, type UserData, type UserRole, type CustomerType } from "@/components/UserCard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -78,6 +78,7 @@ export default function UsersPage() {
     email: u.email || "",
     company: u.company || undefined,
     role: u.role as UserRole,
+    customerType: (u.customerType || "varejo") as CustomerType,
     status: u.approved ? "approved" : "pending" as UserStatus,
   }));
 
@@ -140,6 +141,20 @@ export default function UsersPage() {
         },
         onError: () => {
           toast({ title: "Erro", description: "Falha ao atualizar função", variant: "destructive" });
+        },
+      }
+    );
+  };
+
+  const handleChangeCustomerType = (user: UserData, customerType: CustomerType) => {
+    updateUserMutation.mutate(
+      { id: user.id, data: { customerType } },
+      {
+        onSuccess: () => {
+          toast({ title: "Tipo Atualizado", description: `${user.name} agora é ${customerType === "atacado" ? "Atacado" : "Varejo"}.` });
+        },
+        onError: () => {
+          toast({ title: "Erro", description: "Falha ao atualizar tipo de cliente", variant: "destructive" });
         },
       }
     );
@@ -283,6 +298,7 @@ export default function UsersPage() {
                   onApprove={handleApprove}
                   onReject={handleReject}
                   onChangeRole={handleChangeRole}
+                  onChangeCustomerType={handleChangeCustomerType}
                 />
               ))}
             </div>
