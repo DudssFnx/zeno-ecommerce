@@ -759,16 +759,14 @@ export class DatabaseStorage implements IStorage {
     customerPositivation: { totalCustomers: number; activeThisMonth: number; newThisMonth: number };
     salesEvolution: Array<{ month: string; revenue: number; orders: number; avgTicket: number }>;
   }> {
-    const allOrders = await db.select().from(orders);
-    const completedStatuses = ['PEDIDO_FATURADO', 'FATURADO', 'completed'];
-    const pendingStatuses = ['ORCAMENTO', 'pending'];
+    // Considerar apenas pedidos faturados para todas as métricas de análise
+    const faturadoOrders = await db.select().from(orders).where(eq(orders.status, 'PEDIDO_FATURADO'));
     
-    const faturadoOrders = allOrders.filter(o => completedStatuses.includes(o.status));
     const totalRevenue = faturadoOrders.reduce((sum, o) => sum + parseFloat(o.total), 0);
-    const totalOrders = allOrders.length;
+    const totalOrders = faturadoOrders.length;
     const completedOrders = faturadoOrders.length;
-    const pendingOrders = allOrders.filter(o => pendingStatuses.includes(o.status)).length;
-    const averageOrderValue = completedOrders > 0 ? totalRevenue / completedOrders : 0;
+    const pendingOrders = 0; // Não há pedidos pendentes na análise (apenas faturados)
+    const averageOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0;
 
     const monthlyMap = new Map<string, { revenue: number; orders: number }>();
     for (const o of faturadoOrders) {
@@ -784,12 +782,8 @@ export class DatabaseStorage implements IStorage {
       .sort((a, b) => a.month.localeCompare(b.month))
       .slice(-6);
 
-    const statusMap = new Map<string, number>();
-    for (const o of allOrders) {
-      statusMap.set(o.status, (statusMap.get(o.status) || 0) + 1);
-    }
-    const ordersByStatus = Array.from(statusMap.entries())
-      .map(([status, count]) => ({ status, count }));
+    // Apenas pedidos faturados - status único
+    const ordersByStatus = [{ status: 'PEDIDO_FATURADO', count: faturadoOrders.length }];
 
     const faturadoOrderIds = faturadoOrders.map(o => o.id);
     let topProducts: Array<{ productId: number; name: string; totalQuantity: number; totalValue: number }> = [];
@@ -869,15 +863,15 @@ export class DatabaseStorage implements IStorage {
         .slice(0, 10);
     }
 
-    // Customer positivation (customers who made orders this month)
+    // Customer positivation (customers who made orders this month) - apenas pedidos faturados
     const allUsers = await db.select().from(users).where(eq(users.role, 'customer'));
     const totalCustomers = allUsers.length;
     
-    const thisMonthOrders = allOrders.filter(o => {
+    const thisMonthFaturadoOrders = faturadoOrders.filter(o => {
       const date = new Date(o.createdAt);
       return date >= startOfMonth && o.userId;
     });
-    const activeCustomersThisMonth = new Set(thisMonthOrders.map(o => o.userId));
+    const activeCustomersThisMonth = new Set(thisMonthFaturadoOrders.map(o => o.userId));
     const activeThisMonth = activeCustomersThisMonth.size;
     
     const newCustomersThisMonth = allUsers.filter(u => {
