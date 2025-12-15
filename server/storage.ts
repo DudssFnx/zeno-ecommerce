@@ -663,7 +663,7 @@ export class DatabaseStorage implements IStorage {
     
     const totalSpent = userOrders.reduce((sum, o) => sum + parseFloat(o.total), 0);
     const totalOrders = userOrders.length;
-    const completedStatuses = ['PEDIDO_FATURADO', 'completed'];
+    const completedStatuses = ['FATURADO', 'completed'];
     const completedOrders = userOrders.filter(o => completedStatuses.includes(o.status)).length;
 
     const monthlyMap = new Map<string, { total: number; count: number }>();
@@ -760,7 +760,7 @@ export class DatabaseStorage implements IStorage {
     salesEvolution: Array<{ month: string; revenue: number; orders: number; avgTicket: number }>;
   }> {
     // Considerar apenas pedidos faturados para todas as métricas de análise
-    const faturadoOrders = await db.select().from(orders).where(eq(orders.status, 'PEDIDO_FATURADO'));
+    const faturadoOrders = await db.select().from(orders).where(eq(orders.status, 'FATURADO'));
     
     const totalRevenue = faturadoOrders.reduce((sum, o) => sum + parseFloat(o.total), 0);
     const totalOrders = faturadoOrders.length;
@@ -783,7 +783,7 @@ export class DatabaseStorage implements IStorage {
       .slice(-6);
 
     // Apenas pedidos faturados - status único
-    const ordersByStatus = [{ status: 'PEDIDO_FATURADO', count: faturadoOrders.length }];
+    const ordersByStatus = [{ status: 'FATURADO', count: faturadoOrders.length }];
 
     const faturadoOrderIds = faturadoOrders.map(o => o.id);
     let topProducts: Array<{ productId: number; name: string; totalQuantity: number; totalValue: number }> = [];
@@ -916,7 +916,7 @@ export class DatabaseStorage implements IStorage {
     const oneYearAgo = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
-    const allOrders = await db.select().from(orders).where(eq(orders.status, 'PEDIDO_FATURADO'));
+    const allOrders = await db.select().from(orders).where(eq(orders.status, 'FATURADO'));
     
     // Get all users who have made orders, not just role='customer'
     const userIdsWithOrders = [...new Set(allOrders.map(o => o.userId))];
@@ -1160,7 +1160,7 @@ export class DatabaseStorage implements IStorage {
 
     const allProducts = await db.select().from(products);
     const allCategories = await db.select().from(categories);
-    const allOrders = await db.select().from(orders).where(eq(orders.status, 'PEDIDO_FATURADO'));
+    const allOrders = await db.select().from(orders).where(eq(orders.status, 'FATURADO'));
     const faturadoOrderIds = new Set(allOrders.map(o => o.id));
     const allOrderItems = (await db.select().from(orderItems)).filter(item => faturadoOrderIds.has(item.orderId));
 
