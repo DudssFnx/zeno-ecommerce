@@ -757,7 +757,7 @@ export class DatabaseStorage implements IStorage {
     return { totalSpent, totalOrders, completedOrders, monthlyStats, topProducts, lastMonthProducts };
   }
 
-  async getAdminSalesStats(): Promise<{
+  async getAdminSalesStats(period?: 'day' | 'week' | 'month' | 'year' | 'all'): Promise<{
     totalRevenue: number;
     totalOrders: number;
     completedOrders: number;
@@ -768,11 +768,43 @@ export class DatabaseStorage implements IStorage {
     ordersByStatus: Array<{ status: string; count: number }>;
     dailySales: Array<{ day: string; revenue: number; orders: number }>;
     salesByCategory: Array<{ categoryId: number; categoryName: string; totalValue: number; totalQuantity: number }>;
-    customerPositivation: { totalCustomers: number; activeThisMonth: number; newThisMonth: number };
+    customerPositivation: { totalCustomers: number; activeThisPeriod: number; newThisPeriod: number };
     salesEvolution: Array<{ month: string; revenue: number; orders: number; avgTicket: number }>;
+    periodLabel: string;
   }> {
+    // Calculate period start date
+    const now = new Date();
+    let periodStart: Date;
+    let periodLabel: string;
+    
+    switch (period) {
+      case 'day':
+        periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        periodLabel = 'Hoje';
+        break;
+      case 'week':
+        const dayOfWeek = now.getDay();
+        periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dayOfWeek);
+        periodLabel = 'Esta Semana';
+        break;
+      case 'month':
+        periodStart = new Date(now.getFullYear(), now.getMonth(), 1);
+        periodLabel = 'Este Mes';
+        break;
+      case 'year':
+        periodStart = new Date(now.getFullYear(), 0, 1);
+        periodLabel = 'Este Ano';
+        break;
+      default:
+        periodStart = new Date(0); // All time
+        periodLabel = 'Todo Periodo';
+    }
+    
     // Considerar apenas pedidos faturados para todas as métricas de análise
-    const faturadoOrders = await db.select().from(orders).where(eq(orders.status, 'FATURADO'));
+    const allFaturadoOrders = await db.select().from(orders).where(eq(orders.status, 'FATURADO'));
+    
+    // Filter orders by period
+    const faturadoOrders = allFaturadoOrders.filter(o => new Date(o.createdAt) >= periodStart);
     
     const totalRevenue = faturadoOrders.reduce((sum, o) => sum + parseFloat(o.total), 0);
     const totalOrders = faturadoOrders.length;
@@ -823,19 +855,15 @@ export class DatabaseStorage implements IStorage {
         .slice(0, 10);
     }
 
-    // Daily sales (current month)
-    const now = new Date();
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    // Daily sales (within period)
     const dailyMap = new Map<string, { revenue: number; orders: number }>();
     for (const o of faturadoOrders) {
       const date = new Date(o.createdAt);
-      if (date >= startOfMonth) {
-        const key = `${date.getDate()}`;
-        const curr = dailyMap.get(key) || { revenue: 0, orders: 0 };
-        curr.revenue += parseFloat(o.total);
-        curr.orders += 1;
-        dailyMap.set(key, curr);
-      }
+      const key = `${date.getDate()}`;
+      const curr = dailyMap.get(key) || { revenue: 0, orders: 0 };
+      curr.revenue += parseFloat(o.total);
+      curr.orders += 1;
+      dailyMap.set(key, curr);
     }
     const dailySales = Array.from(dailyMap.entries())
       .map(([day, data]) => ({ day, ...data }))
@@ -875,24 +903,24 @@ export class DatabaseStorage implements IStorage {
         .slice(0, 10);
     }
 
-    // Customer positivation (customers who made orders this month) - apenas pedidos faturados
+    // Customer positivation (customers who made orders in the period) - apenas pedidos faturados
     const allUsers = await db.select().from(users).where(eq(users.role, 'customer'));
     const totalCustomers = allUsers.length;
     
-    const thisMonthFaturadoOrders = faturadoOrders.filter(o => {
+    const periodFaturadoOrders = faturadoOrders.filter(o => {
       const date = new Date(o.createdAt);
-      return date >= startOfMonth && o.userId;
+      return date >= periodStart && o.userId;
     });
-    const activeCustomersThisMonth = new Set(thisMonthFaturadoOrders.map(o => o.userId));
-    const activeThisMonth = activeCustomersThisMonth.size;
+    const activeCustomersPeriod = new Set(periodFaturadoOrders.map(o => o.userId));
+    const activeThisPeriod = activeCustomersPeriod.size;
     
-    const newCustomersThisMonth = allUsers.filter(u => {
+    const newCustomersPeriod = allUsers.filter(u => {
       const created = new Date(u.createdAt);
-      return created >= startOfMonth;
+      return created >= periodStart;
     });
-    const newThisMonth = newCustomersThisMonth.length;
+    const newThisPeriod = newCustomersPeriod.length;
     
-    const customerPositivation = { totalCustomers, activeThisMonth, newThisMonth };
+    const customerPositivation = { totalCustomers, activeThisPeriod, newThisPeriod };
 
     // Sales evolution (last 12 months for comparison)
     const salesEvolutionMap = new Map<string, { revenue: number; orders: number }>();
@@ -917,7 +945,7 @@ export class DatabaseStorage implements IStorage {
     return { 
       totalRevenue, totalOrders, completedOrders, pendingOrders, averageOrderValue, 
       monthlyRevenue, topProducts, ordersByStatus,
-      dailySales, salesByCategory, customerPositivation, salesEvolution
+      dailySales, salesByCategory, customerPositivation, salesEvolution, periodLabel
     };
   }
 

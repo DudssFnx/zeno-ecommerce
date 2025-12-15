@@ -978,7 +978,8 @@ export async function registerRoutes(
 
   app.get('/api/admin/sales-stats', isAuthenticated, isAdminOrSales, async (req: any, res) => {
     try {
-      const stats = await storage.getAdminSalesStats();
+      const period = req.query.period as 'day' | 'week' | 'month' | 'year' | 'all' | undefined;
+      const stats = await storage.getAdminSalesStats(period);
       res.json(stats);
     } catch (error) {
       console.error("Error fetching admin sales stats:", error);

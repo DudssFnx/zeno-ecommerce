@@ -1,8 +1,10 @@
+import { useState } from "react";
 import { StatCard } from "@/components/StatCard";
 import { OrderTable, type Order } from "@/components/OrderTable";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ShoppingCart, Package, ClipboardList, Users, ArrowRight, Loader2, TrendingUp, DollarSign, Calendar, BarChart3, PieChart as PieChartIcon } from "lucide-react";
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
@@ -35,9 +37,12 @@ interface AdminSalesStats {
   ordersByStatus: Array<{ status: string; count: number }>;
   dailySales: Array<{ day: string; revenue: number; orders: number }>;
   salesByCategory: Array<{ categoryId: number; categoryName: string; totalValue: number; totalQuantity: number }>;
-  customerPositivation: { totalCustomers: number; activeThisMonth: number; newThisMonth: number };
+  customerPositivation: { totalCustomers: number; activeThisPeriod: number; newThisPeriod: number };
   salesEvolution: Array<{ month: string; revenue: number; orders: number; avgTicket: number }>;
+  periodLabel: string;
 }
+
+type PeriodFilter = 'day' | 'week' | 'month' | 'year' | 'all';
 
 const STATUS_LABELS: Record<string, string> = {
   'ORCAMENTO_ABERTO': 'Orçamento Aberto',
@@ -61,6 +66,7 @@ export default function DashboardPage() {
   const { user, isAdmin, isSales } = useAuth();
   const showAllOrders = isAdmin || isSales;
   const isCustomer = !isAdmin && !isSales;
+  const [periodFilter, setPeriodFilter] = useState<PeriodFilter>('month');
 
   const { data: ordersData = [], isLoading: ordersLoading } = useQuery<OrderWithItems[]>({
     queryKey: ['/api/orders'],
@@ -82,7 +88,12 @@ export default function DashboardPage() {
   });
 
   const { data: adminStats, isLoading: adminStatsLoading } = useQuery<AdminSalesStats>({
-    queryKey: ['/api/admin/sales-stats'],
+    queryKey: ['/api/admin/sales-stats', periodFilter],
+    queryFn: async () => {
+      const res = await fetch(`/api/admin/sales-stats?period=${periodFilter}`, { credentials: 'include' });
+      if (!res.ok) throw new Error('Failed to fetch');
+      return res.json();
+    },
     enabled: isAdmin || isSales,
   });
 
@@ -216,9 +227,26 @@ export default function DashboardPage() {
 
   return (
     <div className="p-6 lg:p-8 space-y-8">
-      <div>
-        <h1 className="text-3xl font-semibold">Painel</h1>
-        <p className="text-muted-foreground mt-1">Bem-vindo, {user?.firstName || user?.email}</p>
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-semibold">Painel</h1>
+          <p className="text-muted-foreground mt-1">Bem-vindo, {user?.firstName || user?.email}</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Calendar className="h-4 w-4 text-muted-foreground" />
+          <Select value={periodFilter} onValueChange={(v) => setPeriodFilter(v as PeriodFilter)}>
+            <SelectTrigger className="w-[160px]" data-testid="select-period-filter">
+              <SelectValue placeholder="Periodo" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="day">Hoje</SelectItem>
+              <SelectItem value="week">Esta Semana</SelectItem>
+              <SelectItem value="month">Este Mes</SelectItem>
+              <SelectItem value="year">Este Ano</SelectItem>
+              <SelectItem value="all">Todo Periodo</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -281,23 +309,23 @@ export default function DashboardPage() {
           </Card>
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Clientes Ativos (Mes)</CardTitle>
+              <CardTitle className="text-sm font-medium text-muted-foreground">Clientes Ativos ({adminStats.periodLabel})</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-green-600" data-testid="stat-active-customers">{adminStats.customerPositivation.activeThisMonth}</div>
+              <div className="text-2xl font-bold text-green-600" data-testid="stat-active-customers">{adminStats.customerPositivation.activeThisPeriod}</div>
               <p className="text-xs text-muted-foreground">
                 {adminStats.customerPositivation.totalCustomers > 0 
-                  ? `${((adminStats.customerPositivation.activeThisMonth / adminStats.customerPositivation.totalCustomers) * 100).toFixed(1)}% positivacao`
+                  ? `${((adminStats.customerPositivation.activeThisPeriod / adminStats.customerPositivation.totalCustomers) * 100).toFixed(1)}% positivacao`
                   : 'Positivacao'}
               </p>
             </CardContent>
           </Card>
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Clientes Novos (Mes)</CardTitle>
+              <CardTitle className="text-sm font-medium text-muted-foreground">Clientes Novos ({adminStats.periodLabel})</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-blue-600" data-testid="stat-new-customers">{adminStats.customerPositivation.newThisMonth}</div>
+              <div className="text-2xl font-bold text-blue-600" data-testid="stat-new-customers">{adminStats.customerPositivation.newThisPeriod}</div>
               <p className="text-xs text-muted-foreground">Novos cadastros</p>
             </CardContent>
           </Card>
