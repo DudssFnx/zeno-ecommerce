@@ -891,7 +891,7 @@ export default function OrdersPage() {
               onSelectAll={handleSelectAll}
               onPrintOrder={handlePrintOrder}
               canEdit={showAllOrders}
-              onEditOrder={(order) => { window.location.href = `/orders/${order.id}/edit`; }}
+              onEditOrder={(order) => { window.location.href = `/orders/${order.id}`; }}
             />
           )}
         </TabsContent>

@@ -334,7 +334,7 @@ export default function CustomerAnalyticsPage() {
         <div>
           <h1 className="text-2xl lg:text-3xl font-bold" data-testid="text-page-title">Análise de Clientes</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Métricas e insights sobre sua base de clientes
+            Métricas baseadas apenas em pedidos faturados
           </p>
         </div>
         <Button variant="outline" onClick={() => refetch()} data-testid="button-refresh-analytics">

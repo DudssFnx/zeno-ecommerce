@@ -248,10 +248,17 @@ export default function ProductsPage() {
   };
 
   const openCloneDialog = (product: ProductData) => {
-    const uniqueSuffix = Date.now().toString(36).slice(-4).toUpperCase();
+    const baseSku = product.sku.replace(/-\d+$/, '');
+    const existingSkus = products.map(p => p.sku);
+    let counter = 1;
+    let newSku = `${baseSku}-${counter}`;
+    while (existingSkus.includes(newSku)) {
+      counter++;
+      newSku = `${baseSku}-${counter}`;
+    }
     form.reset({
       name: product.name + " (Cópia)",
-      sku: product.sku + "-" + uniqueSuffix,
+      sku: newSku,
       categoryId: product.categoryId ? String(product.categoryId) : "",
       brand: product.brand,
       price: product.price,
