@@ -1361,7 +1361,7 @@ export async function registerRoutes(
   app.get("/api/bling/categories/preview", isAuthenticated, isAdmin, async (req, res) => {
     try {
       const categories = await blingService.fetchBlingCategories();
-      res.json(categories);
+      res.json({ categories });
     } catch (error: any) {
       console.error("Bling fetch categories error:", error);
       res.status(500).json({ error: "Falha ao buscar categorias do Bling" });
@@ -1486,7 +1486,7 @@ export async function registerRoutes(
         page++;
       }
       
-      res.json(allProducts);
+      res.json({ products: allProducts });
     } catch (error: any) {
       console.error("Bling fetch products error:", error);
       res.status(500).json({ error: "Falha ao buscar produtos do Bling" });

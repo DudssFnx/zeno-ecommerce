@@ -1,0 +1,92 @@
+Ajustes e Novas Funcionalidades no Painel
+1. Problema na exibição de fotos
+
+As fotos dos produtos estão aparecendo de forma incorreta.
+Já houve alto consumo de créditos tentando corrigir e o problema permanece.
+É necessário ajustar definitivamente a exibição das imagens no sistema.
+
+2. Filtros em todas as análises
+
+Todas as análises do painel devem permitir filtros por:
+
+Dia
+
+Semana
+
+Mês
+
+Ano
+
+Esse padrão deve ser aplicado a todas as análises, sem exceção.
+
+3. Análise de usuários
+
+Adicionar no painel uma seção exclusiva de Análise de Usuários, com métricas de desempenho individual e geral.
+
+4. Ranking de usuários (performance)
+
+Sempre que um usuário alterar um pedido de Orçamento para Pedido Gerado, o sistema deve contabilizar +1 ponto para esse usuário.
+
+Com base nisso, criar um ranking de usuários.
+
+Ideias de métricas para o ranking:
+
+Quantidade de pedidos gerados
+
+Quantidade de pedidos faturados
+
+Taxa de conversão (orçamento → pedido)
+
+Tempo médio de conversão
+
+Valor total faturado
+
+Ranking por período (diário, semanal, mensal e geral)
+
+5. Integração com Bling – categorias
+
+Ao clicar em “Buscar categorias no Bling”, o sistema não retorna nenhuma categoria.
+É necessário revisar e corrigir essa integração.
+
+6. Agenda no painel
+
+Adicionar uma Agenda no painel do usuário para organização interna.
+
+Funcionalidades esperadas:
+
+Agendamento de contas a pagar
+
+Lembretes financeiros
+
+Tarefas operacionais
+
+Observações livres
+
+O objetivo é facilitar o controle e a rotina diária do usuário dentro do sistema.
+
+7. Dashboard de Compras (inteligência de reposição)
+
+Adicionar no painel uma seção chamada Compras, funcionando como uma dashboard de sugestões de compra para o usuário.
+
+Essa dashboard deve apresentar propostas inteligentes de reposição, com base em práticas já utilizadas por sistemas de gestão e ERPs.
+
+Ideias e critérios para essa área:
+
+Produtos com estoque baixo ou zerando
+
+Produtos com alta rotatividade / maior saída
+
+Sugestão de quantidade ideal para recompra (baseada no histórico)
+
+Alerta de ruptura de estoque
+
+Produtos mais vendidos por período (30 / 60 / 90 dias)
+
+Comparativo: estoque atual × média de vendas
+
+Destaque para produtos estratégicos ou de maior margem
+
+Filtro por categoria, marca e fornecedor
+
+Objetivo:
+Ajudar o usuário a comprar melhor, evitar falta de estoque e aumentar o faturamento, de forma simples e visual.
