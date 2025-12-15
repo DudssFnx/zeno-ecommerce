@@ -31,6 +31,7 @@ import CustomerAnalyticsPage from "@/pages/customer-analytics";
 import ProductAnalyticsPage from "@/pages/product-analytics";
 import PublicCatalogPage from "@/pages/public-catalog";
 import CheckoutPage from "@/pages/checkout";
+import { PWAInstallPrompt } from "@/components/PWAInstallPrompt";
 
 function AuthenticatedApp() {
   const { user, logout, isAdmin, isApproved } = useAuth();
@@ -153,6 +154,7 @@ function App() {
           <AuthProvider>
             <AppContent />
           </AuthProvider>
+          <PWAInstallPrompt />
           <Toaster />
         </TooltipProvider>
       </ThemeProvider>

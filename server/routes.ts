@@ -1098,12 +1098,13 @@ export async function registerRoutes(
       }
 
       const ext = file.originalname.split('.').pop() || 'jpg';
-      const filename = `products/${Date.now()}-${Math.random().toString(36).substring(2, 8)}.${ext}`;
+      const filename = `public/products/${Date.now()}-${Math.random().toString(36).substring(2, 8)}.${ext}`;
 
       const objectStorage = await getObjectStorage();
       await objectStorage.uploadFromBytes(filename, file.buffer);
 
-      const publicUrl = await objectStorage.getSignedDownloadUrl(filename);
+      const bucketId = process.env.DEFAULT_OBJECT_STORAGE_BUCKET_ID;
+      const publicUrl = `https://objectstorage.replit.app/${bucketId}/${filename}`;
       
       res.json({ 
         url: publicUrl,

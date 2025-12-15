@@ -111,6 +111,22 @@ export default function OrderDetailsPage() {
     enabled: isEditMode,
   });
 
+  const editTotal = useMemo(() => {
+    let total = 0;
+    editItems.forEach(item => {
+      total += parseFloat(item.price) * item.quantity;
+    });
+    return total;
+  }, [editItems]);
+
+  const filteredProducts = useMemo(() => {
+    if (!productsData?.products || !productSearch.trim()) return [];
+    const search = productSearch.toLowerCase();
+    return productsData.products
+      .filter(p => p.name.toLowerCase().includes(search) || p.sku.toLowerCase().includes(search))
+      .slice(0, 10);
+  }, [productsData?.products, productSearch]);
+
   const updateItemsMutation = useMutation({
     mutationFn: async (items: { productId: number; quantity: number; price: string }[]) => {
       const response = await apiRequest("PUT", `/api/orders/${orderId}/items`, { items });
@@ -311,22 +327,6 @@ export default function OrderDetailsPage() {
     }
     updateItemsMutation.mutate(items);
   };
-
-  const editTotal = useMemo(() => {
-    let total = 0;
-    editItems.forEach(item => {
-      total += parseFloat(item.price) * item.quantity;
-    });
-    return total;
-  }, [editItems]);
-
-  const filteredProducts = useMemo(() => {
-    if (!productsData?.products || !productSearch.trim()) return [];
-    const search = productSearch.toLowerCase();
-    return productsData.products
-      .filter(p => p.name.toLowerCase().includes(search) || p.sku.toLowerCase().includes(search))
-      .slice(0, 10);
-  }, [productsData?.products, productSearch]);
 
   return (
     <div className="p-6 lg:p-8 space-y-6">
