@@ -5,7 +5,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ShoppingCart, Package, ClipboardList, Users, ArrowRight, Loader2, TrendingUp, DollarSign, Calendar, BarChart3, PieChart as PieChartIcon } from "lucide-react";
+import { ShoppingCart, Package, ClipboardList, Users, ArrowRight, Loader2, TrendingUp, DollarSign, Calendar, BarChart3, PieChart as PieChartIcon, Crown, Award, AlertTriangle } from "lucide-react";
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import type { Order as SchemaOrder, Product, User } from "@shared/schema";
@@ -43,6 +43,47 @@ interface AdminSalesStats {
 }
 
 type PeriodFilter = 'day' | 'week' | 'month' | 'year' | 'all';
+
+interface CustomerRanking {
+  userId: string;
+  name: string;
+  company: string | null;
+  email: string | null;
+  totalRevenue: number;
+  orderCount: number;
+  avgTicket: number;
+  lastOrderDate: string | null;
+  daysSinceLastOrder: number;
+}
+
+interface InactiveCustomer {
+  userId: string;
+  name: string;
+  company: string | null;
+  email: string | null;
+  lastOrderDate: string;
+  daysSinceLastOrder: number;
+  churnRisk: 'low' | 'medium' | 'high';
+  totalSpent: number;
+  orderCount: number;
+}
+
+interface CustomerAnalyticsData {
+  topCustomersByRevenue: {
+    month: CustomerRanking[];
+    quarter: CustomerRanking[];
+    year: CustomerRanking[];
+  };
+  topCustomersByFrequency: CustomerRanking[];
+  inactiveCustomers: {
+    days7: InactiveCustomer[];
+    days15: InactiveCustomer[];
+    days30: InactiveCustomer[];
+    days60: InactiveCustomer[];
+    days90: InactiveCustomer[];
+  };
+  newCustomersThisMonth: CustomerRanking[];
+}
 
 const STATUS_LABELS: Record<string, string> = {
   'ORCAMENTO_ABERTO': 'Orçamento Aberto',
@@ -95,6 +136,11 @@ export default function DashboardPage() {
       return res.json();
     },
     enabled: isAdmin || isSales,
+  });
+
+  const { data: customerAnalytics, isLoading: customerAnalyticsLoading } = useQuery<CustomerAnalyticsData>({
+    queryKey: ['/api/admin/customer-analytics'],
+    enabled: isAdmin,
   });
 
   const recentOrders: Order[] = ordersData.slice(0, 5).map((order) => ({
@@ -481,6 +527,151 @@ export default function DashboardPage() {
           )}
         </CardContent>
       </Card>
+
+      {isAdmin && (
+        <div className="space-y-6">
+          <h2 className="text-xl font-semibold flex items-center gap-2">
+            <Users className="h-5 w-5 text-muted-foreground" />
+            Analise de Usuarios
+          </h2>
+          
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Crown className="h-5 w-5 text-yellow-500" />
+                  Top Clientes por Faturamento (Mes)
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {customerAnalyticsLoading ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                  </div>
+                ) : !customerAnalytics?.topCustomersByRevenue?.month?.length ? (
+                  <p className="text-muted-foreground text-sm py-4">Nenhum dado disponivel</p>
+                ) : (
+                  <div className="space-y-3">
+                    {customerAnalytics.topCustomersByRevenue.month.slice(0, 10).map((customer, idx) => (
+                      <div key={customer.userId} className="flex items-center justify-between gap-4 p-2 rounded-md bg-muted/50" data-testid={`top-customer-revenue-${customer.userId}`}>
+                        <div className="flex items-center gap-3">
+                          <span className={`text-sm font-bold w-6 ${idx < 3 ? 'text-yellow-500' : 'text-muted-foreground'}`}>{idx + 1}.</span>
+                          <div className="flex flex-col">
+                            <span className="text-sm font-medium truncate max-w-[160px]">{customer.company || customer.name}</span>
+                            <span className="text-xs text-muted-foreground">{customer.orderCount} pedidos</span>
+                          </div>
+                        </div>
+                        <div className="text-right flex-shrink-0">
+                          <span className="text-sm font-semibold">R$ {customer.totalRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Award className="h-5 w-5 text-blue-500" />
+                  Top Clientes por Frequencia
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {customerAnalyticsLoading ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                  </div>
+                ) : !customerAnalytics?.topCustomersByFrequency?.length ? (
+                  <p className="text-muted-foreground text-sm py-4">Nenhum dado disponivel</p>
+                ) : (
+                  <div className="space-y-3">
+                    {customerAnalytics.topCustomersByFrequency.slice(0, 10).map((customer, idx) => (
+                      <div key={customer.userId} className="flex items-center justify-between gap-4 p-2 rounded-md bg-muted/50" data-testid={`top-customer-frequency-${customer.userId}`}>
+                        <div className="flex items-center gap-3">
+                          <span className={`text-sm font-bold w-6 ${idx < 3 ? 'text-blue-500' : 'text-muted-foreground'}`}>{idx + 1}.</span>
+                          <div className="flex flex-col">
+                            <span className="text-sm font-medium truncate max-w-[160px]">{customer.company || customer.name}</span>
+                            <span className="text-xs text-muted-foreground">Ticket medio: R$ {customer.avgTicket.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                          </div>
+                        </div>
+                        <div className="text-right flex-shrink-0">
+                          <span className="text-sm font-semibold">{customer.orderCount} pedidos</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <AlertTriangle className="h-5 w-5 text-orange-500" />
+                Clientes Inativos (30+ dias)
+              </CardTitle>
+              <p className="text-xs text-muted-foreground">Clientes que nao fizeram pedidos nos ultimos 30 dias</p>
+            </CardHeader>
+            <CardContent>
+              {customerAnalyticsLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : !customerAnalytics?.inactiveCustomers?.days30?.length ? (
+                <p className="text-muted-foreground text-sm py-4">Nenhum cliente inativo</p>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {customerAnalytics.inactiveCustomers.days30.slice(0, 9).map((customer) => (
+                    <div key={customer.userId} className="flex flex-col gap-1 p-3 rounded-md bg-muted/50" data-testid={`inactive-customer-${customer.userId}`}>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-sm font-medium truncate max-w-[140px]">{customer.company || customer.name}</span>
+                        <span className={`text-xs px-2 py-0.5 rounded-full ${
+                          customer.churnRisk === 'high' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
+                          customer.churnRisk === 'medium' ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' :
+                          'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
+                        }`}>
+                          {customer.churnRisk === 'high' ? 'Alto risco' : customer.churnRisk === 'medium' ? 'Medio risco' : 'Baixo risco'}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-xs text-muted-foreground">
+                        <span>{customer.daysSinceLastOrder} dias sem comprar</span>
+                        <span>R$ {customer.totalSpent.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {customerAnalytics?.newCustomersThisMonth && customerAnalytics.newCustomersThisMonth.length > 0 && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Users className="h-5 w-5 text-green-500" />
+                  Novos Clientes Este Mes
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {customerAnalytics.newCustomersThisMonth.slice(0, 6).map((customer) => (
+                    <div key={customer.userId} className="flex items-center justify-between gap-4 p-3 rounded-md bg-muted/50" data-testid={`new-customer-${customer.userId}`}>
+                      <div className="flex flex-col">
+                        <span className="text-sm font-medium truncate max-w-[160px]">{customer.company || customer.name}</span>
+                        <span className="text-xs text-muted-foreground">{customer.orderCount} pedido(s)</span>
+                      </div>
+                      <span className="text-sm font-semibold">R$ {customer.totalRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
 
       <div className="space-y-4">
         <div className="flex items-center justify-between gap-4">
