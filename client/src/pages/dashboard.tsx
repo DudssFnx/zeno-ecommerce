@@ -28,6 +28,8 @@ interface PurchaseStats {
 
 interface AdminSalesStats {
   totalRevenue: number;
+  totalCost: number;
+  totalProfit: number;
   totalOrders: number;
   completedOrders: number;
   pendingOrders: number;
@@ -307,7 +309,7 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
         <StatCard
           title="Faturamento Total"
           value={adminStatsLoading ? "..." : `R$ ${(adminStats?.totalRevenue || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
@@ -315,9 +317,15 @@ export default function DashboardPage() {
           data-testid="stat-total-revenue"
         />
         <StatCard
+          title="Lucro"
+          value={adminStatsLoading ? "..." : `R$ ${(adminStats?.totalProfit || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
+          icon={TrendingUp}
+          data-testid="stat-total-profit"
+        />
+        <StatCard
           title="Ticket Médio"
           value={adminStatsLoading ? "..." : `R$ ${(adminStats?.averageOrderValue || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
-          icon={TrendingUp}
+          icon={BarChart3}
           data-testid="stat-avg-order"
         />
         <StatCard

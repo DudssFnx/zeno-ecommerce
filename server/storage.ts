@@ -877,6 +877,8 @@ export class DatabaseStorage implements IStorage {
 
   async getAdminSalesStats(period?: 'day' | 'week' | 'month' | 'year' | 'all'): Promise<{
     totalRevenue: number;
+    totalCost: number;
+    totalProfit: number;
     totalOrders: number;
     completedOrders: number;
     pendingOrders: number;
@@ -949,6 +951,7 @@ export class DatabaseStorage implements IStorage {
 
     const faturadoOrderIds = faturadoOrders.map(o => o.id);
     let topProducts: Array<{ productId: number; name: string; totalQuantity: number; totalValue: number }> = [];
+    let totalCost = 0;
     
     if (faturadoOrderIds.length > 0) {
       const items = await db.select({
@@ -956,6 +959,7 @@ export class DatabaseStorage implements IStorage {
         quantity: orderItems.quantity,
         price: orderItems.price,
         name: products.name,
+        cost: products.cost,
       }).from(orderItems)
         .leftJoin(products, eq(orderItems.productId, products.id))
         .where(sql`${orderItems.orderId} IN (${sql.join(faturadoOrderIds.map(id => sql`${id}`), sql`, `)})`);
@@ -966,12 +970,18 @@ export class DatabaseStorage implements IStorage {
         curr.totalQuantity += item.quantity;
         curr.totalValue += item.quantity * parseFloat(item.price);
         productMap.set(item.productId, curr);
+        
+        // Calculate total cost
+        const itemCost = item.cost ? parseFloat(item.cost) : 0;
+        totalCost += item.quantity * itemCost;
       }
       topProducts = Array.from(productMap.entries())
         .map(([productId, data]) => ({ productId, ...data }))
         .sort((a, b) => b.totalValue - a.totalValue)
         .slice(0, 10);
     }
+    
+    const totalProfit = totalRevenue - totalCost;
 
     // Daily sales (within period)
     const dailyMap = new Map<string, { revenue: number; orders: number }>();
@@ -1061,7 +1071,7 @@ export class DatabaseStorage implements IStorage {
       .slice(-12);
 
     return { 
-      totalRevenue, totalOrders, completedOrders, pendingOrders, averageOrderValue, 
+      totalRevenue, totalCost, totalProfit, totalOrders, completedOrders, pendingOrders, averageOrderValue, 
       monthlyRevenue, topProducts, ordersByStatus,
       dailySales, salesByCategory, customerPositivation, salesEvolution, periodLabel
     };
