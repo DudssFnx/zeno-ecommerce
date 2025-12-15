@@ -1836,7 +1836,7 @@ export class DatabaseStorage implements IStorage {
     const days60Ago = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
     const days90Ago = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
 
-    const allProducts = await db.select().from(products).where(eq(products.active, true));
+    const allProducts = await db.select().from(products);
     const allCategories = await db.select().from(categories);
     const faturadoOrders = await db.select().from(orders).where(eq(orders.status, 'FATURADO'));
     const faturadoOrderIds = new Set(faturadoOrders.map(o => o.id));
