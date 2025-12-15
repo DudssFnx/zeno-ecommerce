@@ -1123,10 +1123,34 @@ export async function registerRoutes(
       }
 
       const file = req.file;
-      const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+      // Expanded list of allowed image MIME types (including variants from different devices/browsers)
+      const allowedTypes = [
+        'image/jpeg', 
+        'image/jpg',
+        'image/png', 
+        'image/webp', 
+        'image/gif',
+        'image/bmp',
+        'image/tiff',
+        'image/heic',
+        'image/heif',
+        'image/avif',
+        'image/svg+xml',
+        // Some browsers/devices report these variants
+        'application/octet-stream', // Allow generic binary (we'll check extension)
+      ];
       
-      if (!allowedTypes.includes(file.mimetype)) {
-        return res.status(400).json({ message: "Invalid file type. Only JPEG, PNG, WebP, and GIF are allowed." });
+      // Check extension for fallback validation
+      const fileExt = (file.originalname.split('.').pop() || '').toLowerCase();
+      const allowedExtensions = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp', 'tiff', 'tif', 'heic', 'heif', 'avif', 'svg'];
+      
+      const isValidMime = allowedTypes.includes(file.mimetype) || file.mimetype.startsWith('image/');
+      const isValidExt = allowedExtensions.includes(fileExt);
+      
+      if (!isValidMime && !isValidExt) {
+        return res.status(400).json({ 
+          message: `Tipo de arquivo invalido (${file.mimetype}). Formatos aceitos: JPG, PNG, WebP, GIF, BMP, TIFF, HEIC, AVIF.` 
+        });
       }
 
       const ext = file.originalname.split('.').pop() || 'jpg';

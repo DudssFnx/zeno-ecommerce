@@ -494,7 +494,7 @@ export default function ProductsPage() {
                     </div>
                     <input
                       type="file"
-                      accept="image/jpeg,image/png,image/webp,image/gif"
+                      accept="image/*,.jpg,.jpeg,.png,.webp,.gif,.bmp,.tiff,.heic,.heif,.avif"
                       className="hidden"
                       ref={fileInputRef}
                       onChange={(e) => {
@@ -504,7 +504,7 @@ export default function ProductsPage() {
                       }}
                       data-testid="input-product-image"
                     />
-                    <p className="text-xs text-muted-foreground">JPG, PNG, WebP ou GIF. Máximo 5MB por imagem. A primeira imagem é a principal.</p>
+                    <p className="text-xs text-muted-foreground">Aceita todos os formatos de imagem (JPG, PNG, WebP, GIF, BMP, HEIC, etc). Maximo 5MB por imagem.</p>
                   </div>
                 </div>
 
