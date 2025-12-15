@@ -498,7 +498,7 @@ export default function OrderDetailsPage() {
               ) : (
                 <>
                   <div className="space-y-4">
-                    {itemsWithProducts.map((item) => (
+                    {itemsWithProducts.slice(0, visibleItems).map((item) => (
                       <div key={item.id} className="flex items-center gap-4" data-testid={`order-item-${item.id}`}>
                         <div className="h-16 w-16 rounded-md bg-muted flex items-center justify-center overflow-hidden flex-shrink-0">
                           {item.product?.image ? (
@@ -522,6 +522,18 @@ export default function OrderDetailsPage() {
                       </div>
                     ))}
                   </div>
+                  {itemsWithProducts.length > visibleItems && (
+                    <div className="flex justify-center pt-4">
+                      <Button 
+                        variant="outline" 
+                        onClick={() => setVisibleItems(prev => prev + ITEMS_PER_LOAD)}
+                        data-testid="button-show-more-items"
+                      >
+                        <ChevronDown className="h-4 w-4 mr-2" />
+                        Mostrar mais ({itemsWithProducts.length - visibleItems} restantes)
+                      </Button>
+                    </div>
+                  )}
                   <Separator className="my-4" />
                   <div className="flex justify-between items-center">
                     <span className="font-medium">Total do Pedido</span>
