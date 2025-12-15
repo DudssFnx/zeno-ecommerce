@@ -451,7 +451,19 @@ export default function ProductsPage() {
                     <div className="flex flex-wrap gap-2">
                       {imageUrls.map((url, index) => (
                         <div key={index} className="relative w-20 h-20 rounded-lg border overflow-hidden group">
-                          <img src={url} alt={`Imagem ${index + 1}`} className="w-full h-full object-cover" />
+                          <img 
+                            src={url} 
+                            alt={`Imagem ${index + 1}`} 
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                              const target = e.target as HTMLImageElement;
+                              target.style.display = 'none';
+                              target.nextElementSibling?.classList.remove('hidden');
+                            }}
+                          />
+                          <div className="hidden w-full h-full flex items-center justify-center bg-muted/50">
+                            <Image className="h-5 w-5 text-muted-foreground/50" />
+                          </div>
                           <Button
                             type="button"
                             variant="destructive"
