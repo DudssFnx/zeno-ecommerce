@@ -43,6 +43,7 @@ interface ProductData {
   categoryId: number | null;
   brand: string;
   price: number;
+  cost: number | null;
   stock: number;
   description: string | null;
   image: string | null;
@@ -55,6 +56,7 @@ const productSchema = z.object({
   categoryId: z.string().optional(),
   brand: z.string().min(1, "Marca é obrigatória"),
   price: z.coerce.number().min(0, "Preço deve ser positivo"),
+  cost: z.coerce.number().min(0, "Custo deve ser positivo").optional().or(z.literal("")),
   stock: z.coerce.number().int().min(0, "Estoque deve ser 0 ou mais"),
   description: z.string().optional(),
 });
@@ -105,6 +107,7 @@ export default function ProductsPage() {
     categoryId: p.categoryId,
     brand: p.brand || "",
     price: parseFloat(p.price),
+    cost: p.cost ? parseFloat(p.cost) : null,
     stock: p.stock,
     description: p.description,
     image: p.image,
@@ -119,6 +122,7 @@ export default function ProductsPage() {
       categoryId: "",
       brand: "",
       price: 0,
+      cost: "",
       stock: 0,
       description: "",
     },
@@ -182,6 +186,7 @@ export default function ProductsPage() {
         categoryId: data.categoryId ? parseInt(data.categoryId) : null,
         brand: data.brand,
         price: data.price.toFixed(2),
+        cost: data.cost && typeof data.cost === 'number' ? data.cost.toFixed(2) : null,
         stock: data.stock,
         description: data.description || null,
         image: imageUrls[0] || null,
@@ -202,6 +207,7 @@ export default function ProductsPage() {
         categoryId: data.categoryId ? parseInt(data.categoryId) : null,
         brand: data.brand,
         price: data.price.toFixed(2),
+        cost: data.cost && typeof data.cost === 'number' ? data.cost.toFixed(2) : null,
         stock: data.stock,
         description: data.description || null,
         image: imageUrls[0] || null,
@@ -224,7 +230,7 @@ export default function ProductsPage() {
   });
 
   const openAddDialog = () => {
-    form.reset({ name: "", sku: "", categoryId: "", brand: "", price: 0, stock: 0, description: "" });
+    form.reset({ name: "", sku: "", categoryId: "", brand: "", price: 0, cost: "", stock: 0, description: "" });
     setEditingProduct(null);
     setImageUrls([]);
     setIsDialogOpen(true);
@@ -237,6 +243,7 @@ export default function ProductsPage() {
       categoryId: product.categoryId ? String(product.categoryId) : "",
       brand: product.brand,
       price: product.price,
+      cost: product.cost ?? "",
       stock: product.stock,
       description: product.description || "",
     });
@@ -261,6 +268,7 @@ export default function ProductsPage() {
       categoryId: product.categoryId ? String(product.categoryId) : "",
       brand: product.brand,
       price: product.price,
+      cost: product.cost ?? "",
       stock: product.stock,
       description: product.description || "",
     });
@@ -610,6 +618,19 @@ export default function ProductsPage() {
                       <FormLabel>Preço (R$)</FormLabel>
                       <FormControl>
                         <Input type="number" step="0.01" {...field} data-testid="input-product-price" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="cost"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Custo (R$)</FormLabel>
+                      <FormControl>
+                        <Input type="number" step="0.01" {...field} placeholder="Opcional" data-testid="input-product-cost" />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
