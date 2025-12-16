@@ -1463,8 +1463,24 @@ export async function registerRoutes(
         return res.status(404).json({ message: "File not found" });
       }
       
-      const bytes = result.value as unknown as Uint8Array;
-      console.log('[FILE SERVE] Success - path:', filePath, 'bytes:', bytes.length);
+      const rawBytes = result.value;
+      let buffer: Buffer;
+      
+      if (Buffer.isBuffer(rawBytes)) {
+        buffer = rawBytes;
+      } else if (rawBytes instanceof Uint8Array) {
+        buffer = Buffer.from(rawBytes);
+      } else if (Array.isArray(rawBytes)) {
+        buffer = Buffer.from(new Uint8Array(rawBytes as unknown as number[]));
+      } else if (typeof rawBytes === 'object' && rawBytes !== null) {
+        const values = Object.values(rawBytes as unknown as Record<string, number>);
+        buffer = Buffer.from(new Uint8Array(values));
+      } else {
+        console.log('[FILE SERVE] Unknown bytes type:', typeof rawBytes, rawBytes);
+        return res.status(500).json({ message: "Invalid file data format" });
+      }
+      
+      console.log('[FILE SERVE] Success - path:', filePath, 'bytes:', buffer.length);
 
       const ext = filePath.split('.').pop()?.toLowerCase() || '';
       const mimeTypes: Record<string, string> = {
@@ -1483,7 +1499,6 @@ export async function registerRoutes(
       };
       
       const contentType = mimeTypes[ext] || 'application/octet-stream';
-      const buffer = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
       res.setHeader('Content-Type', contentType);
       res.setHeader('Content-Length', buffer.length);
       res.setHeader('Cache-Control', 'public, max-age=31536000');
