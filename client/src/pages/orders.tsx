@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Download, RefreshCw, Loader2, Package, Eye, Plus, Trash2, Search, X, User as UserIcon, Printer, Edit2 } from "lucide-react";
+import { Download, RefreshCw, Loader2, Package, Eye, Plus, Trash2, Search, X, User as UserIcon, Printer, Edit2, ShoppingCart } from "lucide-react";
 import { SiWhatsapp } from "react-icons/si";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -600,10 +600,16 @@ export default function OrdersPage() {
             Gerencie e acompanhe todos os pedidos de clientes
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
+          <Link href="/pdv">
+            <Button variant="default" className="bg-orange-500 hover:bg-orange-600" data-testid="button-pdv">
+              <ShoppingCart className="h-4 w-4 mr-2" />
+              Gerar Pedido PDV
+            </Button>
+          </Link>
           <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
             <DialogTrigger asChild>
-              <Button data-testid="button-create-order">
+              <Button variant="outline" data-testid="button-create-order">
                 <Plus className="h-4 w-4 mr-2" />
                 Criar Pedido
               </Button>

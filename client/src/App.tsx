@@ -36,6 +36,7 @@ import PublicCatalogPage from "@/pages/public-catalog";
 import CheckoutPage from "@/pages/checkout";
 import AgendaPage from "@/pages/agenda";
 import CatalogCustomizationPage from "@/pages/catalog-customization";
+import PDVPage from "@/pages/pdv";
 import { PWAInstallPrompt } from "@/components/PWAInstallPrompt";
 
 function AuthenticatedApp() {
@@ -100,6 +101,7 @@ function AuthenticatedApp() {
               <Route path="/catalog" component={CatalogPage} />
               <Route path="/orders" component={OrdersPage} />
               <Route path="/orders/:id" component={OrderDetailsPage} />
+              <Route path="/pdv" component={PDVPage} />
               {isAdmin && <Route path="/products" component={ProductsPage} />}
               {isAdmin && <Route path="/customers" component={CustomersPage} />}
               {isAdmin && <Route path="/users" component={UsersPage} />}
