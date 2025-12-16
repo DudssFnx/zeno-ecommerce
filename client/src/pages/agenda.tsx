@@ -66,8 +66,17 @@ export default function AgendaPage() {
   const startDate = startOfMonth(currentMonth);
   const endDate = endOfMonth(currentMonth);
 
-  const { data: events = [], isLoading } = useQuery<AgendaEvent[]>({
-    queryKey: ["/api/agenda", { startDate: startDate.toISOString(), endDate: endDate.toISOString() }],
+  const { data: events = [], isLoading, refetch } = useQuery<AgendaEvent[]>({
+    queryKey: ["/api/agenda", startDate.toISOString(), endDate.toISOString()],
+    queryFn: async () => {
+      const params = new URLSearchParams({
+        startDate: startDate.toISOString(),
+        endDate: endDate.toISOString(),
+      });
+      const res = await fetch(`/api/agenda?${params}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch events");
+      return res.json();
+    },
   });
 
   const createEventMutation = useMutation({
