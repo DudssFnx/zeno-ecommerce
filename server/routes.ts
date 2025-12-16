@@ -1553,6 +1553,40 @@ export async function registerRoutes(
     }
   });
 
+  // ========== CATALOG IMAGE UPLOAD ==========
+  app.post('/api/upload/catalog', isAuthenticated, isAdmin, upload.single('file'), async (req: any, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: "No file uploaded" });
+      }
+
+      const file = req.file;
+      const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif'];
+      const fileExt = (file.originalname.split('.').pop() || '').toLowerCase();
+      const allowedExtensions = ['jpg', 'jpeg', 'png', 'webp', 'gif'];
+      
+      const isValidMime = allowedTypes.includes(file.mimetype) || file.mimetype.startsWith('image/');
+      const isValidExt = allowedExtensions.includes(fileExt);
+      
+      if (!isValidMime && !isValidExt) {
+        return res.status(400).json({ message: "Tipo de arquivo invalido. Formatos aceitos: JPG, PNG, WebP, GIF." });
+      }
+
+      const ext = file.originalname.split('.').pop() || 'jpg';
+      const filename = `public/catalog/${Date.now()}-${Math.random().toString(36).substring(2, 8)}.${ext}`;
+
+      const objectStorage = await getObjectStorage();
+      const uint8Array = new Uint8Array(file.buffer.buffer, file.buffer.byteOffset, file.buffer.length);
+      await objectStorage.uploadFromBytes(filename, uint8Array);
+
+      const publicUrl = `/api/files/${filename}`;
+      res.json({ url: publicUrl, filename: filename });
+    } catch (error) {
+      console.error("Error uploading catalog image:", error);
+      res.status(500).json({ message: "Failed to upload file" });
+    }
+  });
+
   // ========== COUPONS ==========
   app.get("/api/coupons", isAuthenticated, isAdmin, async (req, res) => {
     try {
