@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect } from "react";
 import { useSearch } from "wouter";
 import { CatalogFilters } from "@/components/CatalogFilters";
 import { ProductGrid } from "@/components/ProductGrid";
-import { Loader2, Package, ChevronLeft, ChevronRight } from "lucide-react";
+import { Loader2, Package, ChevronLeft, ChevronRight, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { Product } from "@/components/ProductCard";
 import { useQuery } from "@tanstack/react-query";
@@ -122,8 +122,13 @@ export default function CatalogPage() {
       price: parseFloat(p.price),
       stock: p.stock,
       image: p.image || undefined,
+      featured: p.featured || false,
     }));
   }, [productsData, categoryMap]);
+
+  const featuredProducts = useMemo(() => {
+    return products.filter(p => p.featured);
+  }, [products]);
 
   const categories = useMemo(() => {
     return categoriesData.map(c => c.name);
@@ -140,9 +145,17 @@ export default function CatalogPage() {
   const filteredProducts = useMemo(() => {
     return products.filter((product) => {
       const matchesBrand = brand === "all" || product.brand === brand;
-      return matchesBrand;
+      const notFeatured = !product.featured;
+      return matchesBrand && notFeatured;
     });
   }, [products, brand]);
+
+  const filteredFeaturedProducts = useMemo(() => {
+    return featuredProducts.filter((product) => {
+      const matchesBrand = brand === "all" || product.brand === brand;
+      return matchesBrand;
+    });
+  }, [featuredProducts, brand]);
 
   const clearFilters = () => {
     setSearchQuery("");
@@ -198,6 +211,16 @@ export default function CatalogPage() {
         </div>
       ) : (
         <>
+          {filteredFeaturedProducts.length > 0 && (
+            <div className="space-y-3 mb-6">
+              <div className="flex items-center gap-2">
+                <Star className="h-5 w-5 fill-yellow-500 text-yellow-500" />
+                <h2 className="text-xl font-semibold">Produtos em Destaque</h2>
+              </div>
+              <ProductGrid products={filteredFeaturedProducts} onAddToCart={handleAddToCart} />
+            </div>
+          )}
+          
           <ProductGrid products={filteredProducts} onAddToCart={handleAddToCart} />
           
           {totalPages > 1 && (

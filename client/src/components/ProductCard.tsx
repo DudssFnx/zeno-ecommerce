@@ -14,6 +14,7 @@ export interface Product {
   stock?: number;
   image?: string;
   showPrice?: boolean;
+  featured?: boolean;
 }
 
 interface ProductCardProps {
