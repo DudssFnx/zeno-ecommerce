@@ -91,11 +91,7 @@ export default function SettingsPage() {
 
   const agePopupMutation = useMutation({
     mutationFn: async (enabled: boolean) => {
-      return apiRequest('/api/settings/age_verification_popup', {
-        method: 'POST',
-        body: JSON.stringify({ value: enabled ? 'true' : 'false' }),
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return apiRequest('POST', '/api/settings/age_verification_popup', { value: enabled ? 'true' : 'false' });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/settings/age_verification_popup'] });

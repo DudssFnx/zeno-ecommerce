@@ -1270,10 +1270,13 @@ export async function registerRoutes(
 
   app.post('/api/settings/:key', isAuthenticated, isAdmin, async (req: any, res) => {
     try {
+      console.log('[SETTINGS] Saving key:', req.params.key, 'value:', req.body.value);
       const { value } = req.body;
       const setting = await storage.setSiteSetting(req.params.key, value);
+      console.log('[SETTINGS] Saved:', setting);
       res.json(setting);
     } catch (error) {
+      console.error('[SETTINGS] Error saving setting:', error);
       res.status(500).json({ message: "Failed to save setting" });
     }
   });
