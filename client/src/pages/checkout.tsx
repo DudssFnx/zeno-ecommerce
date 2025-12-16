@@ -95,6 +95,9 @@ export default function CheckoutPage() {
   const [guestPhone, setGuestPhone] = useState("");
   const [guestEmail, setGuestEmail] = useState("");
   
+  // Business rule: guest checkout only allowed for orders under R$ 400
+  const canUseGuestCheckout = total < 400;
+  
   // Success state
   const [orderSuccess, setOrderSuccess] = useState(false);
   const [createdOrderNumber, setCreatedOrderNumber] = useState("");
@@ -584,52 +587,64 @@ export default function CheckoutPage() {
                 </CardHeader>
                 <CardContent className="space-y-6">
                   {!showGuestForm ? (
-                    <div className="grid md:grid-cols-3 gap-4">
-                      <Card className="hover-elevate cursor-pointer" onClick={handleLoginRedirect}>
-                        <CardContent className="pt-6 text-center">
-                          <User className="h-12 w-12 mx-auto mb-4 text-orange-500" />
-                          <h3 className="font-semibold mb-2">Ja tenho conta</h3>
-                          <p className="text-sm text-muted-foreground mb-4">
-                            Faca login para continuar
+                    <>
+                      {!canUseGuestCheckout && (
+                        <div className="p-4 rounded-lg bg-orange-500/10 border border-orange-500/30 mb-4">
+                          <p className="text-sm text-orange-600 dark:text-orange-500 font-medium">
+                            Para compras acima de R$ 400,00 e necessario criar uma conta ou fazer login.
                           </p>
-                          <Button variant="outline" className="w-full" data-testid="button-login-checkout">
-                            Entrar
-                          </Button>
-                        </CardContent>
-                      </Card>
+                        </div>
+                      )}
+                      <div className={`grid gap-4 ${canUseGuestCheckout ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
+                        <Card className="hover-elevate cursor-pointer" onClick={handleLoginRedirect}>
+                          <CardContent className="pt-6 text-center">
+                            <User className="h-12 w-12 mx-auto mb-4 text-orange-500" />
+                            <h3 className="font-semibold mb-2">Ja tenho conta</h3>
+                            <p className="text-sm text-muted-foreground mb-4">
+                              Faca login para continuar
+                            </p>
+                            <Button variant="outline" className="w-full" data-testid="button-login-checkout">
+                              Entrar
+                            </Button>
+                          </CardContent>
+                        </Card>
 
-                      <Card className="hover-elevate cursor-pointer" onClick={handleContinueToRegister}>
-                        <CardContent className="pt-6 text-center">
-                          <User className="h-12 w-12 mx-auto mb-4 text-orange-500" />
-                          <h3 className="font-semibold mb-2">Criar conta</h3>
-                          <p className="text-sm text-muted-foreground mb-4">
-                            Cadastre-se para comprar
-                          </p>
-                          <Button variant="outline" className="w-full" data-testid="button-register-checkout">
-                            Cadastrar
-                          </Button>
-                        </CardContent>
-                      </Card>
+                        <Card className="hover-elevate cursor-pointer" onClick={handleContinueToRegister}>
+                          <CardContent className="pt-6 text-center">
+                            <User className="h-12 w-12 mx-auto mb-4 text-orange-500" />
+                            <h3 className="font-semibold mb-2">Criar conta</h3>
+                            <p className="text-sm text-muted-foreground mb-4">
+                              Cadastre-se para comprar
+                            </p>
+                            <Button variant="outline" className="w-full" data-testid="button-register-checkout">
+                              Cadastrar
+                            </Button>
+                          </CardContent>
+                        </Card>
 
-                      <Card 
-                        className="hover-elevate cursor-pointer border-orange-500/50" 
-                        onClick={() => {
-                          setShowGuestForm(true);
-                          setIsGuestCheckout(true);
-                        }}
-                      >
-                        <CardContent className="pt-6 text-center">
-                          <ShoppingCart className="h-12 w-12 mx-auto mb-4 text-orange-500" />
-                          <h3 className="font-semibold mb-2">Comprar sem cadastro</h3>
-                          <p className="text-sm text-muted-foreground mb-4">
-                            Informe apenas seus dados
-                          </p>
-                          <Button className="w-full bg-orange-500 hover:bg-orange-600" data-testid="button-guest-checkout">
-                            Continuar
-                          </Button>
-                        </CardContent>
-                      </Card>
-                    </div>
+                        {canUseGuestCheckout && (
+                          <Card 
+                            className="hover-elevate cursor-pointer border-orange-500/50" 
+                            onClick={() => {
+                              setShowGuestForm(true);
+                              setIsGuestCheckout(true);
+                            }}
+                            data-testid="card-guest-checkout"
+                          >
+                            <CardContent className="pt-6 text-center">
+                              <ShoppingCart className="h-12 w-12 mx-auto mb-4 text-orange-500" />
+                              <h3 className="font-semibold mb-2">Comprar sem cadastro</h3>
+                              <p className="text-sm text-muted-foreground mb-4">
+                                Informe apenas seus dados
+                              </p>
+                              <Button className="w-full bg-orange-500 hover:bg-orange-600" data-testid="button-guest-checkout">
+                                Continuar
+                              </Button>
+                            </CardContent>
+                          </Card>
+                        )}
+                      </div>
+                    </>
                   ) : (
                     <div className="space-y-4">
                       <div className="p-4 rounded-lg bg-orange-500/10 border border-orange-500/30 mb-4">
