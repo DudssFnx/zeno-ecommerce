@@ -9,7 +9,10 @@ import {
   type Coupon, type InsertCoupon,
   type AgendaEvent, type InsertAgendaEvent,
   type SiteSetting,
-  users, categories, products, orders, orderItems, priceTables, customerPrices, coupons, agendaEvents, siteSettings
+  type CatalogBanner, type InsertCatalogBanner,
+  type CatalogSlide, type InsertCatalogSlide,
+  type CatalogConfig,
+  users, categories, products, orders, orderItems, priceTables, customerPrices, coupons, agendaEvents, siteSettings, catalogBanners, catalogSlides, catalogConfig
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, ilike, and, or, sql, count } from "drizzle-orm";
@@ -125,6 +128,24 @@ export interface IStorage {
   // Site Settings
   getSiteSetting(key: string): Promise<SiteSetting | undefined>;
   setSiteSetting(key: string, value: string): Promise<SiteSetting>;
+
+  // Catalog Banners
+  getCatalogBanners(position?: string): Promise<CatalogBanner[]>;
+  getCatalogBanner(id: number): Promise<CatalogBanner | undefined>;
+  createCatalogBanner(banner: InsertCatalogBanner): Promise<CatalogBanner>;
+  updateCatalogBanner(id: number, banner: Partial<InsertCatalogBanner>): Promise<CatalogBanner | undefined>;
+  deleteCatalogBanner(id: number): Promise<boolean>;
+
+  // Catalog Slides
+  getCatalogSlides(): Promise<CatalogSlide[]>;
+  getCatalogSlide(id: number): Promise<CatalogSlide | undefined>;
+  createCatalogSlide(slide: InsertCatalogSlide): Promise<CatalogSlide>;
+  updateCatalogSlide(id: number, slide: Partial<InsertCatalogSlide>): Promise<CatalogSlide | undefined>;
+  deleteCatalogSlide(id: number): Promise<boolean>;
+
+  // Catalog Config
+  getCatalogConfig(key: string): Promise<CatalogConfig | undefined>;
+  setCatalogConfig(key: string, value: string): Promise<CatalogConfig>;
 }
 
 // Customer Analytics Types
@@ -2282,6 +2303,89 @@ export class DatabaseStorage implements IStorage {
       return updated;
     } else {
       const [created] = await db.insert(siteSettings)
+        .values({ key, value })
+        .returning();
+      return created;
+    }
+  }
+
+  // ========== CATALOG BANNERS ==========
+  async getCatalogBanners(position?: string): Promise<CatalogBanner[]> {
+    if (position) {
+      return db.select().from(catalogBanners)
+        .where(eq(catalogBanners.position, position))
+        .orderBy(catalogBanners.order);
+    }
+    return db.select().from(catalogBanners).orderBy(catalogBanners.order);
+  }
+
+  async getCatalogBanner(id: number): Promise<CatalogBanner | undefined> {
+    const [banner] = await db.select().from(catalogBanners).where(eq(catalogBanners.id, id));
+    return banner;
+  }
+
+  async createCatalogBanner(banner: InsertCatalogBanner): Promise<CatalogBanner> {
+    const [newBanner] = await db.insert(catalogBanners).values(banner).returning();
+    return newBanner;
+  }
+
+  async updateCatalogBanner(id: number, banner: Partial<InsertCatalogBanner>): Promise<CatalogBanner | undefined> {
+    const [updated] = await db.update(catalogBanners)
+      .set({ ...banner, updatedAt: new Date() })
+      .where(eq(catalogBanners.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteCatalogBanner(id: number): Promise<boolean> {
+    const result = await db.delete(catalogBanners).where(eq(catalogBanners.id, id)).returning();
+    return result.length > 0;
+  }
+
+  // ========== CATALOG SLIDES ==========
+  async getCatalogSlides(): Promise<CatalogSlide[]> {
+    return db.select().from(catalogSlides).orderBy(catalogSlides.order);
+  }
+
+  async getCatalogSlide(id: number): Promise<CatalogSlide | undefined> {
+    const [slide] = await db.select().from(catalogSlides).where(eq(catalogSlides.id, id));
+    return slide;
+  }
+
+  async createCatalogSlide(slide: InsertCatalogSlide): Promise<CatalogSlide> {
+    const [newSlide] = await db.insert(catalogSlides).values(slide).returning();
+    return newSlide;
+  }
+
+  async updateCatalogSlide(id: number, slide: Partial<InsertCatalogSlide>): Promise<CatalogSlide | undefined> {
+    const [updated] = await db.update(catalogSlides)
+      .set(slide)
+      .where(eq(catalogSlides.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteCatalogSlide(id: number): Promise<boolean> {
+    const result = await db.delete(catalogSlides).where(eq(catalogSlides.id, id)).returning();
+    return result.length > 0;
+  }
+
+  // ========== CATALOG CONFIG ==========
+  async getCatalogConfig(key: string): Promise<CatalogConfig | undefined> {
+    const [config] = await db.select().from(catalogConfig).where(eq(catalogConfig.key, key));
+    return config;
+  }
+
+  async setCatalogConfig(key: string, value: string): Promise<CatalogConfig> {
+    const existing = await this.getCatalogConfig(key);
+    if (existing) {
+      const [updated] = await db.update(catalogConfig)
+        .set({ value, updatedAt: new Date() })
+        .where(eq(catalogConfig.key, key))
+        .returning();
+      return updated;
+    } else {
+      const [created] = await db.insert(catalogConfig)
         .values({ key, value })
         .returning();
       return created;

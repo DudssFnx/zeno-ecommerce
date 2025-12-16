@@ -258,3 +258,62 @@ export const siteSettings = pgTable("site_settings", {
 });
 
 export type SiteSetting = typeof siteSettings.$inferSelect;
+
+// Catalog banners for customization
+export const catalogBanners = pgTable("catalog_banners", {
+  id: serial("id").primaryKey(),
+  position: text("position").notNull(), // hero, promo1, promo2, promo3, footer
+  title: text("title"),
+  subtitle: text("subtitle"),
+  buttonText: text("button_text"),
+  buttonLink: text("button_link"),
+  imageUrl: text("image_url"),
+  mobileImageUrl: text("mobile_image_url"),
+  backgroundColor: text("background_color"),
+  textColor: text("text_color"),
+  order: integer("order").notNull().default(0),
+  active: boolean("active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertCatalogBannerSchema = createInsertSchema(catalogBanners).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertCatalogBanner = z.infer<typeof insertCatalogBannerSchema>;
+export type CatalogBanner = typeof catalogBanners.$inferSelect;
+
+// Catalog carousel slides (hero slider)
+export const catalogSlides = pgTable("catalog_slides", {
+  id: serial("id").primaryKey(),
+  title: text("title"),
+  subtitle: text("subtitle"),
+  buttonText: text("button_text"),
+  buttonLink: text("button_link"),
+  imageUrl: text("image_url").notNull(),
+  mobileImageUrl: text("mobile_image_url"),
+  order: integer("order").notNull().default(0),
+  active: boolean("active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertCatalogSlideSchema = createInsertSchema(catalogSlides).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertCatalogSlide = z.infer<typeof insertCatalogSlideSchema>;
+export type CatalogSlide = typeof catalogSlides.$inferSelect;
+
+// Catalog customization settings
+export const catalogConfig = pgTable("catalog_config", {
+  id: serial("id").primaryKey(),
+  key: text("key").notNull().unique(),
+  value: text("value"),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export type CatalogConfig = typeof catalogConfig.$inferSelect;
