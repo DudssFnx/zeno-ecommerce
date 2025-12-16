@@ -1,139 +1,169 @@
 # Design Guidelines: B2B Wholesale Catalog & Order Management System
 
-## Design Approach
+## Design Philosophy
 
-**System-Based Approach**: Material Design 3 principles for enterprise applications, with Fluent Design influences for productivity-focused interfaces. This system prioritizes data clarity, efficient workflows, and enterprise-grade usability over visual flair.
+**Enterprise Corporate Design**: Clean, modern, and professional interface that conveys trust, scale, and credibility. Optimized for daily operational use with focus on data clarity and efficient workflows.
 
 **Key Principles**:
-- Data-first hierarchy: Information accessibility over decoration
-- Workflow optimization: Minimize clicks, maximize efficiency
-- Enterprise credibility: Professional, trustworthy interface
-- Desktop-optimized: Generous spacing, larger touch targets, keyboard navigation
+- **Confidence**: Professional appearance that builds trust
+- **Clarity**: Clean layouts with clear visual hierarchy
+- **Efficiency**: Optimized for daily operational use
+- **Scalability**: Design that works for growing businesses
+
+---
+
+## Color System
+
+### Primary Palette (Neutral/Corporate)
+- **Background**: Off-white to light gray (#F8F9FA to #F1F3F5)
+- **Cards/Surfaces**: Pure white (#FFFFFF) with subtle shadows
+- **Text Primary**: Graphite/Dark gray (#1F2937)
+- **Text Secondary**: Medium gray (#6B7280)
+- **Text Tertiary**: Light gray (#9CA3AF)
+- **Borders**: Very light gray (#E5E7EB)
+
+### Accent Colors (Used Sparingly)
+- **Primary Action (Blue)**: #2563EB - For primary buttons and key CTAs
+- **Success (Green)**: #059669 - For positive states, confirmations
+- **Warning (Amber)**: #D97706 - For attention, pending states
+- **Destructive (Red)**: #DC2626 - For errors, deletions
+- **Info (Slate Blue)**: #6366F1 - For informational badges
+
+### Dark Mode
+- **Background**: Deep charcoal (#111827)
+- **Cards/Surfaces**: Dark gray (#1F2937)
+- **Text Primary**: Off-white (#F9FAFB)
+- **Text Secondary**: Light gray (#D1D5DB)
+- **Borders**: Medium gray (#374151)
 
 ---
 
 ## Typography
 
 **Font Stack**: Inter (primary), system-ui fallback
-- **Headings**: font-semibold
-  - H1: text-3xl (dashboard titles, page headers)
-  - H2: text-2xl (section headers, card titles)
-  - H3: text-xl (subsection headers)
-- **Body Text**: text-base, font-normal (product descriptions, order details)
-- **Labels/Meta**: text-sm, font-medium (form labels, table headers, status badges)
-- **Small Text**: text-xs (timestamps, secondary info, helper text)
+
+### Scale
+- **H1**: text-2xl (24px), font-semibold - Page titles
+- **H2**: text-xl (20px), font-semibold - Section headers
+- **H3**: text-lg (18px), font-medium - Card titles
+- **Body**: text-sm (14px), font-normal - General content
+- **Small**: text-xs (12px) - Labels, timestamps, badges
+
+### Guidelines
+- Use font-medium for labels and important text
+- Use font-normal for body content
+- Maintain consistent line heights (1.5 for body, 1.2 for headings)
 
 ---
 
-## Layout System
+## Spacing System
 
-**Spacing Primitives**: Tailwind units of 2, 4, 6, 8, 12, 16
-- Component padding: p-6 (cards, modals)
-- Section spacing: gap-8, space-y-8
-- Tight grouping: gap-4 (form fields, related items)
-- Page margins: px-8, py-6
-- Container max-width: max-w-7xl
+**Base Unit**: 4px (Tailwind default)
 
-**Grid Structures**:
-- Product catalog: grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6
-- Dashboard stats: grid-cols-1 md:grid-cols-3 gap-6
-- Data tables: Full-width with sticky headers
-- Sidebar navigation: Fixed 256px width (w-64)
+### Component Spacing
+- **Cards**: p-5 to p-6 internal padding
+- **Sections**: gap-6 between major sections
+- **Form Groups**: gap-4 between form elements
+- **Inline Elements**: gap-2 to gap-3
 
----
-
-## Component Library
-
-### Navigation & Structure
-- **Sidebar**: Fixed left navigation (64px icons-only collapsed, 256px expanded with labels), hierarchical menu structure
-- **Top Bar**: Breadcrumbs, search, user profile dropdown, notification bell
-- **Tabs**: Underline style for switching between views (Orders/Products/Users)
-
-### Data Display
-- **Product Cards**: Image (aspect-square), SKU badge, title, price, stock indicator, "Add to Cart" CTA
-- **Data Tables**: Zebra striping, sortable columns, row actions (edit/delete icons), pagination footer
-- **Order List**: Status badge, order number, date, customer, total, expandable details
-- **Status Badges**: Pill-shaped with text-xs font-semibold (Pending, Approved, Completed, Cancelled)
-
-### Forms & Inputs
-- **Text Inputs**: border rounded-lg, px-4 py-3, with floating labels or top-aligned labels
-- **Dropdowns**: Custom select with chevron icon, filterable for large lists
-- **Image Upload**: Drag-and-drop zone with preview thumbnails (150x150px)
-- **Multi-step Forms**: Progress stepper at top (Add Product: Details → Images → Pricing → Review)
-
-### Actions & CTAs
-- **Primary Button**: px-6 py-3 rounded-lg font-medium (Add to Cart, Save Order, Approve User)
-- **Secondary Button**: Outlined variant with same sizing
-- **Icon Buttons**: 40x40px for table actions, 48x48px for prominent actions
-- **Bulk Actions**: Checkbox selection with floating action bar
-
-### Overlays & Modals
-- **Modal**: max-w-2xl centered, p-8, with close button, footer action buttons
-- **Drawer**: Slide-in from right for quick actions (edit product, view order details)
-- **Toast Notifications**: Top-right corner, 4-second auto-dismiss
-
-### Dashboard Components
-- **Stat Cards**: Grid layout, large number display (text-4xl font-bold), trend indicator, icon
-- **Chart Containers**: Clean white cards with minimal grid lines
-- **Activity Feed**: Timeline-style with avatar, action description, timestamp
+### Page Layout
+- **Page Padding**: p-6 on desktop, p-4 on mobile
+- **Max Content Width**: max-w-7xl for wide content
+- **Container Gaps**: gap-6 for grid layouts
 
 ---
 
-## Images
+## Component Guidelines
 
-**Product Images**:
-- Catalog grid: Square thumbnails (300x300px), object-cover
-- Product detail: Large primary image (600x600px) with thumbnail gallery below
-- Placeholder: Simple icon-based placeholder for products without images
+### Cards
+- White background (bg-card)
+- Subtle border (border border-border/50)
+- Light shadow (shadow-sm)
+- Rounded corners (rounded-lg)
+- Consistent padding (p-5 or p-6)
 
-**User Avatars**:
-- Header: 40px circle
-- User management: 48px circle with initials fallback
+### Buttons
+- **Primary**: Blue background, white text - Main actions
+- **Secondary**: Light gray background - Alternative actions
+- **Ghost**: Transparent with hover state - Subtle actions
+- **Outline**: Border only - Secondary options
+- **Destructive**: Red - Delete/dangerous actions
 
-**Dashboard**:
-- No hero images (this is an app, not marketing)
-- Icon-based illustrations for empty states (e.g., "No orders yet")
+### Status Badges
+- Rounded-full with text-xs font-medium
+- Subtle background colors with matching text
+- Consistent padding (px-2.5 py-0.5)
 
----
+### Form Inputs
+- Light background (bg-muted/30 or transparent)
+- Subtle border that darkens on focus
+- Consistent height (h-9 or h-10)
+- Focus ring with primary color
 
-## Page-Specific Layouts
+### Tables
+- Clean headers with subtle background
+- Zebra striping optional (use for data-heavy tables)
+- Hover state on rows
+- Right-aligned numbers
 
-### Login Page
-- Centered card (max-w-md), logo at top, form fields, "Admin Approval Required" notice below
-
-### Customer Dashboard
-- 3-column stat cards (Total Orders, Pending Orders, Last Order Date)
-- Recent orders table below
-- Quick reorder section with favorite products
-
-### Admin Product Management
-- Top action bar: Search, Filter dropdowns, "Add Product" button
-- Product grid view with hover actions
-- Bulk selection mode with delete/export options
-
-### Order Management
-- Tabbed interface (All, Pending, Approved, Completed)
-- Filterable table with customer name, order #, date, status, total
-- Click row to expand inline details or open drawer
-
-### Cart & Checkout
-- Two-column layout: Product list (left 2/3) + Order summary (right 1/3, sticky)
-- Quantity adjusters, remove item icons
-- "Generate Order" button (not "Pay" or "Checkout")
+### Navigation
+- Sidebar: Clean design with subtle active states
+- Icons: 18-20px, consistent stroke width
+- Active indicator: Subtle background + left border accent
 
 ---
 
-## Responsive Behavior
+## Shadows & Depth
 
-- **Desktop (lg:)**: Full sidebar, 4-column product grid, expanded tables
-- **Tablet (md:)**: Collapsed sidebar (icons only), 2-column grid, horizontal scroll for tables
-- **Mobile**: Hidden sidebar with hamburger menu, single-column grid, card-based order list
+### Shadow Scale
+- **shadow-sm**: Cards, inputs - subtle depth
+- **shadow-md**: Dropdowns, popovers - moderate depth
+- **shadow-lg**: Modals, floating elements - pronounced depth
+
+### Guidelines
+- Use shadows sparingly
+- Cards should use shadow-sm or just borders
+- Floating elements (modals, dropdowns) use shadow-lg
+
+---
+
+## Icons
+
+- **Library**: Lucide React
+- **Size**: 16-20px for UI, 24px for empty states
+- **Stroke**: 1.5-2px weight
+- **Color**: Match text hierarchy (muted-foreground for secondary)
+
+---
+
+## Responsive Design
+
+### Breakpoints
+- **Mobile**: < 768px - Single column, simplified nav
+- **Tablet**: 768-1024px - 2 columns, collapsible sidebar
+- **Desktop**: > 1024px - Full layout, expanded sidebar
+
+### Mobile Adaptations
+- Hamburger menu for navigation
+- Stack columns vertically
+- Full-width cards and buttons
+- Larger touch targets (min 44px)
+- Bottom sheet for modals when appropriate
+
+---
+
+## Animation & Transitions
+
+- **Duration**: 150-200ms for most interactions
+- **Easing**: ease-out for exits, ease-in-out for transforms
+- **What to animate**: Opacity, transforms, background colors
+- **What NOT to animate**: Layout-affecting properties during interaction
 
 ---
 
 ## Performance Notes
 
-- Lazy load product images
-- Pagination for tables (50 items per page)
-- Skeleton loaders during data fetch
-- Minimal animations: only smooth transitions on dropdowns/modals (200ms ease)
+- Lazy load images below the fold
+- Use skeleton loaders for async content
+- Paginate tables (20-50 items per page)
+- Virtualize long lists when necessary
