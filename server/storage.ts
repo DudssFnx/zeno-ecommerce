@@ -566,7 +566,21 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getNextOrderNumber(): Promise<number> {
+    // Get the maximum order number from existing orders
+    const maxResult = await db.execute(sql`SELECT MAX(CAST(order_number AS INTEGER)) as max_num FROM orders WHERE order_number ~ '^[0-9]+$'`);
+    const maxNum = Number((maxResult.rows[0] as any)?.max_num) || 7999;
+    
+    // Create sequence if not exists
     await db.execute(sql`CREATE SEQUENCE IF NOT EXISTS order_number_seq START WITH 8000`);
+    
+    // Get current sequence value
+    const seqResult = await db.execute(sql`SELECT last_value FROM order_number_seq`);
+    const seqVal = Number((seqResult.rows[0] as any).last_value);
+    
+    // If max order number is >= sequence value, reset sequence to max+1
+    if (maxNum >= seqVal) {
+      await db.execute(sql`SELECT setval('order_number_seq', ${maxNum + 1}, false)`);
+    }
     
     const result = await db.execute(sql`SELECT nextval('order_number_seq') as num`);
     return Number((result.rows[0] as any).num);

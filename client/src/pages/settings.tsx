@@ -6,14 +6,110 @@ import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useToast } from "@/hooks/use-toast";
-import { useState } from "react";
-import { Database, Link2, Bell, Shield } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Database, Link2, Bell, Shield, Palette, Check } from "lucide-react";
+
+const sidebarThemes = [
+  { 
+    id: "default", 
+    name: "Padrao (Laranja)", 
+    primary: "25 95% 53%", 
+    accent: "25 100% 95%",
+    sidebar: "0 0% 98%",
+    sidebarDark: "25 30% 10%"
+  },
+  { 
+    id: "blue", 
+    name: "Azul Corporativo", 
+    primary: "217 91% 60%", 
+    accent: "217 100% 95%",
+    sidebar: "217 30% 97%",
+    sidebarDark: "217 30% 10%"
+  },
+  { 
+    id: "green", 
+    name: "Verde Natureza", 
+    primary: "142 71% 45%", 
+    accent: "142 100% 95%",
+    sidebar: "142 30% 97%",
+    sidebarDark: "142 30% 10%"
+  },
+  { 
+    id: "purple", 
+    name: "Roxo Elegante", 
+    primary: "262 83% 58%", 
+    accent: "262 100% 95%",
+    sidebar: "262 30% 97%",
+    sidebarDark: "262 30% 10%"
+  },
+  { 
+    id: "red", 
+    name: "Vermelho Vibrante", 
+    primary: "0 84% 60%", 
+    accent: "0 100% 95%",
+    sidebar: "0 30% 97%",
+    sidebarDark: "0 30% 10%"
+  },
+  { 
+    id: "teal", 
+    name: "Verde Agua", 
+    primary: "173 80% 40%", 
+    accent: "173 100% 95%",
+    sidebar: "173 30% 97%",
+    sidebarDark: "173 30% 10%"
+  },
+  { 
+    id: "pink", 
+    name: "Rosa Moderno", 
+    primary: "330 80% 60%", 
+    accent: "330 100% 95%",
+    sidebar: "330 30% 97%",
+    sidebarDark: "330 30% 10%"
+  },
+  { 
+    id: "amber", 
+    name: "Amarelo Dourado", 
+    primary: "45 93% 47%", 
+    accent: "45 100% 95%",
+    sidebar: "45 30% 97%",
+    sidebarDark: "45 30% 10%"
+  },
+];
 
 export default function SettingsPage() {
   const { theme, setTheme } = useTheme();
   const { toast } = useToast();
   const [notifications, setNotifications] = useState(true);
   const [erpEndpoint, setErpEndpoint] = useState("");
+  const [selectedTheme, setSelectedTheme] = useState("default");
+
+  useEffect(() => {
+    const savedTheme = localStorage.getItem("sidebarTheme");
+    if (savedTheme) {
+      setSelectedTheme(savedTheme);
+      applyTheme(savedTheme);
+    }
+  }, []);
+
+  const applyTheme = (themeId: string) => {
+    const themeConfig = sidebarThemes.find(t => t.id === themeId);
+    if (!themeConfig) return;
+
+    const root = document.documentElement;
+    const isDark = root.classList.contains("dark");
+    
+    root.style.setProperty("--primary", themeConfig.primary);
+    root.style.setProperty("--sidebar", isDark ? themeConfig.sidebarDark : themeConfig.sidebar);
+    root.style.setProperty("--sidebar-accent", themeConfig.accent);
+    root.style.setProperty("--ring", themeConfig.primary);
+  };
+
+  const handleThemeChange = (themeId: string) => {
+    setSelectedTheme(themeId);
+    applyTheme(themeId);
+    localStorage.setItem("sidebarTheme", themeId);
+    toast({ title: "Tema aplicado", description: "As cores do menu foram atualizadas." });
+  };
 
   const handleSaveERP = () => {
     toast({ title: "Configurações Salvas", description: "Configurações de integração ERP atualizadas." });
@@ -44,10 +140,53 @@ export default function SettingsPage() {
               </div>
               <Switch
                 checked={theme === "dark"}
-                onCheckedChange={(checked) => setTheme(checked ? "dark" : "light")}
+                onCheckedChange={(checked) => {
+                  setTheme(checked ? "dark" : "light");
+                  setTimeout(() => applyTheme(selectedTheme), 100);
+                }}
                 data-testid="switch-dark-mode"
               />
             </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Palette className="h-5 w-5" />
+              Cores do Menu
+            </CardTitle>
+            <CardDescription>Escolha o esquema de cores para o menu lateral</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {sidebarThemes.map((themeOption) => (
+                <button
+                  key={themeOption.id}
+                  onClick={() => handleThemeChange(themeOption.id)}
+                  className={`relative flex flex-col items-center gap-2 p-3 rounded-lg border-2 transition-all hover-elevate ${
+                    selectedTheme === themeOption.id
+                      ? "border-primary bg-primary/5"
+                      : "border-border"
+                  }`}
+                  data-testid={`button-theme-${themeOption.id}`}
+                >
+                  <div
+                    className="w-10 h-10 rounded-full shadow-sm"
+                    style={{ backgroundColor: `hsl(${themeOption.primary})` }}
+                  />
+                  <span className="text-xs font-medium text-center">{themeOption.name}</span>
+                  {selectedTheme === themeOption.id && (
+                    <div className="absolute top-1 right-1 w-5 h-5 bg-primary rounded-full flex items-center justify-center">
+                      <Check className="w-3 h-3 text-primary-foreground" />
+                    </div>
+                  )}
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground mt-4">
+              As cores sao aplicadas ao menu lateral e elementos de destaque da interface.
+            </p>
           </CardContent>
         </Card>
 

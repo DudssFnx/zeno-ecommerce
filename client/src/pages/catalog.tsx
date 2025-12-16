@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import type { Product } from "@/components/ProductCard";
 import { useQuery } from "@tanstack/react-query";
 import type { Product as SchemaProduct, Category } from "@shared/schema";
+import { useCart } from "@/contexts/CartContext";
+import { useToast } from "@/hooks/use-toast";
 
 interface ProductsResponse {
   products: SchemaProduct[];
@@ -22,6 +24,33 @@ export default function CatalogPage() {
   const [brand, setBrand] = useState("all");
   const [page, setPage] = useState(1);
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | undefined>(undefined);
+  const { addItem } = useCart();
+  const { toast } = useToast();
+
+  const handleAddToCart = (product: Product, quantity: number) => {
+    if (quantity <= 0) {
+      toast({
+        title: "Informe a quantidade",
+        description: "Digite a quantidade desejada",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    addItem({
+      productId: product.id,
+      name: product.name,
+      sku: product.sku,
+      price: product.price,
+      quantity: quantity,
+      image: product.image || undefined,
+    });
+
+    toast({
+      title: "Adicionado ao carrinho",
+      description: `${quantity}x ${product.name}`,
+    });
+  };
 
   const { data: categoriesData = [] } = useQuery<Category[]>({
     queryKey: ['/api/categories'],
@@ -169,7 +198,7 @@ export default function CatalogPage() {
         </div>
       ) : (
         <>
-          <ProductGrid products={filteredProducts} />
+          <ProductGrid products={filteredProducts} onAddToCart={handleAddToCart} />
           
           {totalPages > 1 && (
             <div className="flex items-center justify-center gap-2 pt-6">
