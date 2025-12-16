@@ -1281,6 +1281,141 @@ export async function registerRoutes(
     }
   });
 
+  // ========== CATALOG BANNERS ==========
+  app.get('/api/catalog/banners', async (req, res) => {
+    try {
+      const position = req.query.position as string | undefined;
+      const banners = await storage.getCatalogBanners(position);
+      res.json(banners);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch banners" });
+    }
+  });
+
+  app.get('/api/catalog/banners/:id', async (req, res) => {
+    try {
+      const banner = await storage.getCatalogBanner(parseInt(req.params.id));
+      if (!banner) {
+        return res.status(404).json({ message: "Banner not found" });
+      }
+      res.json(banner);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch banner" });
+    }
+  });
+
+  app.post('/api/catalog/banners', isAuthenticated, isAdmin, async (req: any, res) => {
+    try {
+      const banner = await storage.createCatalogBanner(req.body);
+      res.status(201).json(banner);
+    } catch (error) {
+      console.error("Error creating banner:", error);
+      res.status(500).json({ message: "Failed to create banner" });
+    }
+  });
+
+  app.patch('/api/catalog/banners/:id', isAuthenticated, isAdmin, async (req: any, res) => {
+    try {
+      const banner = await storage.updateCatalogBanner(parseInt(req.params.id), req.body);
+      if (!banner) {
+        return res.status(404).json({ message: "Banner not found" });
+      }
+      res.json(banner);
+    } catch (error) {
+      console.error("Error updating banner:", error);
+      res.status(500).json({ message: "Failed to update banner" });
+    }
+  });
+
+  app.delete('/api/catalog/banners/:id', isAuthenticated, isAdmin, async (req: any, res) => {
+    try {
+      const success = await storage.deleteCatalogBanner(parseInt(req.params.id));
+      if (!success) {
+        return res.status(404).json({ message: "Banner not found" });
+      }
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ message: "Failed to delete banner" });
+    }
+  });
+
+  // ========== CATALOG SLIDES ==========
+  app.get('/api/catalog/slides', async (req, res) => {
+    try {
+      const slides = await storage.getCatalogSlides();
+      res.json(slides);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch slides" });
+    }
+  });
+
+  app.get('/api/catalog/slides/:id', async (req, res) => {
+    try {
+      const slide = await storage.getCatalogSlide(parseInt(req.params.id));
+      if (!slide) {
+        return res.status(404).json({ message: "Slide not found" });
+      }
+      res.json(slide);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch slide" });
+    }
+  });
+
+  app.post('/api/catalog/slides', isAuthenticated, isAdmin, async (req: any, res) => {
+    try {
+      const slide = await storage.createCatalogSlide(req.body);
+      res.status(201).json(slide);
+    } catch (error) {
+      console.error("Error creating slide:", error);
+      res.status(500).json({ message: "Failed to create slide" });
+    }
+  });
+
+  app.patch('/api/catalog/slides/:id', isAuthenticated, isAdmin, async (req: any, res) => {
+    try {
+      const slide = await storage.updateCatalogSlide(parseInt(req.params.id), req.body);
+      if (!slide) {
+        return res.status(404).json({ message: "Slide not found" });
+      }
+      res.json(slide);
+    } catch (error) {
+      console.error("Error updating slide:", error);
+      res.status(500).json({ message: "Failed to update slide" });
+    }
+  });
+
+  app.delete('/api/catalog/slides/:id', isAuthenticated, isAdmin, async (req: any, res) => {
+    try {
+      const success = await storage.deleteCatalogSlide(parseInt(req.params.id));
+      if (!success) {
+        return res.status(404).json({ message: "Slide not found" });
+      }
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ message: "Failed to delete slide" });
+    }
+  });
+
+  // ========== CATALOG CONFIG ==========
+  app.get('/api/catalog/config/:key', async (req, res) => {
+    try {
+      const config = await storage.getCatalogConfig(req.params.key);
+      res.json({ key: req.params.key, value: config?.value || null });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch config" });
+    }
+  });
+
+  app.post('/api/catalog/config/:key', isAuthenticated, isAdmin, async (req: any, res) => {
+    try {
+      const { value } = req.body;
+      const config = await storage.setCatalogConfig(req.params.key, value);
+      res.json(config);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to save config" });
+    }
+  });
+
   // ========== CSV Export ==========
   app.get('/api/orders/export/csv', isAuthenticated, isAdminOrSales, async (req: any, res) => {
     try {
