@@ -7,7 +7,9 @@ import { Separator } from "@/components/ui/separator";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useEffect } from "react";
-import { Database, Link2, Bell, Shield, Palette, Check } from "lucide-react";
+import { Database, Link2, Bell, Shield, Palette, Check, UserCheck } from "lucide-react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 
 const sidebarThemes = [
   { 
@@ -82,6 +84,29 @@ export default function SettingsPage() {
   const [notifications, setNotifications] = useState(true);
   const [erpEndpoint, setErpEndpoint] = useState("");
   const [selectedTheme, setSelectedTheme] = useState("default");
+
+  const { data: agePopupSetting } = useQuery<{ key: string; value: string | null }>({
+    queryKey: ['/api/settings/age_verification_popup'],
+  });
+
+  const agePopupMutation = useMutation({
+    mutationFn: async (enabled: boolean) => {
+      return apiRequest('/api/settings/age_verification_popup', {
+        method: 'POST',
+        body: JSON.stringify({ value: enabled ? 'true' : 'false' }),
+        headers: { 'Content-Type': 'application/json' },
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/settings/age_verification_popup'] });
+      toast({ title: "Configuração salva", description: "Popup de verificação de idade atualizado." });
+    },
+    onError: () => {
+      toast({ title: "Erro", description: "Não foi possível salvar a configuração.", variant: "destructive" });
+    },
+  });
+
+  const isAgePopupEnabled = agePopupSetting?.value === 'true';
 
   useEffect(() => {
     const savedTheme = localStorage.getItem("sidebarTheme");
@@ -210,6 +235,35 @@ export default function SettingsPage() {
                 data-testid="switch-notifications"
               />
             </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <UserCheck className="h-5 w-5" />
+              Verificação de Idade
+            </CardTitle>
+            <CardDescription>Configure o popup de verificação 18+ para o site</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <Label>Popup de Verificação 18+</Label>
+                <p className="text-sm text-muted-foreground">
+                  Exibir janela de verificação de idade antes de acessar o site
+                </p>
+              </div>
+              <Switch
+                checked={isAgePopupEnabled}
+                onCheckedChange={(checked) => agePopupMutation.mutate(checked)}
+                disabled={agePopupMutation.isPending}
+                data-testid="switch-age-verification"
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Quando ativado, visitantes precisarão confirmar que têm mais de 18 anos para acessar o catálogo.
+            </p>
           </CardContent>
         </Card>
 

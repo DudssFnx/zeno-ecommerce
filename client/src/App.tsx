@@ -1,6 +1,6 @@
 import { Switch, Route } from "wouter";
 import { queryClient } from "./lib/queryClient";
-import { QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
@@ -10,6 +10,7 @@ import { ThemeProvider } from "@/contexts/ThemeContext";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { AppSidebar } from "@/components/AppSidebar";
 import { CartDrawer } from "@/components/CartDrawer";
+import { AgeVerificationPopup } from "@/components/AgeVerificationPopup";
 import { Button } from "@/components/ui/button";
 import { ShoppingCart, Loader2 } from "lucide-react";
 import NotFound from "@/pages/not-found";
@@ -152,6 +153,16 @@ function AppContent() {
   );
 }
 
+function AgeVerificationWrapper() {
+  const { data: agePopupSetting } = useQuery<{ key: string; value: string | null }>({
+    queryKey: ['/api/settings/age_verification_popup'],
+  });
+
+  const isAgePopupEnabled = agePopupSetting?.value === 'true';
+
+  return <AgeVerificationPopup enabled={isAgePopupEnabled} />;
+}
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
@@ -160,6 +171,7 @@ function App() {
           <AuthProvider>
             <AppContent />
           </AuthProvider>
+          <AgeVerificationWrapper />
           <PWAInstallPrompt />
           <Toaster />
         </TooltipProvider>
