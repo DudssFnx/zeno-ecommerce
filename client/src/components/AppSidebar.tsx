@@ -106,6 +106,7 @@ const menuItems: Record<UserRole, MenuItem[]> = {
     },
     { title: "Agenda", url: "/agenda", icon: Calendar },
     { title: "Bling", url: "/bling", icon: Link2 },
+    { title: "Aparência", url: "/appearance", icon: Palette },
     { title: "Configurações", url: "/settings", icon: Settings },
   ],
 };

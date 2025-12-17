@@ -424,3 +424,22 @@ export const insertPayablePaymentSchema = createInsertSchema(payablePayments).om
 
 export type InsertPayablePayment = z.infer<typeof insertPayablePaymentSchema>;
 export type PayablePayment = typeof payablePayments.$inferSelect;
+
+// Banners for carousel
+export const banners = pgTable("banners", {
+  id: serial("id").primaryKey(),
+  title: text("title"),
+  imageUrl: text("image_url").notNull(),
+  linkUrl: text("link_url"),
+  active: boolean("active").notNull().default(true),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertBannerSchema = createInsertSchema(banners).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertBanner = z.infer<typeof insertBannerSchema>;
+export type Banner = typeof banners.$inferSelect;
