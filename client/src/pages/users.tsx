@@ -1,13 +1,14 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { UserCard, type UserData, type UserRole, type CustomerType } from "@/components/UserCard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Search, RefreshCw, Loader2, Plus } from "lucide-react";
+import { Search, RefreshCw, Loader2, Plus, Settings, Shield } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import type { User } from "@shared/schema";
+import type { User, Module } from "@shared/schema";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -24,6 +25,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Badge } from "@/components/ui/badge";
 
 type UserStatus = "pending" | "approved" | "rejected";
 
@@ -32,30 +36,90 @@ export default function UsersPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState("all");
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [isPermissionsOpen, setIsPermissionsOpen] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<UserData | null>(null);
   const [newUserName, setNewUserName] = useState("");
   const [newUserEmail, setNewUserEmail] = useState("");
   const [newUserPassword, setNewUserPassword] = useState("");
   const [newUserRole, setNewUserRole] = useState<UserRole>("customer");
+  const [selectedModules, setSelectedModules] = useState<string[]>([]);
 
   const { data: usersData = [], isLoading, refetch } = useQuery<User[]>({
     queryKey: ['/api/users'],
   });
 
+  const { data: modulesData = [], isLoading: modulesLoading } = useQuery<Module[]>({
+    queryKey: ['/api/modules'],
+  });
+
+  const { data: userPermissions } = useQuery<{ userId: string; modules: string[] }>({
+    queryKey: ['/api/users', selectedUser?.id, 'permissions'],
+    queryFn: async () => {
+      if (!selectedUser?.id) return { userId: '', modules: [] };
+      const res = await fetch(`/api/users/${selectedUser.id}/permissions`, { credentials: 'include' });
+      if (!res.ok) throw new Error('Failed to fetch permissions');
+      return res.json();
+    },
+    enabled: !!selectedUser?.id && isPermissionsOpen,
+  });
+
+  useEffect(() => {
+    if (userPermissions?.modules) {
+      setSelectedModules(userPermissions.modules);
+    }
+  }, [userPermissions]);
+
+
+  const getDefaultModulesForRole = (role: UserRole): string[] => {
+    const roleDefaults: Record<string, string[]> = {
+      admin: modulesData.map(m => m.key),
+      sales: modulesData.filter(m => m.defaultRoles?.includes('sales')).map(m => m.key),
+      customer: modulesData.filter(m => m.defaultRoles?.includes('customer')).map(m => m.key),
+    };
+    return roleDefaults[role] || [];
+  };
+
+  useEffect(() => {
+    if (isCreateOpen && modulesData.length > 0) {
+      setSelectedModules(getDefaultModulesForRole(newUserRole));
+    }
+  }, [newUserRole, isCreateOpen, modulesData]);
+
   const createUserMutation = useMutation({
     mutationFn: async (data: { firstName: string; email: string; password: string; role: string }) => {
-      await apiRequest("POST", "/api/users", data);
+      const response = await apiRequest("POST", "/api/users", data);
+      return response.json();
     },
-    onSuccess: () => {
+    onSuccess: async (newUser) => {
+      if (selectedModules.length > 0 && newUser?.id) {
+        await apiRequest("POST", `/api/users/${newUser.id}/permissions`, { modules: selectedModules });
+      }
       queryClient.invalidateQueries({ queryKey: ['/api/users'] });
       setIsCreateOpen(false);
       setNewUserName("");
       setNewUserEmail("");
       setNewUserPassword("");
       setNewUserRole("customer");
-      toast({ title: "Sucesso", description: "Usuário criado com sucesso" });
+      setSelectedModules([]);
+      toast({ title: "Sucesso", description: "Usuario criado com sucesso" });
     },
     onError: (err: Error) => {
-      toast({ title: "Erro", description: err.message || "Falha ao criar usuário", variant: "destructive" });
+      toast({ title: "Erro", description: err.message || "Falha ao criar usuario", variant: "destructive" });
+    },
+  });
+
+  const updatePermissionsMutation = useMutation({
+    mutationFn: async ({ userId, modules }: { userId: string; modules: string[] }) => {
+      await apiRequest("POST", `/api/users/${userId}/permissions`, { modules });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/users', selectedUser?.id, 'permissions'] });
+      toast({ title: "Sucesso", description: "Permissoes atualizadas com sucesso" });
+      setIsPermissionsOpen(false);
+      setSelectedUser(null);
+    },
+    onError: (err: Error) => {
+      toast({ title: "Erro", description: err.message || "Falha ao atualizar permissoes", variant: "destructive" });
     },
   });
 
@@ -70,6 +134,26 @@ export default function UsersPage() {
       password: newUserPassword,
       role: newUserRole,
     });
+  };
+
+  const handleSavePermissions = () => {
+    if (selectedUser) {
+      updatePermissionsMutation.mutate({ userId: selectedUser.id, modules: selectedModules });
+    }
+  };
+
+  const handleOpenPermissions = (user: UserData) => {
+    setSelectedUser(user);
+    setSelectedModules([]);
+    setIsPermissionsOpen(true);
+  };
+
+  const toggleModule = (moduleKey: string) => {
+    setSelectedModules(prev => 
+      prev.includes(moduleKey) 
+        ? prev.filter(k => k !== moduleKey)
+        : [...prev, moduleKey]
+    );
   };
 
   const users: UserData[] = usersData.map((u) => ({
@@ -109,10 +193,10 @@ export default function UsersPage() {
       { id: user.id, data: { approved: true } },
       {
         onSuccess: () => {
-          toast({ title: "Usuário Aprovado", description: `${user.name} foi aprovado.` });
+          toast({ title: "Usuario Aprovado", description: `${user.name} foi aprovado.` });
         },
         onError: () => {
-          toast({ title: "Erro", description: "Falha ao aprovar usuário", variant: "destructive" });
+          toast({ title: "Erro", description: "Falha ao aprovar usuario", variant: "destructive" });
         },
       }
     );
@@ -123,10 +207,10 @@ export default function UsersPage() {
       { id: user.id, data: { approved: false } },
       {
         onSuccess: () => {
-          toast({ title: "Usuário Rejeitado", description: `${user.name} foi rejeitado.` });
+          toast({ title: "Usuario Rejeitado", description: `${user.name} foi rejeitado.` });
         },
         onError: () => {
-          toast({ title: "Erro", description: "Falha ao rejeitar usuário", variant: "destructive" });
+          toast({ title: "Erro", description: "Falha ao rejeitar usuario", variant: "destructive" });
         },
       }
     );
@@ -137,10 +221,10 @@ export default function UsersPage() {
       { id: user.id, data: { role } },
       {
         onSuccess: () => {
-          toast({ title: "Função Atualizada", description: `${user.name} agora é ${role}.` });
+          toast({ title: "Funcao Atualizada", description: `${user.name} agora e ${role}.` });
         },
         onError: () => {
-          toast({ title: "Erro", description: "Falha ao atualizar função", variant: "destructive" });
+          toast({ title: "Erro", description: "Falha ao atualizar funcao", variant: "destructive" });
         },
       }
     );
@@ -151,7 +235,7 @@ export default function UsersPage() {
       { id: user.id, data: { customerType } },
       {
         onSuccess: () => {
-          toast({ title: "Tipo Atualizado", description: `${user.name} agora é ${customerType === "atacado" ? "Atacado" : "Varejo"}.` });
+          toast({ title: "Tipo Atualizado", description: `${user.name} agora e ${customerType === "atacado" ? "Atacado" : "Varejo"}.` });
         },
         onError: () => {
           toast({ title: "Erro", description: "Falha ao atualizar tipo de cliente", variant: "destructive" });
@@ -166,7 +250,7 @@ export default function UsersPage() {
     <div className="p-6 lg:p-8 space-y-6">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-3xl font-semibold">Gerenciamento de Usuários</h1>
+          <h1 className="text-3xl font-semibold">Gerenciamento de Usuarios</h1>
           <p className="text-muted-foreground mt-1">Gerencie contas de clientes e membros da equipe</p>
         </div>
         <div className="flex gap-2">
@@ -174,62 +258,101 @@ export default function UsersPage() {
             <DialogTrigger asChild>
               <Button data-testid="button-create-user">
                 <Plus className="h-4 w-4 mr-2" />
-                Cadastrar Usuário
+                Cadastrar Usuario
               </Button>
             </DialogTrigger>
-            <DialogContent>
+            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
               <DialogHeader>
-                <DialogTitle>Cadastrar Novo Usuário</DialogTitle>
+                <DialogTitle>Cadastrar Novo Usuario</DialogTitle>
                 <DialogDescription>
-                  Preencha os dados para criar um novo usuário
+                  Preencha os dados e selecione os modulos que o usuario pode acessar
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4 py-4">
-                <div className="space-y-2">
-                  <Label htmlFor="name">Nome *</Label>
-                  <Input
-                    id="name"
-                    value={newUserName}
-                    onChange={(e) => setNewUserName(e.target.value)}
-                    placeholder="Nome do usuário"
-                    data-testid="input-create-name"
-                  />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="name">Nome *</Label>
+                    <Input
+                      id="name"
+                      value={newUserName}
+                      onChange={(e) => setNewUserName(e.target.value)}
+                      placeholder="Nome do usuario"
+                      data-testid="input-create-name"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="email">E-mail *</Label>
+                    <Input
+                      id="email"
+                      type="email"
+                      value={newUserEmail}
+                      onChange={(e) => setNewUserEmail(e.target.value)}
+                      placeholder="email@exemplo.com"
+                      data-testid="input-create-email"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="password">Senha *</Label>
+                    <Input
+                      id="password"
+                      type="password"
+                      value={newUserPassword}
+                      onChange={(e) => setNewUserPassword(e.target.value)}
+                      placeholder="Senha de acesso"
+                      data-testid="input-create-password"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="role">Funcao</Label>
+                    <Select value={newUserRole} onValueChange={(v) => setNewUserRole(v as UserRole)}>
+                      <SelectTrigger data-testid="select-create-role">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="customer">Cliente</SelectItem>
+                        <SelectItem value="sales">Vendedor</SelectItem>
+                        <SelectItem value="admin">Administrador</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="email">E-mail *</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    value={newUserEmail}
-                    onChange={(e) => setNewUserEmail(e.target.value)}
-                    placeholder="email@exemplo.com"
-                    data-testid="input-create-email"
-                  />
+
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Shield className="h-4 w-4 text-primary" />
+                    <Label className="text-base font-medium">Permissoes de Modulos</Label>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    Selecione quais areas do sistema este usuario pode acessar
+                  </p>
+                  
+                  {modulesLoading ? (
+                    <div className="flex items-center justify-center py-4">
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                      {modulesData.map((module) => (
+                        <div
+                          key={module.key}
+                          className="flex items-center space-x-3 p-3 rounded-lg border bg-muted/30 hover-elevate cursor-pointer"
+                          onClick={() => toggleModule(module.key)}
+                          data-testid={`checkbox-module-${module.key}`}
+                        >
+                          <Checkbox
+                            checked={selectedModules.includes(module.key)}
+                            onCheckedChange={() => toggleModule(module.key)}
+                          />
+                          <div className="flex-1">
+                            <p className="text-sm font-medium">{module.label}</p>
+                            <p className="text-xs text-muted-foreground">{module.description}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="password">Senha *</Label>
-                  <Input
-                    id="password"
-                    type="password"
-                    value={newUserPassword}
-                    onChange={(e) => setNewUserPassword(e.target.value)}
-                    placeholder="Senha de acesso"
-                    data-testid="input-create-password"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="role">Função</Label>
-                  <Select value={newUserRole} onValueChange={(v) => setNewUserRole(v as UserRole)}>
-                    <SelectTrigger data-testid="select-create-role">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="customer">Cliente</SelectItem>
-                      <SelectItem value="sales">Vendedor</SelectItem>
-                      <SelectItem value="admin">Administrador</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+
                 <Button 
                   className="w-full" 
                   onClick={handleCreateUser}
@@ -242,7 +365,7 @@ export default function UsersPage() {
                       Criando...
                     </>
                   ) : (
-                    "Criar Usuário"
+                    "Criar Usuario"
                   )}
                 </Button>
               </div>
@@ -258,7 +381,7 @@ export default function UsersPage() {
       <div className="relative max-w-sm">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input
-          placeholder="Buscar usuários..."
+          placeholder="Buscar usuarios..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           className="pl-9"
@@ -287,24 +410,93 @@ export default function UsersPage() {
             </div>
           ) : filteredUsers.length === 0 ? (
             <div className="text-center py-12">
-              <p className="text-muted-foreground">Nenhum usuário encontrado</p>
+              <p className="text-muted-foreground">Nenhum usuario encontrado</p>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {filteredUsers.map((user) => (
-                <UserCard
-                  key={user.id}
-                  user={user}
-                  onApprove={handleApprove}
-                  onReject={handleReject}
-                  onChangeRole={handleChangeRole}
-                  onChangeCustomerType={handleChangeCustomerType}
-                />
+                <div key={user.id} className="relative">
+                  <UserCard
+                    user={user}
+                    onApprove={handleApprove}
+                    onReject={handleReject}
+                    onChangeRole={handleChangeRole}
+                    onChangeCustomerType={handleChangeCustomerType}
+                  />
+                  {user.role !== "admin" && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="absolute top-2 right-2 gap-1"
+                      onClick={() => handleOpenPermissions(user)}
+                      data-testid={`button-permissions-${user.id}`}
+                    >
+                      <Settings className="h-3.5 w-3.5" />
+                      Permissoes
+                    </Button>
+                  )}
+                </div>
               ))}
             </div>
           )}
         </TabsContent>
       </Tabs>
+
+      <Dialog open={isPermissionsOpen} onOpenChange={setIsPermissionsOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Shield className="h-5 w-5" />
+              Permissoes de {selectedUser?.name}
+            </DialogTitle>
+            <DialogDescription>
+              Configure quais modulos este usuario pode acessar no sistema
+            </DialogDescription>
+          </DialogHeader>
+          
+          <ScrollArea className="max-h-[400px] pr-4">
+            <div className="space-y-2">
+              {modulesData.map((module) => (
+                <div
+                  key={module.key}
+                  className="flex items-center space-x-3 p-3 rounded-lg border bg-muted/30 hover-elevate cursor-pointer"
+                  onClick={() => toggleModule(module.key)}
+                >
+                  <Checkbox
+                    checked={selectedModules.includes(module.key)}
+                    onCheckedChange={() => toggleModule(module.key)}
+                    data-testid={`checkbox-edit-module-${module.key}`}
+                  />
+                  <div className="flex-1">
+                    <p className="text-sm font-medium">{module.label}</p>
+                    <p className="text-xs text-muted-foreground">{module.description}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </ScrollArea>
+
+          <div className="flex justify-end gap-2 pt-4">
+            <Button variant="outline" onClick={() => setIsPermissionsOpen(false)}>
+              Cancelar
+            </Button>
+            <Button 
+              onClick={handleSavePermissions}
+              disabled={updatePermissionsMutation.isPending}
+              data-testid="button-save-permissions"
+            >
+              {updatePermissionsMutation.isPending ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Salvando...
+                </>
+              ) : (
+                "Salvar Permissoes"
+              )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

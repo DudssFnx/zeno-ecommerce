@@ -16,7 +16,9 @@ import {
   type CreditPayment, type InsertCreditPayment,
   type AccountPayable, type InsertAccountPayable,
   type PayablePayment, type InsertPayablePayment,
-  users, categories, products, orders, orderItems, priceTables, customerPrices, coupons, agendaEvents, siteSettings, catalogBanners, catalogSlides, catalogConfig, customerCredits, creditPayments, accountsPayable, payablePayments
+  type Module, type InsertModule,
+  type UserModulePermission, type InsertUserModulePermission,
+  users, categories, products, orders, orderItems, priceTables, customerPrices, coupons, agendaEvents, siteSettings, catalogBanners, catalogSlides, catalogConfig, customerCredits, creditPayments, accountsPayable, payablePayments, modules, userModulePermissions
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, ilike, and, or, sql, count } from "drizzle-orm";
@@ -164,6 +166,17 @@ export interface IStorage {
   // Credit Payments
   getCreditPayments(creditId: number): Promise<CreditPayment[]>;
   createCreditPayment(payment: InsertCreditPayment): Promise<CreditPayment>;
+
+  // Modules (Permission System)
+  getModules(): Promise<Module[]>;
+  getModule(key: string): Promise<Module | undefined>;
+  createModule(module: InsertModule): Promise<Module>;
+  
+  // User Module Permissions
+  getUserPermissions(userId: string): Promise<UserModulePermission[]>;
+  getUserPermissionKeys(userId: string): Promise<string[]>;
+  setUserPermissions(userId: string, moduleKeys: string[]): Promise<void>;
+  hasModuleAccess(userId: string, moduleKey: string): Promise<boolean>;
 }
 
 // Customer Analytics Types
@@ -2820,6 +2833,69 @@ export class DatabaseStorage implements IStorage {
     }
     
     return newPayment;
+  }
+
+  // ========== MODULES (PERMISSION SYSTEM) ==========
+  async getModules(): Promise<Module[]> {
+    return db.select().from(modules).orderBy(modules.sortOrder);
+  }
+
+  async getModule(key: string): Promise<Module | undefined> {
+    const [module] = await db.select().from(modules).where(eq(modules.key, key));
+    return module;
+  }
+
+  async createModule(module: InsertModule): Promise<Module> {
+    const [newModule] = await db.insert(modules).values(module).returning();
+    return newModule;
+  }
+
+  // ========== USER MODULE PERMISSIONS ==========
+  async getUserPermissions(userId: string): Promise<UserModulePermission[]> {
+    return db.select().from(userModulePermissions)
+      .where(eq(userModulePermissions.userId, userId));
+  }
+
+  async getUserPermissionKeys(userId: string): Promise<string[]> {
+    const permissions = await db.select().from(userModulePermissions)
+      .where(and(
+        eq(userModulePermissions.userId, userId),
+        eq(userModulePermissions.allowed, true)
+      ));
+    return permissions.map(p => p.moduleKey);
+  }
+
+  async setUserPermissions(userId: string, moduleKeys: string[]): Promise<void> {
+    // Delete existing permissions
+    await db.delete(userModulePermissions)
+      .where(eq(userModulePermissions.userId, userId));
+    
+    // Insert new permissions
+    if (moduleKeys.length > 0) {
+      await db.insert(userModulePermissions).values(
+        moduleKeys.map(key => ({
+          userId,
+          moduleKey: key,
+          allowed: true
+        }))
+      );
+    }
+  }
+
+  async hasModuleAccess(userId: string, moduleKey: string): Promise<boolean> {
+    // First check if user is admin - admins have access to everything
+    const user = await this.getUser(userId);
+    if (user?.role === 'admin') return true;
+    
+    // Check explicit permissions
+    const [permission] = await db.select().from(userModulePermissions)
+      .where(and(
+        eq(userModulePermissions.userId, userId),
+        eq(userModulePermissions.moduleKey, moduleKey),
+        eq(userModulePermissions.allowed, true)
+      ));
+    
+    return !!permission;
   }
 }
 

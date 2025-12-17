@@ -447,3 +447,40 @@ export const insertBannerSchema = createInsertSchema(banners).omit({
 
 export type InsertBanner = z.infer<typeof insertBannerSchema>;
 export type Banner = typeof banners.$inferSelect;
+
+// System modules for permission management
+export const modules = pgTable("modules", {
+  id: serial("id").primaryKey(),
+  key: text("key").notNull().unique(), // catalog, orders, products, customers, etc.
+  label: text("label").notNull(), // Display name in Portuguese
+  description: text("description"),
+  icon: text("icon"), // lucide icon name
+  defaultRoles: text("default_roles").array(), // roles that have access by default
+  sortOrder: integer("sort_order").notNull().default(0),
+});
+
+export const insertModuleSchema = createInsertSchema(modules).omit({
+  id: true,
+});
+
+export type InsertModule = z.infer<typeof insertModuleSchema>;
+export type Module = typeof modules.$inferSelect;
+
+// User module permissions - which modules each user can access
+export const userModulePermissions = pgTable("user_module_permissions", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+  moduleKey: text("module_key").notNull(),
+  allowed: boolean("allowed").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertUserModulePermissionSchema = createInsertSchema(userModulePermissions).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertUserModulePermission = z.infer<typeof insertUserModulePermissionSchema>;
+export type UserModulePermission = typeof userModulePermissions.$inferSelect;

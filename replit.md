@@ -147,6 +147,45 @@ Gerencia despesas e dívidas com fornecedores:
 - **Contas a Receber**: Admin e Sales podem acessar
 - **Contas a Pagar**: Somente Admin pode acessar
 
+## Sistema de Permissões ERP
+
+Sistema granular de permissões por módulo, permitindo controle fino de acesso para cada usuário.
+
+### Arquitetura
+
+**Tabelas:**
+- `modules`: Módulos disponíveis no sistema (catalog, orders, products, etc.)
+- `user_module_permissions`: Permissões de cada usuário para cada módulo
+
+**Módulos Disponíveis:**
+1. `catalog` - Catálogo de produtos
+2. `orders` - Gerenciamento de pedidos
+3. `products` - Gerenciamento de produtos
+4. `customers` - Gerenciamento de clientes
+5. `financial_receivables` - Contas a Receber
+6. `financial_payables` - Contas a Pagar
+7. `reports` - Relatórios e dashboards
+8. `settings` - Configurações do sistema
+9. `appearance` - Personalização visual
+10. `pdv` - Ponto de Venda
+11. `agenda` - Agenda/Calendário
+
+### Funcionamento
+- **Seed automático**: Módulos são criados automaticamente no startup do servidor
+- **Admin bypass**: Usuários admin têm acesso a todos os módulos automaticamente
+- **Permissões padrão por role**: Cada módulo tem roles padrão (admin, sales, customer)
+- **Personalização por usuário**: Admin pode selecionar módulos específicos ao criar/editar usuários
+
+### API Endpoints
+- `GET /api/modules` - Lista todos módulos (admin only)
+- `GET /api/users/:id/permissions` - Permissões de um usuário (admin only)
+- `POST /api/users/:id/permissions` - Define permissões de um usuário (admin only)
+- `GET /api/auth/permissions` - Permissões do usuário logado (para filtrar menu)
+
+### Frontend
+- `AppSidebar.tsx`: Filtra menu baseado em `/api/auth/permissions`
+- `users.tsx`: Checkboxes para selecionar módulos ao criar/editar usuários
+
 ## Modo Delivery (Catálogo Estilo iFood)
 
 O sistema oferece um modo de catálogo alternativo inspirado em apps de delivery como iFood, Zé Delivery e Rappi.

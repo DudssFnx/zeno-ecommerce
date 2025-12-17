@@ -1,4 +1,5 @@
 import { Link, useLocation } from "wouter";
+import { useQuery } from "@tanstack/react-query";
 import {
   Sidebar,
   SidebarContent,
@@ -35,19 +36,20 @@ import {
   ShoppingCart,
   Calendar,
   Palette,
-  Wallet,
+  Banknote,
   ArrowUpRight,
   ArrowDownRight,
-  Banknote,
 } from "lucide-react";
 import logoImage from "@assets/image_1765659931449.png";
+
 type UserRole = "admin" | "sales" | "customer";
 
 interface MenuItem {
   title: string;
   url?: string;
   icon: any;
-  subItems?: { title: string; url: string; icon: any }[];
+  moduleKey?: string;
+  subItems?: { title: string; url: string; icon: any; moduleKey?: string }[];
 }
 
 interface AppSidebarProps {
@@ -56,57 +58,86 @@ interface AppSidebarProps {
   onLogout?: () => void;
 }
 
-const menuItems: Record<UserRole, MenuItem[]> = {
-  customer: [
-    { title: "Painel", url: "/", icon: LayoutDashboard },
-    { title: "Categorias", url: "/categories", icon: Grid3X3 },
-    { title: "Catálogo", url: "/catalog", icon: Package },
-    { title: "Meus Pedidos", url: "/orders", icon: ClipboardList },
-  ],
-  sales: [
-    { title: "Painel", url: "/", icon: LayoutDashboard },
-    { title: "Categorias", url: "/categories", icon: Grid3X3 },
-    { title: "Catálogo", url: "/catalog", icon: Package },
-    { title: "Todos os Pedidos", url: "/orders", icon: ClipboardList },
-    { title: "Contas a Receber", url: "/contas-receber", icon: ArrowUpRight },
-  ],
-  admin: [
-    { 
-      title: "Painel", 
-      icon: LayoutDashboard,
-      subItems: [
-        { title: "Visão Geral", url: "/", icon: LayoutDashboard },
-        { title: "Análise de Clientes", url: "/customer-analytics", icon: BarChart3 },
-        { title: "Análise de Produtos", url: "/product-analytics", icon: TrendingUp },
-        { title: "Análise de Funcionários", url: "/employee-analytics", icon: Users },
-        { title: "Compras", url: "/purchases", icon: ShoppingCart },
-      ]
-    },
-    { title: "Categorias", url: "/categories", icon: Grid3X3 },
-    { title: "Catálogo", url: "/catalog", icon: Package },
-    { title: "Todos os Pedidos", url: "/orders", icon: ClipboardList },
-    { title: "Produtos", url: "/products", icon: Package },
-    { title: "Clientes", url: "/customers", icon: UserCheck },
-    { title: "Usuários", url: "/users", icon: Users },
-    { title: "Cupons", url: "/coupons", icon: Ticket },
-    { 
-      title: "Financeiro", 
-      icon: Banknote,
-      subItems: [
-        { title: "Contas a Receber", url: "/contas-receber", icon: ArrowUpRight },
-        { title: "Contas a Pagar", url: "/contas-pagar", icon: ArrowDownRight },
-      ]
-    },
-    { title: "Agenda", url: "/agenda", icon: Calendar },
-    { title: "Bling", url: "/bling", icon: Link2 },
-    { title: "Aparência", url: "/appearance", icon: Palette },
-    { title: "Configurações", url: "/settings", icon: Settings },
-  ],
-};
+const allMenuItems: MenuItem[] = [
+  { 
+    title: "Painel", 
+    icon: LayoutDashboard,
+    moduleKey: "reports",
+    subItems: [
+      { title: "Visao Geral", url: "/", icon: LayoutDashboard, moduleKey: "reports" },
+      { title: "Analise de Clientes", url: "/customer-analytics", icon: BarChart3, moduleKey: "reports" },
+      { title: "Analise de Produtos", url: "/product-analytics", icon: TrendingUp, moduleKey: "reports" },
+      { title: "Analise de Funcionarios", url: "/employee-analytics", icon: Users, moduleKey: "reports" },
+      { title: "Compras", url: "/purchases", icon: ShoppingCart, moduleKey: "reports" },
+    ]
+  },
+  { title: "Categorias", url: "/categories", icon: Grid3X3, moduleKey: "catalog" },
+  { title: "Catalogo", url: "/catalog", icon: Package, moduleKey: "catalog" },
+  { title: "Pedidos", url: "/orders", icon: ClipboardList, moduleKey: "orders" },
+  { title: "Produtos", url: "/products", icon: Package, moduleKey: "products" },
+  { title: "Clientes", url: "/customers", icon: UserCheck, moduleKey: "customers" },
+  { title: "Usuarios", url: "/users", icon: Users, moduleKey: "customers" },
+  { title: "Cupons", url: "/coupons", icon: Ticket, moduleKey: "products" },
+  { 
+    title: "Financeiro", 
+    icon: Banknote,
+    subItems: [
+      { title: "Contas a Receber", url: "/contas-receber", icon: ArrowUpRight, moduleKey: "financial_receivables" },
+      { title: "Contas a Pagar", url: "/contas-pagar", icon: ArrowDownRight, moduleKey: "financial_payables" },
+    ]
+  },
+  { title: "Agenda", url: "/agenda", icon: Calendar, moduleKey: "agenda" },
+  { title: "Bling", url: "/bling", icon: Link2, moduleKey: "settings" },
+  { title: "Aparencia", url: "/appearance", icon: Palette, moduleKey: "appearance" },
+  { title: "Configuracoes", url: "/settings", icon: Settings, moduleKey: "settings" },
+];
+
+const customerMenuItems: MenuItem[] = [
+  { title: "Painel", url: "/", icon: LayoutDashboard, moduleKey: "catalog" },
+  { title: "Categorias", url: "/categories", icon: Grid3X3, moduleKey: "catalog" },
+  { title: "Catalogo", url: "/catalog", icon: Package, moduleKey: "catalog" },
+  { title: "Meus Pedidos", url: "/orders", icon: ClipboardList, moduleKey: "orders" },
+];
 
 export function AppSidebar({ userRole = "customer", userName = "User", onLogout }: AppSidebarProps) {
   const [location] = useLocation();
-  const items = menuItems[userRole] || menuItems.customer;
+
+  const { data: permissionsData } = useQuery<{ modules: string[]; role: string }>({
+    queryKey: ['/api/auth/permissions'],
+    staleTime: 1000 * 60 * 5,
+  });
+
+  const userModules = permissionsData?.modules || [];
+  const isAdmin = userRole === "admin";
+
+  const filterMenuItems = (items: MenuItem[]): MenuItem[] => {
+    if (isAdmin) return items;
+
+    return items
+      .filter(item => {
+        if (item.subItems) {
+          const filteredSubItems = item.subItems.filter(sub => 
+            !sub.moduleKey || userModules.includes(sub.moduleKey)
+          );
+          return filteredSubItems.length > 0;
+        }
+        return !item.moduleKey || userModules.includes(item.moduleKey);
+      })
+      .map(item => {
+        if (item.subItems) {
+          return {
+            ...item,
+            subItems: item.subItems.filter(sub => 
+              !sub.moduleKey || userModules.includes(sub.moduleKey)
+            )
+          };
+        }
+        return item;
+      });
+  };
+
+  const baseItems = userRole === "customer" ? customerMenuItems : allMenuItems;
+  const items = filterMenuItems(baseItems);
 
   const initials = userName
     .split(" ")

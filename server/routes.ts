@@ -3165,5 +3165,101 @@ export async function registerRoutes(
     }
   });
 
+  // ========== MODULES (PERMISSION SYSTEM) ==========
+  
+  // Seed modules on server startup (internal function, not exposed to API)
+  async function seedModulesOnStartup() {
+    try {
+      const existingModules = await storage.getModules();
+      if (existingModules.length > 0) {
+        console.log("[MODULES] Modules already seeded, skipping...");
+        return;
+      }
+
+      const defaultModules = [
+        { key: "catalog", label: "Catalogo", description: "Visualizar catalogo de produtos", icon: "ShoppingBag", defaultRoles: ["admin", "sales", "customer"], sortOrder: 1 },
+        { key: "orders", label: "Pedidos", description: "Gerenciar pedidos", icon: "ShoppingCart", defaultRoles: ["admin", "sales", "customer"], sortOrder: 2 },
+        { key: "products", label: "Produtos", description: "Gerenciar produtos do catalogo", icon: "Package", defaultRoles: ["admin", "sales"], sortOrder: 3 },
+        { key: "customers", label: "Clientes", description: "Gerenciar clientes e usuarios", icon: "Users", defaultRoles: ["admin", "sales"], sortOrder: 4 },
+        { key: "financial_receivables", label: "Contas a Receber", description: "Gerenciar creditos e fiados", icon: "TrendingUp", defaultRoles: ["admin", "sales"], sortOrder: 5 },
+        { key: "financial_payables", label: "Contas a Pagar", description: "Gerenciar despesas e dividas", icon: "TrendingDown", defaultRoles: ["admin"], sortOrder: 6 },
+        { key: "reports", label: "Relatorios", description: "Visualizar relatorios e dashboards", icon: "BarChart3", defaultRoles: ["admin"], sortOrder: 7 },
+        { key: "settings", label: "Configuracoes", description: "Configuracoes do sistema", icon: "Settings", defaultRoles: ["admin"], sortOrder: 8 },
+        { key: "appearance", label: "Aparencia", description: "Personalizar aparencia do sistema", icon: "Palette", defaultRoles: ["admin"], sortOrder: 9 },
+        { key: "pdv", label: "PDV", description: "Ponto de Venda / Orcamento rapido", icon: "Monitor", defaultRoles: ["admin", "sales"], sortOrder: 10 },
+        { key: "agenda", label: "Agenda", description: "Calendario de eventos", icon: "Calendar", defaultRoles: ["admin", "sales"], sortOrder: 11 },
+      ];
+
+      for (const mod of defaultModules) {
+        await storage.createModule(mod);
+      }
+      console.log("[MODULES] Default modules seeded successfully");
+    } catch (error) {
+      console.error("[MODULES] Error seeding modules:", error);
+    }
+  }
+  
+  // Run module seeding on startup
+  seedModulesOnStartup();
+
+  // Get all available modules
+  app.get("/api/modules", isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const allModules = await storage.getModules();
+      res.json(allModules);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch modules" });
+    }
+  });
+
+  // Get user's module permissions
+  app.get("/api/users/:id/permissions", isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const userId = req.params.id;
+      const permissionKeys = await storage.getUserPermissionKeys(userId);
+      res.json({ userId, modules: permissionKeys });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch user permissions" });
+    }
+  });
+
+  // Set user's module permissions
+  app.post("/api/users/:id/permissions", isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const userId = req.params.id;
+      const { modules: moduleKeys } = req.body;
+      
+      if (!Array.isArray(moduleKeys)) {
+        return res.status(400).json({ message: "modules must be an array of module keys" });
+      }
+
+      await storage.setUserPermissions(userId, moduleKeys);
+      const updatedPermissions = await storage.getUserPermissionKeys(userId);
+      res.json({ userId, modules: updatedPermissions });
+    } catch (error) {
+      console.error("Error setting user permissions:", error);
+      res.status(500).json({ message: "Failed to set user permissions" });
+    }
+  });
+
+  // Get current user's permissions (for frontend menu filtering)
+  app.get("/api/auth/permissions", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const user = await storage.getUser(userId);
+      
+      // Admin has access to everything
+      if (user?.role === "admin") {
+        const allModules = await storage.getModules();
+        return res.json({ modules: allModules.map(m => m.key), role: "admin" });
+      }
+
+      const permissionKeys = await storage.getUserPermissionKeys(userId);
+      res.json({ modules: permissionKeys, role: user?.role || "customer" });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch permissions" });
+    }
+  });
+
   return httpServer;
 }
