@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useRef } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
@@ -7,14 +7,14 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { Product, User, Category } from "@shared/schema";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { 
   Search, 
   Plus, 
@@ -23,16 +23,18 @@ import {
   X, 
   User as UserIcon,
   ShoppingCart,
-  CreditCard,
   Package,
-  Star,
   ArrowLeft,
-  ArrowRight,
   Loader2,
-  Percent,
-  Eye,
   FileText,
-  CheckCircle
+  CheckCircle,
+  Building2,
+  Mail,
+  Phone,
+  Printer,
+  Download,
+  Share2,
+  RotateCcw
 } from "lucide-react";
 
 interface CartItem {
@@ -44,24 +46,30 @@ interface CartItem {
   subtotal: number;
 }
 
+interface QuoteResult {
+  id: number;
+  orderNumber: string;
+  total: number;
+  itemCount: number;
+  customer: string;
+}
+
 export default function PDVPage() {
   const [, setLocation] = useLocation();
   const { user, isAdmin, isSales } = useAuth();
   const { toast } = useToast();
   
-  const [activeTab, setActiveTab] = useState("produto");
   const [productSearch, setProductSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [customerSearch, setCustomerSearch] = useState("");
   const [selectedCustomer, setSelectedCustomer] = useState<User | null>(null);
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
-  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
-  const [quantity, setQuantity] = useState(1);
-  const [discount, setDiscount] = useState(0);
   const [comment, setComment] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState<string>("");
-  const [paymentNotes, setPaymentNotes] = useState("");
   const [addedProductId, setAddedProductId] = useState<number | null>(null);
+  const [showCustomerModal, setShowCustomerModal] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [quoteResult, setQuoteResult] = useState<QuoteResult | null>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   const showPDV = isAdmin || isSales;
 
@@ -89,7 +97,7 @@ export default function PDVPage() {
       p.sku.toLowerCase().includes(productSearch.toLowerCase());
     const matchesCategory = selectedCategory === "all" || p.categoryId === parseInt(selectedCategory);
     return matchesSearch && matchesCategory;
-  }).slice(0, 12);
+  }).slice(0, 24);
 
   const filteredCustomers = customerSearch.length > 0 
     ? approvedCustomers.filter(c => 
@@ -102,33 +110,41 @@ export default function PDVPage() {
     : approvedCustomers.slice(0, 10);
 
   const createOrderMutation = useMutation({
-    mutationFn: async (data: { userId: string; items: { productId: number; quantity: number }[]; notes?: string }) => {
-      await apiRequest("POST", "/api/orders", data);
+    mutationFn: async (data: { 
+      userId: string; 
+      items: { productId: number; quantity: number; unitPrice: number; discount: number }[]; 
+      notes?: string;
+      subtotal: number;
+      total: number;
+    }) => {
+      const res = await apiRequest("POST", "/api/orders", data);
+      return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['/api/orders'] });
-      toast({ title: "Sucesso", description: "Pedido criado com sucesso!" });
-      resetPDV();
-      setLocation("/orders");
+      setQuoteResult({
+        id: data.id,
+        orderNumber: data.orderNumber || `#${data.id}`,
+        total: cartTotal,
+        itemCount: cartItemCount,
+        customer: selectedCustomer ? `${selectedCustomer.firstName} ${selectedCustomer.lastName}` : ''
+      });
+      setShowSuccessModal(true);
     },
     onError: (error: Error) => {
-      toast({ title: "Erro", description: error.message || "Falha ao criar pedido", variant: "destructive" });
+      toast({ title: "Erro", description: error.message || "Falha ao gerar orçamento", variant: "destructive" });
     },
   });
 
   const resetPDV = () => {
     setCartItems([]);
     setSelectedCustomer(null);
-    setSelectedProduct(null);
-    setQuantity(1);
-    setDiscount(0);
     setComment("");
-    setPaymentMethod("");
-    setPaymentNotes("");
     setProductSearch("");
     setSelectedCategory("all");
     setCustomerSearch("");
-    setActiveTab("produto");
+    setQuoteResult(null);
+    setShowSuccessModal(false);
   };
 
   const formatPrice = (price: number) => {
@@ -136,13 +152,6 @@ export default function PDVPage() {
       style: 'currency',
       currency: 'BRL'
     }).format(price);
-  };
-
-  const handleSelectProduct = (product: Product) => {
-    setSelectedProduct(product);
-    setQuantity(1);
-    setDiscount(0);
-    setProductSearch("");
   };
 
   const handleQuickAddToCart = (product: Product) => {
@@ -165,39 +174,7 @@ export default function PDVPage() {
       }]);
     }
     setAddedProductId(product.id);
-    setTimeout(() => setAddedProductId(null), 600);
-  };
-
-  const handleAddToCart = () => {
-    if (!selectedProduct) return;
-
-    const unitPrice = parseFloat(selectedProduct.price);
-    const discountAmount = (unitPrice * discount) / 100;
-    const finalPrice = unitPrice - discountAmount;
-    const subtotal = finalPrice * quantity;
-
-    const existingIndex = cartItems.findIndex(item => item.productId === selectedProduct.id);
-    
-    if (existingIndex >= 0) {
-      const newItems = [...cartItems];
-      newItems[existingIndex].quantity += quantity;
-      newItems[existingIndex].subtotal = (unitPrice - (unitPrice * newItems[existingIndex].discount / 100)) * newItems[existingIndex].quantity;
-      setCartItems(newItems);
-    } else {
-      setCartItems([...cartItems, {
-        productId: selectedProduct.id,
-        product: selectedProduct,
-        quantity,
-        discount,
-        unitPrice,
-        subtotal
-      }]);
-    }
-
-    setSelectedProduct(null);
-    setQuantity(1);
-    setDiscount(0);
-    toast({ title: "Produto adicionado", description: `${selectedProduct.name} adicionado ao carrinho` });
+    setTimeout(() => setAddedProductId(null), 400);
   };
 
   const handleRemoveFromCart = (index: number) => {
@@ -205,7 +182,10 @@ export default function PDVPage() {
   };
 
   const handleUpdateQuantity = (index: number, newQuantity: number) => {
-    if (newQuantity < 1) return;
+    if (newQuantity < 1) {
+      handleRemoveFromCart(index);
+      return;
+    }
     const newItems = [...cartItems];
     newItems[index].quantity = newQuantity;
     const unitPrice = newItems[index].unitPrice;
@@ -219,37 +199,39 @@ export default function PDVPage() {
 
   const handleSelectCustomer = (customer: User) => {
     setSelectedCustomer(customer);
+    setShowCustomerModal(false);
     setCustomerSearch("");
-    setActiveTab("produto");
   };
 
-  const handleFinalizeSale = () => {
+  const handleGenerateQuote = () => {
     if (!selectedCustomer) {
-      toast({ title: "Erro", description: "Selecione um cliente", variant: "destructive" });
-      setActiveTab("cliente");
+      toast({ title: "Selecione um cliente", description: "Clique no botão 'Selecionar Cliente' para continuar", variant: "destructive" });
+      setShowCustomerModal(true);
       return;
     }
     if (cartItems.length === 0) {
-      toast({ title: "Erro", description: "Adicione pelo menos um produto", variant: "destructive" });
-      setActiveTab("produto");
+      toast({ title: "Carrinho vazio", description: "Adicione produtos ao carrinho", variant: "destructive" });
       return;
     }
 
     createOrderMutation.mutate({
       userId: selectedCustomer.id,
-      items: cartItems.map(item => ({ productId: item.productId, quantity: item.quantity })),
+      items: cartItems.map(item => ({ 
+        productId: item.productId, 
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        discount: item.discount
+      })),
       notes: comment || undefined,
+      subtotal: cartTotal,
+      total: cartTotal
     });
   };
 
-  const handleCancelSale = () => {
-    if (cartItems.length > 0 || selectedCustomer) {
-      if (window.confirm("Deseja realmente cancelar esta venda? Todos os itens serão removidos.")) {
-        resetPDV();
-      }
-    } else {
-      setLocation("/orders");
-    }
+  const getProductImage = (product: Product) => {
+    if (product.image) return product.image;
+    if (product.images && product.images.length > 0) return product.images[0];
+    return null;
   };
 
   if (!showPDV) {
@@ -262,591 +244,192 @@ export default function PDVPage() {
 
   return (
     <div className="h-full flex flex-col bg-background">
-      <div className="border-b p-4">
-        <div className="flex items-center justify-between gap-4 flex-wrap">
-          <div className="flex items-center gap-4">
+      <div className="border-b bg-card">
+        <div className="flex items-center justify-between gap-4 p-4">
+          <div className="flex items-center gap-3">
             <Button variant="ghost" size="icon" onClick={() => setLocation("/orders")} data-testid="button-back-pdv">
               <ArrowLeft className="h-5 w-5" />
             </Button>
             <div>
-              <h1 className="text-2xl font-bold">PDV - Ponto de Venda</h1>
-              <p className="text-sm text-muted-foreground">Crie pedidos de forma rapida</p>
+              <h1 className="text-xl font-semibold">PDV</h1>
+              <p className="text-xs text-muted-foreground">Ponto de Venda</p>
             </div>
           </div>
-          <div className="flex items-center gap-4">
-            {selectedCustomer && (
-              <div className="flex items-center gap-2 px-3 py-2 bg-muted rounded-md">
-                <UserIcon className="h-4 w-4 text-orange-500" />
-                <span className="text-sm font-medium" data-testid="text-pdv-customer">
+          
+          <div className="flex items-center gap-3">
+            <Button
+              variant={selectedCustomer ? "secondary" : "outline"}
+              onClick={() => setShowCustomerModal(true)}
+              className="gap-2"
+              data-testid="button-select-customer"
+            >
+              <UserIcon className="h-4 w-4" />
+              {selectedCustomer ? (
+                <span className="max-w-[150px] truncate">
                   {selectedCustomer.firstName} {selectedCustomer.lastName}
                 </span>
-                <Button 
-                  variant="ghost" 
-                  size="icon" 
-                  className="h-6 w-6" 
-                  onClick={() => setSelectedCustomer(null)}
-                  data-testid="button-clear-pdv-customer"
-                >
-                  <X className="h-3 w-3" />
-                </Button>
-              </div>
+              ) : (
+                "Selecionar Cliente"
+              )}
+            </Button>
+            
+            {selectedCustomer && (
+              <Button 
+                variant="ghost" 
+                size="icon"
+                onClick={() => setSelectedCustomer(null)}
+                data-testid="button-clear-customer"
+              >
+                <X className="h-4 w-4" />
+              </Button>
             )}
           </div>
         </div>
       </div>
 
       <div className="flex-1 flex overflow-hidden">
-        <div className="flex-1 flex flex-col border-r">
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">
-            <div className="border-b px-4 pt-2">
-              <TabsList className="bg-muted/50">
-                <TabsTrigger value="produto" className="gap-2" data-testid="tab-produto">
-                  <Package className="h-4 w-4" />
-                  1. Produtos
-                </TabsTrigger>
-                <TabsTrigger value="cliente" className="gap-2" data-testid="tab-cliente">
-                  <UserIcon className="h-4 w-4" />
-                  2. Cliente
-                </TabsTrigger>
-                <TabsTrigger value="pagamento" className="gap-2" data-testid="tab-pagamento">
-                  <CreditCard className="h-4 w-4" />
-                  3. Pagamento
-                </TabsTrigger>
-                <TabsTrigger value="finalizar" className="gap-2" data-testid="tab-finalizar">
-                  <CheckCircle className="h-4 w-4" />
-                  4. Finalizar
-                </TabsTrigger>
-              </TabsList>
-            </div>
-
-            <TabsContent value="produto" className="flex-1 flex flex-col m-0 p-4 min-h-0">
-              <div className="flex flex-col flex-1 min-h-0 gap-4">
-                <div className="flex gap-2">
-                  <div className="relative flex-1">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      placeholder="Pesquisar por codigo, descricao ou SKU..."
-                      className="pl-10"
-                      value={productSearch}
-                      onChange={(e) => setProductSearch(e.target.value)}
-                      data-testid="input-pdv-product-search"
-                    />
-                  </div>
-                  <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-                    <SelectTrigger className="w-48" data-testid="select-pdv-category">
-                      <SelectValue placeholder="Categoria" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Todas Categorias</SelectItem>
-                      {categoriesData.map((cat) => (
-                        <SelectItem key={cat.id} value={cat.id.toString()}>
-                          {cat.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {selectedProduct ? (
-                  <Card className="border-orange-500/50">
-                    <CardContent className="p-4">
-                      <div className="flex gap-4">
-                        <div className="w-32 h-32 bg-muted rounded-md flex items-center justify-center overflow-hidden">
-                          {selectedProduct.images && selectedProduct.images.length > 0 ? (
-                            <img 
-                              src={selectedProduct.images[0]} 
-                              alt={selectedProduct.name}
-                              className="w-full h-full object-cover"
-                            />
-                          ) : (
-                            <Package className="h-12 w-12 text-muted-foreground" />
-                          )}
-                        </div>
-                        <div className="flex-1 space-y-2">
-                          <h3 className="font-semibold text-lg">{selectedProduct.name}</h3>
-                          <p className="text-sm text-muted-foreground">SKU: {selectedProduct.sku}</p>
-                          <p className="text-2xl font-bold text-orange-500">{formatPrice(parseFloat(selectedProduct.price))}</p>
-                          {selectedProduct.stock !== null && (
-                            <Badge variant={selectedProduct.stock > 0 ? "secondary" : "destructive"}>
-                              Estoque: {selectedProduct.stock}
-                            </Badge>
-                          )}
-                        </div>
-                      </div>
-                      
-                      <Separator className="my-4" />
-                      
-                      <div className="grid grid-cols-4 gap-4">
-                        <div>
-                          <Label className="text-xs text-muted-foreground">Quantidade</Label>
-                          <div className="flex items-center gap-1 mt-1">
-                            <Button 
-                              variant="outline" 
-                              size="icon" 
-                              className="h-8 w-8"
-                              onClick={() => setQuantity(Math.max(1, quantity - 1))}
-                              data-testid="button-pdv-qty-minus"
-                            >
-                              <Minus className="h-3 w-3" />
-                            </Button>
-                            <Input
-                              type="number"
-                              min="1"
-                              value={quantity}
-                              onChange={(e) => setQuantity(Math.max(1, parseInt(e.target.value) || 1))}
-                              className="h-8 w-16 text-center"
-                              data-testid="input-pdv-quantity"
-                            />
-                            <Button 
-                              variant="outline" 
-                              size="icon" 
-                              className="h-8 w-8"
-                              onClick={() => setQuantity(quantity + 1)}
-                              data-testid="button-pdv-qty-plus"
-                            >
-                              <Plus className="h-3 w-3" />
-                            </Button>
-                          </div>
-                        </div>
-                        <div>
-                          <Label className="text-xs text-muted-foreground">Desconto (%)</Label>
-                          <div className="flex items-center gap-1 mt-1">
-                            <Input
-                              type="number"
-                              min="0"
-                              max="100"
-                              value={discount}
-                              onChange={(e) => setDiscount(Math.min(100, Math.max(0, parseFloat(e.target.value) || 0)))}
-                              className="h-8"
-                              data-testid="input-pdv-discount"
-                            />
-                            <Percent className="h-4 w-4 text-muted-foreground" />
-                          </div>
-                        </div>
-                        <div>
-                          <Label className="text-xs text-muted-foreground">Valor Unitario</Label>
-                          <p className="font-semibold mt-2">
-                            {formatPrice(parseFloat(selectedProduct.price) * (1 - discount / 100))}
-                          </p>
-                        </div>
-                        <div>
-                          <Label className="text-xs text-muted-foreground">Subtotal</Label>
-                          <p className="font-semibold text-orange-500 mt-2">
-                            {formatPrice(parseFloat(selectedProduct.price) * (1 - discount / 100) * quantity)}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center justify-between gap-4 mt-4">
-                        <Button 
-                          variant="ghost" 
-                          onClick={() => setSelectedProduct(null)}
-                          data-testid="button-pdv-cancel-product"
-                        >
-                          <X className="h-4 w-4 mr-2" />
-                          Cancelar
-                        </Button>
-                        <Button 
-                          className="bg-orange-500 hover:bg-orange-600"
-                          onClick={handleAddToCart}
-                          data-testid="button-pdv-add-to-cart"
-                        >
-                          <Plus className="h-4 w-4 mr-2" />
-                          Adicionar ao Carrinho
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ) : (
-                  <ScrollArea className="flex-1 min-h-0">
-                    {productsLoading ? (
-                      <div className="flex items-center justify-center py-12">
-                        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                      </div>
-                    ) : filteredProducts.length === 0 ? (
-                      <div className="text-center py-12 text-muted-foreground">
-                        <Package className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                        <p>Nenhum produto encontrado</p>
-                      </div>
-                    ) : (
-                      <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2">
-                        {filteredProducts.map((product) => (
-                          <Card 
-                            key={product.id} 
-                            className="hover-elevate cursor-pointer relative group"
-                            onClick={() => handleQuickAddToCart(product)}
-                            data-testid={`card-pdv-product-${product.id}`}
-                          >
-                            <CardContent className="p-2">
-                              <div className="relative">
-                                {addedProductId === product.id && (
-                                  <div className="absolute inset-0 z-20 flex items-center justify-center bg-green-500/80 rounded-md animate-in fade-in zoom-in duration-200">
-                                    <span className="text-white font-bold text-lg">+1</span>
-                                  </div>
-                                )}
-                                <Button
-                                  variant="secondary"
-                                  size="icon"
-                                  className="absolute top-1 right-1 h-6 w-6 z-10 opacity-0 group-hover:opacity-100 transition-opacity"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleSelectProduct(product);
-                                  }}
-                                  data-testid={`button-pdv-view-product-${product.id}`}
-                                >
-                                  <Eye className="h-3 w-3" />
-                                </Button>
-                                <div className="aspect-square bg-muted rounded-md mb-1 flex items-center justify-center overflow-hidden">
-                                  {product.image ? (
-                                    <img 
-                                      src={product.image} 
-                                      alt={product.name}
-                                      className="w-full h-full object-cover"
-                                    />
-                                  ) : product.images && product.images.length > 0 ? (
-                                    <img 
-                                      src={product.images[0]} 
-                                      alt={product.name}
-                                      className="w-full h-full object-cover"
-                                    />
-                                  ) : (
-                                    <Package className="h-6 w-6 text-muted-foreground" />
-                                  )}
-                                </div>
-                              </div>
-                              <h4 className="font-medium text-xs truncate">{product.name}</h4>
-                              <p className="text-xs text-muted-foreground truncate">{product.sku}</p>
-                              <p className="font-bold text-orange-500 text-sm">{formatPrice(parseFloat(product.price))}</p>
-                            </CardContent>
-                          </Card>
-                        ))}
-                      </div>
-                    )}
-                  </ScrollArea>
-                )}
-                
-                {cartItems.length > 0 && !selectedProduct && (
-                  <div className="flex justify-end pt-2 border-t mt-2">
-                    <Button 
-                      className="bg-orange-500 hover:bg-orange-600"
-                      onClick={() => setActiveTab("cliente")}
-                      data-testid="button-pdv-next-step-cliente"
-                    >
-                      Proxima Etapa
-                      <ArrowRight className="h-4 w-4 ml-2" />
-                    </Button>
-                  </div>
-                )}
+        <div className="flex-1 flex flex-col min-w-0">
+          <div className="p-4 border-b bg-card/50">
+            <div className="flex gap-3">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  ref={searchInputRef}
+                  placeholder="Buscar produto por nome ou SKU..."
+                  className="pl-10"
+                  value={productSearch}
+                  onChange={(e) => setProductSearch(e.target.value)}
+                  data-testid="input-pdv-product-search"
+                />
               </div>
-            </TabsContent>
-
-            <TabsContent value="cliente" className="flex-1 m-0 p-4 min-h-0">
-              <div className="flex flex-col flex-1 min-h-0 gap-4">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Buscar cliente por nome, empresa ou email..."
-                    className="pl-10"
-                    value={customerSearch}
-                    onChange={(e) => setCustomerSearch(e.target.value)}
-                    data-testid="input-pdv-customer-search"
-                  />
-                </div>
-
-                {selectedCustomer && (
-                  <Card className="border-orange-500/50">
-                    <CardContent className="p-4">
-                      <div className="flex items-center gap-4">
-                        <div className="h-12 w-12 rounded-full bg-orange-500/20 flex items-center justify-center">
-                          <UserIcon className="h-6 w-6 text-orange-500" />
-                        </div>
-                        <div className="flex-1">
-                          <h3 className="font-semibold">{selectedCustomer.firstName} {selectedCustomer.lastName}</h3>
-                          <p className="text-sm text-muted-foreground">{selectedCustomer.company || selectedCustomer.tradingName}</p>
-                          <p className="text-xs text-muted-foreground">{selectedCustomer.email}</p>
-                        </div>
-                        <Badge className="bg-green-500/20 text-green-600">Selecionado</Badge>
-                      </div>
-                    </CardContent>
-                  </Card>
-                )}
-
-                <ScrollArea className="flex-1 min-h-0">
-                  {customersLoading ? (
-                    <div className="flex items-center justify-center py-12">
-                      <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                    </div>
-                  ) : filteredCustomers.length === 0 ? (
-                    <div className="text-center py-12 text-muted-foreground">
-                      <UserIcon className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                      <p>Nenhum cliente encontrado</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      {filteredCustomers.map((customer) => (
-                        <Card 
-                          key={customer.id}
-                          className={`hover-elevate cursor-pointer ${selectedCustomer?.id === customer.id ? 'border-orange-500/50' : ''}`}
-                          onClick={() => handleSelectCustomer(customer)}
-                          data-testid={`card-pdv-customer-${customer.id}`}
-                        >
-                          <CardContent className="p-3">
-                            <div className="flex items-center gap-3">
-                              <div className="h-10 w-10 rounded-full bg-muted flex items-center justify-center">
-                                <UserIcon className="h-5 w-5 text-muted-foreground" />
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <p className="font-medium truncate">{customer.firstName} {customer.lastName}</p>
-                                <p className="text-sm text-muted-foreground truncate">
-                                  {customer.company || customer.tradingName || customer.email}
-                                </p>
-                              </div>
-                            </div>
-                          </CardContent>
-                        </Card>
-                      ))}
-                    </div>
-                  )}
-                </ScrollArea>
-                
-                {selectedCustomer && (
-                  <div className="flex justify-between pt-2 border-t mt-2">
-                    <Button 
-                      variant="ghost"
-                      onClick={() => setActiveTab("produto")}
-                      data-testid="button-pdv-back-produto"
-                    >
-                      <ArrowLeft className="h-4 w-4 mr-2" />
-                      Voltar
-                    </Button>
-                    <Button 
-                      className="bg-orange-500 hover:bg-orange-600"
-                      onClick={() => setActiveTab("pagamento")}
-                      data-testid="button-pdv-next-step-pagamento"
-                    >
-                      Proxima Etapa
-                      <ArrowRight className="h-4 w-4 ml-2" />
-                    </Button>
-                  </div>
-                )}
-              </div>
-            </TabsContent>
-
-            <TabsContent value="pagamento" className="flex-1 m-0 p-4 overflow-hidden">
-              <div className="space-y-4">
-                <div>
-                  <Label>Observacoes do Pedido</Label>
-                  <Textarea
-                    placeholder="Adicione observacoes sobre o pedido..."
-                    value={comment}
-                    onChange={(e) => setComment(e.target.value)}
-                    className="mt-2 min-h-[100px]"
-                    data-testid="input-pdv-comment"
-                  />
-                </div>
-
-                <Separator />
-
-                <div className="space-y-3">
-                  <h3 className="font-semibold">Resumo do Pedido</h3>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Itens</span>
-                    <span>{cartItemCount}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Subtotal</span>
-                    <span>{formatPrice(cartTotal)}</span>
-                  </div>
-                  <Separator />
-                  <div className="flex justify-between text-lg font-bold">
-                    <span>Total</span>
-                    <span className="text-orange-500">{formatPrice(cartTotal)}</span>
-                  </div>
-                </div>
-
-                <div className="flex justify-between pt-4 border-t">
-                  <Button 
-                    variant="ghost"
-                    onClick={() => setActiveTab("cliente")}
-                    data-testid="button-pdv-back-cliente"
-                  >
-                    <ArrowLeft className="h-4 w-4 mr-2" />
-                    Voltar
-                  </Button>
-                  <Button 
-                    className="bg-orange-500 hover:bg-orange-600"
-                    onClick={() => setActiveTab("finalizar")}
-                    data-testid="button-pdv-next-step-finalizar"
-                  >
-                    Proxima Etapa
-                    <ArrowRight className="h-4 w-4 ml-2" />
-                  </Button>
-                </div>
-              </div>
-            </TabsContent>
-
-            <TabsContent value="finalizar" className="flex-1 m-0 p-4 min-h-0">
-              <div className="flex flex-col h-full">
-                <div className="mb-4">
-                  <h3 className="text-lg font-semibold">Confirmar e Gerar</h3>
-                  <p className="text-sm text-muted-foreground">
-                    Revise o pedido e escolha como deseja finalizar:
-                  </p>
-                </div>
-
-                <div className="space-y-3 mb-4">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Cliente</span>
-                    <span>{selectedCustomer ? `${selectedCustomer.firstName} ${selectedCustomer.lastName}` : "Nao selecionado"}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Produtos</span>
-                    <span>{cartItemCount} itens</span>
-                  </div>
-                  <Separator />
-                  <div className="flex justify-between text-lg font-bold">
-                    <span>Total</span>
-                    <span className="text-orange-500">{formatPrice(cartTotal)}</span>
-                  </div>
-                </div>
-
-                <div className="flex-1" />
-
-                <div className="flex justify-between items-center pt-4 border-t">
-                  <Button 
-                    variant="ghost"
-                    onClick={() => setActiveTab("pagamento")}
-                    data-testid="button-pdv-back-pagamento"
-                  >
-                    <ArrowLeft className="h-4 w-4 mr-2" />
-                    Voltar
-                  </Button>
-                  <Button
-                    size="lg"
-                    className="bg-orange-500 hover:bg-orange-600"
-                    onClick={() => {
-                      toast({ title: "Orcamento", description: "Funcao de orcamento em desenvolvimento" });
-                    }}
-                    data-testid="button-pdv-generate-quote"
-                  >
-                    <FileText className="h-5 w-5 mr-2" />
-                    Gerar Orcamento
-                  </Button>
-                </div>
-              </div>
-            </TabsContent>
-          </Tabs>
-
-          <div className="border-t p-4 flex items-center justify-between gap-4">
-            <Button 
-              variant="outline" 
-              onClick={handleCancelSale}
-              data-testid="button-pdv-cancel"
-            >
-              <X className="h-4 w-4 mr-2" />
-              Cancelar
-            </Button>
-            
-            <div className="flex items-center gap-2">
-              {activeTab !== "produto" && (
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    if (activeTab === "cliente") setActiveTab("produto");
-                    else if (activeTab === "pagamento") setActiveTab("cliente");
-                    else if (activeTab === "finalizar") setActiveTab("pagamento");
-                  }}
-                  data-testid="button-pdv-prev-step"
-                >
-                  <ArrowLeft className="h-4 w-4 mr-2" />
-                  Voltar
-                </Button>
-              )}
-              {activeTab !== "finalizar" && (
-                <Button 
-                  className="bg-orange-500 hover:bg-orange-600"
-                  onClick={() => {
-                    if (activeTab === "produto") {
-                      if (cartItems.length === 0) {
-                        toast({ title: "Aviso", description: "Adicione pelo menos um produto", variant: "destructive" });
-                        return;
-                      }
-                      setActiveTab("cliente");
-                    } else if (activeTab === "cliente") {
-                      if (!selectedCustomer) {
-                        toast({ title: "Aviso", description: "Selecione um cliente", variant: "destructive" });
-                        return;
-                      }
-                      setActiveTab("pagamento");
-                    } else if (activeTab === "pagamento") {
-                      setActiveTab("finalizar");
-                    }
-                  }}
-                  data-testid="button-pdv-next-step"
-                >
-                  Proxima Etapa
-                  <ArrowRight className="h-4 w-4 ml-2" />
-                </Button>
-              )}
+              <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+                <SelectTrigger className="w-44" data-testid="select-pdv-category">
+                  <SelectValue placeholder="Categoria" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas</SelectItem>
+                  {categoriesData.map((cat) => (
+                    <SelectItem key={cat.id} value={cat.id.toString()}>
+                      {cat.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
+
+          <ScrollArea className="flex-1">
+            <div className="p-4">
+              {productsLoading ? (
+                <div className="flex items-center justify-center py-20">
+                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                </div>
+              ) : filteredProducts.length === 0 ? (
+                <div className="text-center py-20 text-muted-foreground">
+                  <Package className="h-12 w-12 mx-auto mb-3 opacity-40" />
+                  <p className="font-medium">Nenhum produto encontrado</p>
+                  <p className="text-sm">Tente buscar por outro termo</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+                  {filteredProducts.map((product) => {
+                    const inCart = cartItems.find(item => item.productId === product.id);
+                    const imageUrl = getProductImage(product);
+                    
+                    return (
+                      <Card 
+                        key={product.id} 
+                        className={`hover-elevate cursor-pointer relative transition-all ${inCart ? 'ring-2 ring-primary/50' : ''}`}
+                        onClick={() => handleQuickAddToCart(product)}
+                        data-testid={`card-pdv-product-${product.id}`}
+                      >
+                        <CardContent className="p-2">
+                          <div className="relative">
+                            {addedProductId === product.id && (
+                              <div className="absolute inset-0 z-20 flex items-center justify-center bg-primary/90 rounded-md animate-in fade-in zoom-in duration-150">
+                                <span className="text-primary-foreground font-bold text-lg">+1</span>
+                              </div>
+                            )}
+                            {inCart && (
+                              <Badge className="absolute top-1 right-1 z-10 bg-primary text-primary-foreground">
+                                {inCart.quantity}
+                              </Badge>
+                            )}
+                            <div className="aspect-square bg-muted rounded-md mb-2 flex items-center justify-center overflow-hidden">
+                              {imageUrl ? (
+                                <img 
+                                  src={imageUrl} 
+                                  alt={product.name}
+                                  className="w-full h-full object-cover"
+                                  loading="lazy"
+                                />
+                              ) : (
+                                <Package className="h-8 w-8 text-muted-foreground/40" />
+                              )}
+                            </div>
+                          </div>
+                          <p className="font-medium text-xs leading-tight line-clamp-2 min-h-[32px]">{product.name}</p>
+                          <p className="text-[10px] text-muted-foreground mt-0.5">{product.sku}</p>
+                          <p className="font-semibold text-primary text-sm mt-1">{formatPrice(parseFloat(product.price))}</p>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </ScrollArea>
         </div>
 
-        <div className="w-80 lg:w-96 flex flex-col bg-muted/30">
+        <div className="w-80 lg:w-96 flex flex-col border-l bg-card">
           <div className="p-4 border-b">
-            <h2 className="font-semibold flex items-center gap-2">
-              <ShoppingCart className="h-5 w-5 text-orange-500" />
-              Carrinho
+            <div className="flex items-center justify-between">
+              <h2 className="font-semibold flex items-center gap-2">
+                <ShoppingCart className="h-5 w-5 text-primary" />
+                Carrinho
+              </h2>
               {cartItemCount > 0 && (
-                <Badge className="bg-orange-500 text-white">{cartItemCount}</Badge>
+                <Badge variant="secondary">{cartItemCount} {cartItemCount === 1 ? 'item' : 'itens'}</Badge>
               )}
-            </h2>
+            </div>
           </div>
 
-          <ScrollArea className="flex-1 p-4">
-            {cartItems.length === 0 ? (
-              <div className="text-center py-12 text-muted-foreground">
-                <ShoppingCart className="h-16 w-16 mx-auto mb-4 opacity-30" />
-                <p>Nenhum produto no carrinho</p>
-                <p className="text-sm mt-1">Adicione produtos para iniciar a venda</p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {cartItems.map((item, index) => (
-                  <Card key={index} data-testid={`card-pdv-cart-item-${index}`}>
-                    <CardContent className="p-3">
-                      <div className="flex items-start gap-3">
-                        <div className="w-12 h-12 bg-muted rounded flex items-center justify-center overflow-hidden flex-shrink-0">
-                          {item.product.images && item.product.images.length > 0 ? (
+          <ScrollArea className="flex-1">
+            <div className="p-3">
+              {cartItems.length === 0 ? (
+                <div className="text-center py-16 text-muted-foreground">
+                  <ShoppingCart className="h-12 w-12 mx-auto mb-3 opacity-20" />
+                  <p className="text-sm">Carrinho vazio</p>
+                  <p className="text-xs mt-1">Clique nos produtos para adicionar</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {cartItems.map((item, index) => {
+                    const imageUrl = getProductImage(item.product);
+                    
+                    return (
+                      <div 
+                        key={index} 
+                        className="flex items-center gap-3 p-2 rounded-lg bg-muted/30"
+                        data-testid={`card-pdv-cart-item-${index}`}
+                      >
+                        <div className="w-10 h-10 bg-muted rounded flex items-center justify-center overflow-hidden flex-shrink-0">
+                          {imageUrl ? (
                             <img 
-                              src={item.product.images[0]} 
+                              src={imageUrl} 
                               alt={item.product.name}
                               className="w-full h-full object-cover"
                             />
                           ) : (
-                            <Package className="h-6 w-6 text-muted-foreground" />
+                            <Package className="h-4 w-4 text-muted-foreground" />
                           )}
                         </div>
+                        
                         <div className="flex-1 min-w-0">
-                          <h4 className="font-medium text-sm truncate">{item.product.name}</h4>
-                          <p className="text-xs text-muted-foreground">{formatPrice(item.unitPrice)} un.</p>
-                          {item.discount > 0 && (
-                            <Badge variant="secondary" className="text-xs mt-1">
-                              -{item.discount}%
-                            </Badge>
-                          )}
+                          <p className="font-medium text-xs truncate">{item.product.name}</p>
+                          <p className="text-xs text-muted-foreground">{formatPrice(item.unitPrice)}</p>
                         </div>
-                        <Button 
-                          variant="ghost" 
-                          size="icon" 
-                          className="h-6 w-6 text-destructive"
-                          onClick={() => handleRemoveFromCart(index)}
-                          data-testid={`button-pdv-remove-item-${index}`}
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </Button>
-                      </div>
-                      <div className="flex items-center justify-between mt-2">
+                        
                         <div className="flex items-center gap-1">
                           <Button 
                             variant="outline" 
@@ -857,14 +440,7 @@ export default function PDVPage() {
                           >
                             <Minus className="h-3 w-3" />
                           </Button>
-                          <Input
-                            type="number"
-                            min="1"
-                            value={item.quantity}
-                            onChange={(e) => handleUpdateQuantity(index, parseInt(e.target.value) || 1)}
-                            className="h-6 w-12 text-center text-sm p-1"
-                            data-testid={`input-pdv-cart-qty-${index}`}
-                          />
+                          <span className="w-6 text-center text-sm font-medium">{item.quantity}</span>
                           <Button 
                             variant="outline" 
                             size="icon" 
@@ -875,25 +451,216 @@ export default function PDVPage() {
                             <Plus className="h-3 w-3" />
                           </Button>
                         </div>
-                        <span className="font-semibold text-orange-500">{formatPrice(item.subtotal)}</span>
+                        
+                        <div className="text-right min-w-[70px]">
+                          <p className="font-semibold text-sm">{formatPrice(item.subtotal)}</p>
+                        </div>
+                        
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                          onClick={() => handleRemoveFromCart(index)}
+                          data-testid={`button-pdv-remove-item-${index}`}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
                       </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            )}
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </ScrollArea>
 
-          <div className="border-t p-4 bg-card">
-            <div className="flex justify-between items-center">
-              <span className="text-lg font-semibold">Total</span>
-              <span className="text-2xl font-bold text-orange-500" data-testid="text-pdv-total">
-                {formatPrice(cartTotal)}
-              </span>
+          {cartItems.length > 0 && (
+            <div className="p-4 border-t space-y-3">
+              <Textarea
+                placeholder="Observacoes do pedido..."
+                value={comment}
+                onChange={(e) => setComment(e.target.value)}
+                className="min-h-[60px] text-sm resize-none"
+                data-testid="input-pdv-comment"
+              />
+              
+              <Separator />
+              
+              <div className="space-y-1">
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Subtotal</span>
+                  <span>{formatPrice(cartTotal)}</span>
+                </div>
+                <div className="flex justify-between text-lg font-bold">
+                  <span>Total</span>
+                  <span className="text-primary" data-testid="text-pdv-total">{formatPrice(cartTotal)}</span>
+                </div>
+              </div>
+              
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={resetPDV}
+                  data-testid="button-pdv-clear"
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Limpar
+                </Button>
+                <Button
+                  className="flex-1"
+                  onClick={handleGenerateQuote}
+                  disabled={createOrderMutation.isPending}
+                  data-testid="button-pdv-generate-quote"
+                >
+                  {createOrderMutation.isPending ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <FileText className="h-4 w-4 mr-2" />
+                  )}
+                  Gerar Orcamento
+                </Button>
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
+
+      <Dialog open={showCustomerModal} onOpenChange={setShowCustomerModal}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <UserIcon className="h-5 w-5" />
+              Selecionar Cliente
+            </DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Buscar por nome, empresa ou email..."
+                className="pl-10"
+                value={customerSearch}
+                onChange={(e) => setCustomerSearch(e.target.value)}
+                data-testid="input-pdv-customer-search"
+              />
+            </div>
+            
+            <ScrollArea className="h-[300px]">
+              {customersLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : filteredCustomers.length === 0 ? (
+                <div className="text-center py-12 text-muted-foreground">
+                  <UserIcon className="h-10 w-10 mx-auto mb-2 opacity-40" />
+                  <p className="text-sm">Nenhum cliente encontrado</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {filteredCustomers.map((customer) => (
+                    <div
+                      key={customer.id}
+                      className={`p-3 rounded-lg cursor-pointer hover-elevate transition-all ${
+                        selectedCustomer?.id === customer.id ? 'bg-primary/10 ring-1 ring-primary' : 'bg-muted/30'
+                      }`}
+                      onClick={() => handleSelectCustomer(customer)}
+                      data-testid={`card-pdv-customer-${customer.id}`}
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                          <UserIcon className="h-5 w-5 text-primary" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium">{customer.firstName} {customer.lastName}</p>
+                          {(customer.company || customer.tradingName) && (
+                            <p className="text-sm text-muted-foreground flex items-center gap-1">
+                              <Building2 className="h-3 w-3" />
+                              {customer.company || customer.tradingName}
+                            </p>
+                          )}
+                          {customer.email && (
+                            <p className="text-xs text-muted-foreground flex items-center gap-1">
+                              <Mail className="h-3 w-3" />
+                              {customer.email}
+                            </p>
+                          )}
+                        </div>
+                        {selectedCustomer?.id === customer.id && (
+                          <CheckCircle className="h-5 w-5 text-primary flex-shrink-0" />
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </ScrollArea>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showSuccessModal} onOpenChange={setShowSuccessModal}>
+        <DialogContent className="max-w-md text-center">
+          <div className="py-6">
+            <div className="w-16 h-16 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center mx-auto mb-4">
+              <CheckCircle className="h-8 w-8 text-green-600 dark:text-green-400" />
+            </div>
+            <h2 className="text-xl font-semibold mb-2">Orcamento Gerado!</h2>
+            <p className="text-muted-foreground text-sm mb-4">
+              Orcamento {quoteResult?.orderNumber} criado com sucesso
+            </p>
+            
+            <div className="bg-muted/50 rounded-lg p-4 mb-6 text-left">
+              <div className="flex justify-between text-sm mb-2">
+                <span className="text-muted-foreground">Cliente</span>
+                <span className="font-medium">{quoteResult?.customer}</span>
+              </div>
+              <div className="flex justify-between text-sm mb-2">
+                <span className="text-muted-foreground">Itens</span>
+                <span className="font-medium">{quoteResult?.itemCount}</span>
+              </div>
+              <Separator className="my-2" />
+              <div className="flex justify-between">
+                <span className="font-medium">Total</span>
+                <span className="font-bold text-primary text-lg">{quoteResult && formatPrice(quoteResult.total)}</span>
+              </div>
+            </div>
+            
+            <div className="flex gap-2 mb-4">
+              <Button variant="outline" className="flex-1" disabled>
+                <Printer className="h-4 w-4 mr-2" />
+                Imprimir
+              </Button>
+              <Button variant="outline" className="flex-1" disabled>
+                <Download className="h-4 w-4 mr-2" />
+                PDF
+              </Button>
+              <Button variant="outline" className="flex-1" disabled>
+                <Share2 className="h-4 w-4 mr-2" />
+                Enviar
+              </Button>
+            </div>
+          </div>
+          
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            <Button 
+              variant="outline" 
+              onClick={() => setLocation("/orders")}
+              className="w-full sm:w-auto"
+            >
+              Ver Pedidos
+            </Button>
+            <Button 
+              onClick={resetPDV}
+              className="w-full sm:w-auto"
+              data-testid="button-pdv-new-quote"
+            >
+              <RotateCcw className="h-4 w-4 mr-2" />
+              Novo Orcamento
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
