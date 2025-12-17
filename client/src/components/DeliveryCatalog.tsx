@@ -245,7 +245,7 @@ export function DeliveryCatalog({ isPublic = false }: DeliveryCatalogProps) {
   }
 
   return (
-    <div className="min-h-screen bg-background pb-24">
+    <div className="min-h-screen bg-background pb-20">
       <div className="sticky top-0 z-30 bg-background border-b shadow-sm">
         <div className="px-4 py-3 space-y-3">
           <div className="relative">
@@ -380,28 +380,25 @@ export function DeliveryCatalog({ isPublic = false }: DeliveryCatalogProps) {
       </div>
 
       {totalItems > 0 && (
-        <div className="fixed bottom-0 left-0 right-0 z-40 bg-primary text-primary-foreground p-4 shadow-lg">
-          <Link href={isPublic ? "/guest-checkout" : "/cart"}>
-            <div 
-              className="flex items-center justify-between cursor-pointer"
-              data-testid="button-view-cart"
-            >
-              <div className="flex items-center gap-3">
-                <div className="bg-primary-foreground/20 rounded-full p-2">
-                  <ShoppingCart className="w-5 h-5" />
-                </div>
-                <div>
-                  <span className="font-medium">{totalItems} {totalItems === 1 ? 'item' : 'itens'}</span>
-                </div>
+        <Link href={isPublic ? "/guest-checkout" : "/cart"}>
+          <div 
+            className="fixed bottom-4 right-4 z-40 bg-primary text-primary-foreground rounded-full shadow-xl cursor-pointer transition-all hover:scale-105 active:scale-95"
+            data-testid="button-view-cart"
+          >
+            <div className="flex items-center gap-2 pl-4 pr-5 py-3">
+              <div className="relative">
+                <ShoppingCart className="w-6 h-6" />
+                <span className="absolute -top-2 -right-2 bg-primary-foreground text-primary text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center">
+                  {totalItems}
+                </span>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="text-lg font-bold">{formatPrice(totalPrice)}</span>
-                <span className="text-sm opacity-80">Ver sacola</span>
-                <ChevronRight className="w-5 h-5" />
+              <div className="flex flex-col">
+                <span className="text-xs opacity-80">Ver sacola</span>
+                <span className="text-sm font-bold">{formatPrice(totalPrice)}</span>
               </div>
             </div>
-          </Link>
-        </div>
+          </div>
+        </Link>
       )}
     </div>
   );
