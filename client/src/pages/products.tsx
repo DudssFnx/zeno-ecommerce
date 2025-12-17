@@ -43,7 +43,9 @@ import {
   DollarSign,
   Boxes,
   Save,
-  Ruler
+  Ruler,
+  FileText,
+  Barcode
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -84,6 +86,19 @@ const productSchema = z.object({
   width: z.coerce.number().min(0, "Largura deve ser positiva").optional().or(z.literal("")),
   height: z.coerce.number().min(0, "Altura deve ser positiva").optional().or(z.literal("")),
   depth: z.coerce.number().min(0, "Profundidade deve ser positiva").optional().or(z.literal("")),
+  gtin: z.string().optional(),
+  gtinTributario: z.string().optional(),
+  ncm: z.string().optional(),
+  cest: z.string().optional(),
+  taxOrigin: z.string().optional(),
+  icmsCst: z.string().optional(),
+  icmsAliquota: z.coerce.number().min(0).optional().or(z.literal("")),
+  ipiCst: z.string().optional(),
+  ipiAliquota: z.coerce.number().min(0).optional().or(z.literal("")),
+  pisCst: z.string().optional(),
+  pisAliquota: z.coerce.number().min(0).optional().or(z.literal("")),
+  cofinsCst: z.string().optional(),
+  cofinsAliquota: z.coerce.number().min(0).optional().or(z.literal("")),
 });
 
 type ProductFormValues = z.infer<typeof productSchema>;
@@ -228,6 +243,19 @@ export default function ProductsPage() {
         image: imageUrls[0] || null,
         images: imageUrls.length > 0 ? imageUrls : null,
         featured: data.featured,
+        gtin: data.gtin || null,
+        gtinTributario: data.gtinTributario || null,
+        ncm: data.ncm || null,
+        cest: data.cest || null,
+        taxOrigin: data.taxOrigin || null,
+        icmsCst: data.icmsCst || null,
+        icmsAliquota: data.icmsAliquota && typeof data.icmsAliquota === 'number' ? data.icmsAliquota.toFixed(2) : null,
+        ipiCst: data.ipiCst || null,
+        ipiAliquota: data.ipiAliquota && typeof data.ipiAliquota === 'number' ? data.ipiAliquota.toFixed(2) : null,
+        pisCst: data.pisCst || null,
+        pisAliquota: data.pisAliquota && typeof data.pisAliquota === 'number' ? data.pisAliquota.toFixed(2) : null,
+        cofinsCst: data.cofinsCst || null,
+        cofinsAliquota: data.cofinsAliquota && typeof data.cofinsAliquota === 'number' ? data.cofinsAliquota.toFixed(2) : null,
       };
       await apiRequest("POST", "/api/products", payload);
     },
@@ -250,6 +278,19 @@ export default function ProductsPage() {
         image: imageUrls[0] || null,
         images: imageUrls.length > 0 ? imageUrls : null,
         featured: data.featured,
+        gtin: data.gtin || null,
+        gtinTributario: data.gtinTributario || null,
+        ncm: data.ncm || null,
+        cest: data.cest || null,
+        taxOrigin: data.taxOrigin || null,
+        icmsCst: data.icmsCst || null,
+        icmsAliquota: data.icmsAliquota && typeof data.icmsAliquota === 'number' ? data.icmsAliquota.toFixed(2) : null,
+        ipiCst: data.ipiCst || null,
+        ipiAliquota: data.ipiAliquota && typeof data.ipiAliquota === 'number' ? data.ipiAliquota.toFixed(2) : null,
+        pisCst: data.pisCst || null,
+        pisAliquota: data.pisAliquota && typeof data.pisAliquota === 'number' ? data.pisAliquota.toFixed(2) : null,
+        cofinsCst: data.cofinsCst || null,
+        cofinsAliquota: data.cofinsAliquota && typeof data.cofinsAliquota === 'number' ? data.cofinsAliquota.toFixed(2) : null,
       };
       await apiRequest("PATCH", `/api/products/${id}`, payload);
     },
@@ -291,7 +332,7 @@ export default function ProductsPage() {
   };
 
   const openAddForm = () => {
-    form.reset({ name: "", sku: "", categoryId: "", brand: "", price: 0, cost: "", stock: 0, description: "", featured: false, weight: "", width: "", height: "", depth: "" });
+    form.reset({ name: "", sku: "", categoryId: "", brand: "", price: 0, cost: "", stock: 0, description: "", featured: false, weight: "", width: "", height: "", depth: "", gtin: "", gtinTributario: "", ncm: "", cest: "", taxOrigin: "", icmsCst: "", icmsAliquota: "", ipiCst: "", ipiAliquota: "", pisCst: "", pisAliquota: "", cofinsCst: "", cofinsAliquota: "" });
     setEditingProduct(null);
     setImageUrls([]);
     setActiveFormTab("dados");
@@ -299,6 +340,7 @@ export default function ProductsPage() {
   };
 
   const openEditForm = (product: ProductData) => {
+    const schemaProduct = productsData.find(p => p.id === parseInt(product.id));
     form.reset({
       name: product.name,
       sku: product.sku,
@@ -313,6 +355,19 @@ export default function ProductsPage() {
       width: product.width ?? "",
       height: product.height ?? "",
       depth: product.depth ?? "",
+      gtin: schemaProduct?.gtin || "",
+      gtinTributario: schemaProduct?.gtinTributario || "",
+      ncm: schemaProduct?.ncm || "",
+      cest: schemaProduct?.cest || "",
+      taxOrigin: schemaProduct?.taxOrigin || "",
+      icmsCst: schemaProduct?.icmsCst || "",
+      icmsAliquota: schemaProduct?.icmsAliquota ?? "",
+      ipiCst: schemaProduct?.ipiCst || "",
+      ipiAliquota: schemaProduct?.ipiAliquota ?? "",
+      pisCst: schemaProduct?.pisCst || "",
+      pisAliquota: schemaProduct?.pisAliquota ?? "",
+      cofinsCst: schemaProduct?.cofinsCst || "",
+      cofinsAliquota: schemaProduct?.cofinsAliquota ?? "",
     });
     setEditingProduct(product);
     const existingImages = product.images || (product.image ? [product.image] : []);
@@ -330,6 +385,7 @@ export default function ProductsPage() {
       counter++;
       newSku = `${baseSku}-${counter}`;
     }
+    const schemaProductDup = productsData.find(p => p.id === parseInt(product.id));
     form.reset({
       name: product.name + " (Copia)",
       sku: newSku,
@@ -344,6 +400,19 @@ export default function ProductsPage() {
       width: product.width ?? "",
       height: product.height ?? "",
       depth: product.depth ?? "",
+      gtin: "",
+      gtinTributario: "",
+      ncm: schemaProductDup?.ncm || "",
+      cest: schemaProductDup?.cest || "",
+      taxOrigin: schemaProductDup?.taxOrigin || "",
+      icmsCst: schemaProductDup?.icmsCst || "",
+      icmsAliquota: schemaProductDup?.icmsAliquota ?? "",
+      ipiCst: schemaProductDup?.ipiCst || "",
+      ipiAliquota: schemaProductDup?.ipiAliquota ?? "",
+      pisCst: schemaProductDup?.pisCst || "",
+      pisAliquota: schemaProductDup?.pisAliquota ?? "",
+      cofinsCst: schemaProductDup?.cofinsCst || "",
+      cofinsAliquota: schemaProductDup?.cofinsAliquota ?? "",
     });
     setEditingProduct(null);
     const existingImages = product.images || (product.image ? [product.image] : []);
@@ -462,6 +531,10 @@ export default function ProductsPage() {
                     <TabsTrigger value="dimensoes" className="gap-2">
                       <Ruler className="h-4 w-4" />
                       Dimensoes
+                    </TabsTrigger>
+                    <TabsTrigger value="fiscal" className="gap-2">
+                      <FileText className="h-4 w-4" />
+                      Fiscal
                     </TabsTrigger>
                   </TabsList>
 
@@ -854,6 +927,362 @@ export default function ProductsPage() {
                                     min="0"
                                     placeholder="Ex: 10"
                                     data-testid="input-product-depth" 
+                                  />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </TabsContent>
+
+                  <TabsContent value="fiscal" className="space-y-4">
+                    <Card>
+                      <CardHeader className="pb-4">
+                        <CardTitle className="text-base flex items-center gap-2">
+                          <Barcode className="h-4 w-4" />
+                          Codigos de Barras
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        <div className="grid grid-cols-2 gap-4">
+                          <FormField
+                            control={form.control}
+                            name="gtin"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>GTIN/EAN</FormLabel>
+                                <FormControl>
+                                  <Input 
+                                    {...field} 
+                                    placeholder="Ex: 7891234567890"
+                                    data-testid="input-product-gtin" 
+                                  />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                          <FormField
+                            control={form.control}
+                            name="gtinTributario"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>GTIN/EAN Tributario</FormLabel>
+                                <FormControl>
+                                  <Input 
+                                    {...field} 
+                                    placeholder="Ex: 7891234567890"
+                                    data-testid="input-product-gtin-tributario" 
+                                  />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    <Card>
+                      <CardHeader className="pb-4">
+                        <CardTitle className="text-base">Classificacao Fiscal</CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        <div className="grid grid-cols-2 gap-4">
+                          <FormField
+                            control={form.control}
+                            name="ncm"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>NCM</FormLabel>
+                                <FormControl>
+                                  <Input 
+                                    {...field} 
+                                    placeholder="Ex: 6109.10.00"
+                                    data-testid="input-product-ncm" 
+                                  />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                          <FormField
+                            control={form.control}
+                            name="cest"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>CEST</FormLabel>
+                                <FormControl>
+                                  <Input 
+                                    {...field} 
+                                    placeholder="Ex: 28.038.00"
+                                    data-testid="input-product-cest" 
+                                  />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                        </div>
+                        <FormField
+                          control={form.control}
+                          name="taxOrigin"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Origem</FormLabel>
+                              <Select onValueChange={field.onChange} value={field.value || ""}>
+                                <FormControl>
+                                  <SelectTrigger data-testid="select-product-tax-origin">
+                                    <SelectValue placeholder="Selecione a origem" />
+                                  </SelectTrigger>
+                                </FormControl>
+                                <SelectContent>
+                                  <SelectItem value="0">0 - Nacional</SelectItem>
+                                  <SelectItem value="1">1 - Estrangeira - Importacao direta</SelectItem>
+                                  <SelectItem value="2">2 - Estrangeira - Adquirida no mercado interno</SelectItem>
+                                  <SelectItem value="3">3 - Nacional - Mercadoria ou bem com conteudo de importacao superior a 40%</SelectItem>
+                                  <SelectItem value="4">4 - Nacional - Producao em conformidade com PPB</SelectItem>
+                                  <SelectItem value="5">5 - Nacional - Mercadoria ou bem com conteudo de importacao inferior ou igual a 40%</SelectItem>
+                                  <SelectItem value="6">6 - Estrangeira - Importacao direta, sem similar nacional, constante em lista da CAMEX</SelectItem>
+                                  <SelectItem value="7">7 - Estrangeira - Adquirida no mercado interno, sem similar nacional, constante em lista da CAMEX</SelectItem>
+                                  <SelectItem value="8">8 - Nacional - Mercadoria ou bem com conteudo de importacao superior a 70%</SelectItem>
+                                </SelectContent>
+                              </Select>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </CardContent>
+                    </Card>
+
+                    <Card>
+                      <CardHeader className="pb-4">
+                        <CardTitle className="text-base">ICMS</CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        <div className="grid grid-cols-2 gap-4">
+                          <FormField
+                            control={form.control}
+                            name="icmsCst"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>CST ICMS</FormLabel>
+                                <Select onValueChange={field.onChange} value={field.value || ""}>
+                                  <FormControl>
+                                    <SelectTrigger data-testid="select-product-icms-cst">
+                                      <SelectValue placeholder="Selecione CST" />
+                                    </SelectTrigger>
+                                  </FormControl>
+                                  <SelectContent>
+                                    <SelectItem value="00">00 - Tributada integralmente</SelectItem>
+                                    <SelectItem value="10">10 - Tributada com cobranca de ICMS por ST</SelectItem>
+                                    <SelectItem value="20">20 - Com reducao de base de calculo</SelectItem>
+                                    <SelectItem value="30">30 - Isenta ou nao tributada com cobranca de ICMS por ST</SelectItem>
+                                    <SelectItem value="40">40 - Isenta</SelectItem>
+                                    <SelectItem value="41">41 - Nao tributada</SelectItem>
+                                    <SelectItem value="50">50 - Suspensao</SelectItem>
+                                    <SelectItem value="51">51 - Diferimento</SelectItem>
+                                    <SelectItem value="60">60 - ICMS cobrado anteriormente por ST</SelectItem>
+                                    <SelectItem value="70">70 - Com reducao de base de calculo e cobranca de ICMS por ST</SelectItem>
+                                    <SelectItem value="90">90 - Outras</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                          <FormField
+                            control={form.control}
+                            name="icmsAliquota"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Aliquota ICMS (%)</FormLabel>
+                                <FormControl>
+                                  <Input 
+                                    {...field} 
+                                    type="number"
+                                    step="0.01"
+                                    min="0"
+                                    placeholder="Ex: 18"
+                                    data-testid="input-product-icms-aliquota" 
+                                  />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    <Card>
+                      <CardHeader className="pb-4">
+                        <CardTitle className="text-base">IPI</CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        <div className="grid grid-cols-2 gap-4">
+                          <FormField
+                            control={form.control}
+                            name="ipiCst"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>CST IPI</FormLabel>
+                                <Select onValueChange={field.onChange} value={field.value || ""}>
+                                  <FormControl>
+                                    <SelectTrigger data-testid="select-product-ipi-cst">
+                                      <SelectValue placeholder="Selecione CST" />
+                                    </SelectTrigger>
+                                  </FormControl>
+                                  <SelectContent>
+                                    <SelectItem value="00">00 - Entrada com recuperacao de credito</SelectItem>
+                                    <SelectItem value="01">01 - Entrada tributada com aliquota zero</SelectItem>
+                                    <SelectItem value="02">02 - Entrada isenta</SelectItem>
+                                    <SelectItem value="03">03 - Entrada nao tributada</SelectItem>
+                                    <SelectItem value="04">04 - Entrada imune</SelectItem>
+                                    <SelectItem value="05">05 - Entrada com suspensao</SelectItem>
+                                    <SelectItem value="49">49 - Outras entradas</SelectItem>
+                                    <SelectItem value="50">50 - Saida tributada</SelectItem>
+                                    <SelectItem value="51">51 - Saida tributada com aliquota zero</SelectItem>
+                                    <SelectItem value="52">52 - Saida isenta</SelectItem>
+                                    <SelectItem value="53">53 - Saida nao tributada</SelectItem>
+                                    <SelectItem value="54">54 - Saida imune</SelectItem>
+                                    <SelectItem value="55">55 - Saida com suspensao</SelectItem>
+                                    <SelectItem value="99">99 - Outras saidas</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                          <FormField
+                            control={form.control}
+                            name="ipiAliquota"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Aliquota IPI (%)</FormLabel>
+                                <FormControl>
+                                  <Input 
+                                    {...field} 
+                                    type="number"
+                                    step="0.01"
+                                    min="0"
+                                    placeholder="Ex: 5"
+                                    data-testid="input-product-ipi-aliquota" 
+                                  />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    <Card>
+                      <CardHeader className="pb-4">
+                        <CardTitle className="text-base">PIS/COFINS</CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        <div className="grid grid-cols-2 gap-4">
+                          <FormField
+                            control={form.control}
+                            name="pisCst"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>CST PIS</FormLabel>
+                                <Select onValueChange={field.onChange} value={field.value || ""}>
+                                  <FormControl>
+                                    <SelectTrigger data-testid="select-product-pis-cst">
+                                      <SelectValue placeholder="Selecione CST" />
+                                    </SelectTrigger>
+                                  </FormControl>
+                                  <SelectContent>
+                                    <SelectItem value="01">01 - Operacao tributavel com aliquota basica</SelectItem>
+                                    <SelectItem value="02">02 - Operacao tributavel com aliquota diferenciada</SelectItem>
+                                    <SelectItem value="03">03 - Operacao tributavel com aliquota por unidade de medida de produto</SelectItem>
+                                    <SelectItem value="04">04 - Operacao tributavel monofasica - revenda a aliquota zero</SelectItem>
+                                    <SelectItem value="05">05 - Operacao tributavel por ST</SelectItem>
+                                    <SelectItem value="06">06 - Operacao tributavel a aliquota zero</SelectItem>
+                                    <SelectItem value="07">07 - Operacao isenta da contribuicao</SelectItem>
+                                    <SelectItem value="08">08 - Operacao sem incidencia da contribuicao</SelectItem>
+                                    <SelectItem value="09">09 - Operacao com suspensao da contribuicao</SelectItem>
+                                    <SelectItem value="49">49 - Outras operacoes de saida</SelectItem>
+                                    <SelectItem value="99">99 - Outras operacoes</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                          <FormField
+                            control={form.control}
+                            name="pisAliquota"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Aliquota PIS (%)</FormLabel>
+                                <FormControl>
+                                  <Input 
+                                    {...field} 
+                                    type="number"
+                                    step="0.01"
+                                    min="0"
+                                    placeholder="Ex: 1.65"
+                                    data-testid="input-product-pis-aliquota" 
+                                  />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                          <FormField
+                            control={form.control}
+                            name="cofinsCst"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>CST COFINS</FormLabel>
+                                <Select onValueChange={field.onChange} value={field.value || ""}>
+                                  <FormControl>
+                                    <SelectTrigger data-testid="select-product-cofins-cst">
+                                      <SelectValue placeholder="Selecione CST" />
+                                    </SelectTrigger>
+                                  </FormControl>
+                                  <SelectContent>
+                                    <SelectItem value="01">01 - Operacao tributavel com aliquota basica</SelectItem>
+                                    <SelectItem value="02">02 - Operacao tributavel com aliquota diferenciada</SelectItem>
+                                    <SelectItem value="03">03 - Operacao tributavel com aliquota por unidade de medida de produto</SelectItem>
+                                    <SelectItem value="04">04 - Operacao tributavel monofasica - revenda a aliquota zero</SelectItem>
+                                    <SelectItem value="05">05 - Operacao tributavel por ST</SelectItem>
+                                    <SelectItem value="06">06 - Operacao tributavel a aliquota zero</SelectItem>
+                                    <SelectItem value="07">07 - Operacao isenta da contribuicao</SelectItem>
+                                    <SelectItem value="08">08 - Operacao sem incidencia da contribuicao</SelectItem>
+                                    <SelectItem value="09">09 - Operacao com suspensao da contribuicao</SelectItem>
+                                    <SelectItem value="49">49 - Outras operacoes de saida</SelectItem>
+                                    <SelectItem value="99">99 - Outras operacoes</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                          <FormField
+                            control={form.control}
+                            name="cofinsAliquota"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Aliquota COFINS (%)</FormLabel>
+                                <FormControl>
+                                  <Input 
+                                    {...field} 
+                                    type="number"
+                                    step="0.01"
+                                    min="0"
+                                    placeholder="Ex: 7.6"
+                                    data-testid="input-product-cofins-aliquota" 
                                   />
                                 </FormControl>
                                 <FormMessage />
