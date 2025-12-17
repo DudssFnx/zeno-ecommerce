@@ -86,3 +86,46 @@ Users require admin approval before accessing the system (except admins who are 
 - `BLING_CLIENT_SECRET` - Secret do aplicativo
 - `BLING_ACCESS_TOKEN` - Token de acesso
 - `BLING_REFRESH_TOKEN` - Token para renovar acesso
+
+## Sistema de Fiado (Crédito ao Cliente)
+
+### Funcionalidades
+O sistema de Fiado permite gerenciar crédito concedido a clientes (compras fiadas):
+
+1. **Dashboard Fiado** (`/fiado`)
+   - Total "na rua" (crédito pendente)
+   - Total vencido
+   - Total recebido
+   - Clientes com dívida
+
+2. **Gestão de Créditos**
+   - Criar lançamentos de débito (DEBITO) quando cliente compra fiado
+   - Criar lançamentos de crédito (CREDITO) para ajustes
+   - Status automático: PENDENTE → PARCIAL → PAGO
+
+3. **Registro de Pagamentos**
+   - Pagamentos parciais ou totais
+   - Histórico de pagamentos por crédito
+   - Métodos: PIX, Dinheiro, Cartão, Boleto, Transferência
+
+4. **Calendário de Vencimentos**
+   - Próximos vencimentos
+   - Pagamentos atrasados
+
+5. **Calculadora de Juros**
+   - Cálculo de juros simples sobre valores em atraso
+
+### Tabelas do Banco
+- `customer_credits`: Lançamentos de crédito/débito
+- `credit_payments`: Pagamentos realizados
+
+### API Endpoints
+- `GET /api/credits` - Lista todos os créditos
+- `GET /api/credits/dashboard` - Dashboard com métricas
+- `GET /api/credits/user/:userId` - Créditos de um cliente
+- `POST /api/credits` - Criar novo lançamento
+- `POST /api/credits/:id/payments` - Registrar pagamento
+- `GET /api/credits/:id/payments` - Histórico de pagamentos
+
+### Acesso
+- Apenas usuários com role Admin ou Sales podem acessar
