@@ -183,7 +183,7 @@ export function DeliveryCatalog({ isPublic = false }: DeliveryCatalogProps) {
             {qty === 0 ? (
               <Button
                 size="sm"
-                onClick={() => handleAddToCart(product, 1)}
+                onClick={() => setQuantity(product.id, 1)}
                 disabled={isOutOfStock}
                 className="rounded-full px-4"
                 data-testid={`button-add-${product.id}`}
