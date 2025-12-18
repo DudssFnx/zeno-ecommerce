@@ -110,17 +110,21 @@ export default function SuppliersPage() {
   const updateMutation = useMutation({
     mutationFn: async ({ id, data }: { id: number; data: SupplierFormValues }) => {
       const payload = {
-        ...data,
-        email: data.email || null,
-        code: data.code || null,
+        name: data.name,
+        tradingName: data.tradingName || null,
         cnpj: data.cnpj || null,
+        email: data.email || null,
         phone: data.phone || null,
+        contact: data.contact || null,
+        cep: data.cep || null,
         address: data.address || null,
+        addressNumber: data.addressNumber || null,
+        complement: data.complement || null,
+        neighborhood: data.neighborhood || null,
         city: data.city || null,
         state: data.state || null,
-        zipCode: data.zipCode || null,
-        contactName: data.contactName || null,
         notes: data.notes || null,
+        active: data.active,
       };
       await apiRequest("PATCH", `/api/suppliers/${id}`, payload);
     },
@@ -163,17 +167,20 @@ export default function SuppliersPage() {
     setEditingSupplier(supplier);
     form.reset({
       name: supplier.name,
-      code: supplier.code || "",
+      tradingName: supplier.tradingName || "",
       cnpj: supplier.cnpj || "",
       email: supplier.email || "",
       phone: supplier.phone || "",
+      contact: supplier.contact || "",
+      cep: supplier.cep || "",
       address: supplier.address || "",
+      addressNumber: supplier.addressNumber || "",
+      complement: supplier.complement || "",
+      neighborhood: supplier.neighborhood || "",
       city: supplier.city || "",
       state: supplier.state || "",
-      zipCode: supplier.zipCode || "",
-      contactName: supplier.contactName || "",
       notes: supplier.notes || "",
-      isActive: supplier.isActive ?? true,
+      active: supplier.active ?? true,
     });
     setIsDialogOpen(true);
   };
@@ -182,17 +189,20 @@ export default function SuppliersPage() {
     setEditingSupplier(null);
     form.reset({
       name: "",
-      code: "",
+      tradingName: "",
       cnpj: "",
       email: "",
       phone: "",
+      contact: "",
+      cep: "",
       address: "",
+      addressNumber: "",
+      complement: "",
+      neighborhood: "",
       city: "",
       state: "",
-      zipCode: "",
-      contactName: "",
       notes: "",
-      isActive: true,
+      active: true,
     });
     setIsDialogOpen(true);
   };
@@ -200,7 +210,7 @@ export default function SuppliersPage() {
   const filteredSuppliers = suppliers.filter(supplier =>
     supplier.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     (supplier.cnpj && supplier.cnpj.includes(searchQuery)) ||
-    (supplier.code && supplier.code.toLowerCase().includes(searchQuery.toLowerCase()))
+    (supplier.tradingName && supplier.tradingName.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
   return (
@@ -249,15 +259,15 @@ export default function SuppliersPage() {
                   />
                   <FormField
                     control={form.control}
-                    name="code"
+                    name="tradingName"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Codigo</FormLabel>
+                        <FormLabel>Nome Fantasia</FormLabel>
                         <FormControl>
                           <Input 
                             {...field} 
-                            placeholder="Codigo interno"
-                            data-testid="input-supplier-code" 
+                            placeholder="Nome fantasia"
+                            data-testid="input-supplier-trading-name" 
                           />
                         </FormControl>
                         <FormMessage />
@@ -318,7 +328,7 @@ export default function SuppliersPage() {
                   />
                   <FormField
                     control={form.control}
-                    name="contactName"
+                    name="contact"
                     render={({ field }) => (
                       <FormItem className="col-span-2">
                         <FormLabel>Nome do Contato</FormLabel>
@@ -392,7 +402,7 @@ export default function SuppliersPage() {
                     />
                     <FormField
                       control={form.control}
-                      name="zipCode"
+                      name="cep"
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>CEP</FormLabel>
@@ -400,7 +410,7 @@ export default function SuppliersPage() {
                             <Input 
                               {...field} 
                               placeholder="00000-000"
-                              data-testid="input-supplier-zipcode" 
+                              data-testid="input-supplier-cep" 
                             />
                           </FormControl>
                           <FormMessage />
@@ -431,7 +441,7 @@ export default function SuppliersPage() {
 
                 <FormField
                   control={form.control}
-                  name="isActive"
+                  name="active"
                   render={({ field }) => (
                     <FormItem className="flex items-center justify-between rounded-lg border p-3">
                       <div className="space-y-0.5">
@@ -519,8 +529,8 @@ export default function SuppliersPage() {
                     <TableCell>
                       <div>
                         <div className="font-medium">{supplier.name}</div>
-                        {supplier.code && (
-                          <div className="text-sm text-muted-foreground">{supplier.code}</div>
+                        {supplier.tradingName && (
+                          <div className="text-sm text-muted-foreground">{supplier.tradingName}</div>
                         )}
                       </div>
                     </TableCell>
@@ -553,8 +563,8 @@ export default function SuppliersPage() {
                       ) : "-"}
                     </TableCell>
                     <TableCell>
-                      <Badge variant={supplier.isActive ? "default" : "secondary"}>
-                        {supplier.isActive ? "Ativo" : "Inativo"}
+                      <Badge variant={supplier.active ? "default" : "secondary"}>
+                        {supplier.active ? "Ativo" : "Inativo"}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right">

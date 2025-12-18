@@ -40,6 +40,7 @@ import PDVPage from "@/pages/pdv";
 import ContasReceberPage from "@/pages/contas-receber";
 import ContasPagarPage from "@/pages/contas-pagar";
 import AppearancePage from "@/pages/appearance";
+import SuppliersPage from "@/pages/suppliers";
 import { PWAInstallPrompt } from "@/components/PWAInstallPrompt";
 
 function AuthenticatedApp() {
@@ -106,6 +107,7 @@ function AuthenticatedApp() {
               <Route path="/orders/:id" component={OrderDetailsPage} />
               <Route path="/pdv" component={PDVPage} />
               {isAdmin && <Route path="/products" component={ProductsPage} />}
+              {isAdmin && <Route path="/suppliers" component={SuppliersPage} />}
               {isAdmin && <Route path="/customers" component={CustomersPage} />}
               {isAdmin && <Route path="/users" component={UsersPage} />}
               {isAdmin && <Route path="/settings" component={SettingsPage} />}
