@@ -1198,6 +1198,12 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Nome, email e senha são obrigatórios" });
       }
 
+      // Validate email format
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        return res.status(400).json({ message: "E-mail inválido. Use o formato: usuario@empresa.com" });
+      }
+
       const existingUser = await storage.getUserByEmail(email);
       if (existingUser) {
         return res.status(400).json({ message: "E-mail já cadastrado" });

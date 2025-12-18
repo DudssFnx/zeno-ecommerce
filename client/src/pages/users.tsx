@@ -134,9 +134,18 @@ export default function UsersPage() {
     },
   });
 
+  const isValidEmail = (email: string): boolean => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
+
   const handleCreateUser = () => {
     if (!newUserName || !newUserEmail || !newUserPassword) {
       toast({ title: "Erro", description: "Preencha todos os campos", variant: "destructive" });
+      return;
+    }
+    if (!isValidEmail(newUserEmail)) {
+      toast({ title: "Erro", description: "Digite um email valido (ex: usuario@empresa.com)", variant: "destructive" });
       return;
     }
     createUserMutation.mutate({
