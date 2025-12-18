@@ -612,38 +612,19 @@ export async function syncProducts(): Promise<{ created: number; updated: number
   try {
     updateProgress({
       status: 'running',
-      phase: 'Limpando dados antigos',
+      phase: 'Sincronizando categorias',
       currentStep: 0,
       totalSteps: 100,
-      message: 'Apagando produtos existentes...',
+      message: 'Sincronizando categorias do Bling...',
       created: 0,
       updated: 0,
       errors: 0,
       startTime,
     });
     
-    // Delete all existing products first
-    console.log("Deleting all existing products...");
-    await db.delete(products);
-    console.log("All products deleted.");
-    
-    updateProgress({
-      message: 'Apagando categorias existentes...',
-    });
-    
-    // Delete all existing categories
-    console.log("Deleting all existing categories...");
-    await db.delete(categories);
-    console.log("All categories deleted.");
-    
-    updateProgress({
-      phase: 'Importando categorias',
-      message: 'Buscando categorias do Bling...',
-    });
-    
-    console.log("Fetching and importing categories from Bling...");
-    const catResult = await syncCategoriesClean();
-    console.log(`Categories imported: ${catResult.created} created`);
+    console.log("Syncing categories from Bling...");
+    const catResult = await syncCategories();
+    console.log(`Categories synced: ${catResult.created} created, ${catResult.updated} updated`);
     
     updateProgress({
       phase: 'Buscando lista de produtos',
