@@ -1138,9 +1138,10 @@ export async function registerRoutes(
         return res.status(401).json({ message: "User not found" });
       }
 
-      const allProducts = await storage.getProducts();
+      const productsResult = await storage.getProducts();
+      const allProducts = productsResult.products;
       const brandsSet = new Set<string>();
-      allProducts.forEach(p => {
+      allProducts.forEach((p: { brand: string | null }) => {
         if (p.brand) brandsSet.add(p.brand);
       });
       

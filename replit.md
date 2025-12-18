@@ -32,12 +32,18 @@ Preferred communication style: Simple, everyday language.
 - **Migrations**: Managed via `drizzle-kit push`
 
 ### Role-Based Access Control
-Three user roles with hierarchical permissions:
+Four user roles with hierarchical permissions:
 - **Admin**: Full system access including user management, product management, all orders
 - **Sales**: Can view all orders and catalog, cannot manage users or products
 - **Customer**: Can browse catalog, create orders, view own orders only
+- **Supplier**: Acesso restrito às marcas atribuídas pelo admin - vê analytics de estoque e vendas apenas das suas marcas
 
 Users require admin approval before accessing the system (except admins who are auto-approved).
+
+### Supplier Brand Access
+- Campo `allowedBrands` (array de strings) na tabela users controla quais marcas cada fornecedor pode ver
+- Endpoints `/api/admin/brand-analytics` e `/api/brands` filtram dados por allowedBrands para suppliers
+- Admin pode atribuir marcas específicas ao criar/editar usuário do tipo supplier
 
 ### Key Design Patterns
 - **Shared Schema**: Database schemas and TypeScript types are defined once in `shared/schema.ts` and used by both frontend and backend
