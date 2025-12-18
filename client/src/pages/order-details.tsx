@@ -172,6 +172,60 @@ export default function OrderDetailsPage() {
     },
   });
 
+  const reserveStockMutation = useMutation({
+    mutationFn: async () => {
+      await apiRequest("POST", `/api/orders/${orderId}/reserve`, {});
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/orders", orderId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/products"] });
+      toast({
+        title: "Sucesso",
+        description: "Estoque reservado - Pedido gerado com sucesso.",
+      });
+    },
+    onError: (err: Error) => {
+      toast({
+        title: "Erro",
+        description: err.message || "Não foi possível reservar o estoque. Verifique se há estoque disponível.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const invoiceMutation = useMutation({
+    mutationFn: async () => {
+      await apiRequest("POST", `/api/orders/${orderId}/invoice`, {});
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/orders", orderId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/products"] });
+      toast({
+        title: "Sucesso",
+        description: "Pedido faturado - Estoque baixado com sucesso.",
+      });
+    },
+    onError: (err: Error) => {
+      toast({
+        title: "Erro",
+        description: err.message || "Não foi possível faturar o pedido.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleStatusChange = (newStatus: string) => {
+    if (newStatus === "PEDIDO_GERADO") {
+      reserveStockMutation.mutate();
+    } else if (newStatus === "FATURADO" || newStatus === "PEDIDO_FATURADO") {
+      invoiceMutation.mutate();
+    } else {
+      updateStatusMutation.mutate(newStatus);
+    }
+  };
+
   const printMutation = useMutation({
     mutationFn: async () => {
       await apiRequest("PATCH", `/api/orders/${orderId}/print`, {});
@@ -605,8 +659,8 @@ export default function OrderDetailsPage() {
               <CardContent className="space-y-4">
                 <Select
                   value={orderData.status}
-                  onValueChange={(value) => updateStatusMutation.mutate(value)}
-                  disabled={updateStatusMutation.isPending}
+                  onValueChange={handleStatusChange}
+                  disabled={updateStatusMutation.isPending || reserveStockMutation.isPending || invoiceMutation.isPending}
                 >
                   <SelectTrigger data-testid="select-status">
                     <SelectValue placeholder="Selecionar status" />
@@ -614,8 +668,8 @@ export default function OrderDetailsPage() {
                   <SelectContent>
                     <SelectItem value="ORCAMENTO_ABERTO">Orçamento Aberto</SelectItem>
                     <SelectItem value="ORCAMENTO_CONCLUIDO">Orçamento Enviado</SelectItem>
-                    <SelectItem value="PEDIDO_GERADO">Pedido Gerado</SelectItem>
-                    <SelectItem value="PEDIDO_FATURADO">Faturado</SelectItem>
+                    <SelectItem value="PEDIDO_GERADO">Gerar Pedido (Reservar Estoque)</SelectItem>
+                    <SelectItem value="PEDIDO_FATURADO">Faturar (Baixar Estoque)</SelectItem>
                     <SelectItem value="PEDIDO_CANCELADO">Cancelado</SelectItem>
                   </SelectContent>
                 </Select>
