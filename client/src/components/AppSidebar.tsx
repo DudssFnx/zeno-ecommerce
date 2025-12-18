@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/sidebar";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   LayoutDashboard,
@@ -39,6 +40,8 @@ import {
   Banknote,
   ArrowUpRight,
   ArrowDownRight,
+  Truck,
+  Sparkles,
 } from "lucide-react";
 import logoImage from "@assets/image_1765659931449.png";
 
@@ -49,7 +52,8 @@ interface MenuItem {
   url?: string;
   icon: any;
   moduleKey?: string;
-  subItems?: { title: string; url: string; icon: any; moduleKey?: string }[];
+  badge?: string;
+  subItems?: { title: string; url: string; icon: any; moduleKey?: string; badge?: string }[];
 }
 
 interface AppSidebarProps {
@@ -77,6 +81,7 @@ const allMenuItems: MenuItem[] = [
   { title: "Produtos", url: "/products", icon: Package, moduleKey: "products" },
   { title: "Clientes", url: "/customers", icon: UserCheck, moduleKey: "customers" },
   { title: "Usuarios", url: "/users", icon: Users, moduleKey: "customers" },
+  { title: "Fornecedores", url: "/suppliers", icon: Truck, moduleKey: "products" },
   { title: "Cupons", url: "/coupons", icon: Ticket, moduleKey: "products" },
   { 
     title: "Financeiro", 
@@ -146,45 +151,77 @@ export function AppSidebar({ userRole = "customer", userName = "User", onLogout 
     .toUpperCase()
     .slice(0, 2);
 
+  const getRoleBadgeVariant = (role: UserRole) => {
+    switch (role) {
+      case "admin": return "default";
+      case "sales": return "secondary";
+      default: return "outline";
+    }
+  };
+
+  const getRoleLabel = (role: UserRole) => {
+    switch (role) {
+      case "admin": return "Administrador";
+      case "sales": return "Vendedor";
+      default: return "Cliente";
+    }
+  };
+
   return (
-    <Sidebar>
-      <SidebarHeader className="p-4 border-b border-sidebar-border">
-        <div className="flex items-center gap-3">
-          <img src={logoImage} alt="Lojamadrugadao" className="h-10 w-10 rounded-full" />
-          <div>
-            <h2 className="font-semibold text-sm">Lojamadrugadao</h2>
-            <p className="text-xs text-muted-foreground capitalize">Portal Atacado</p>
+    <Sidebar className="border-r-0">
+      <SidebarHeader className="p-0">
+        <div className="bg-gradient-to-br from-primary/10 via-primary/5 to-transparent p-4">
+          <div className="flex items-center gap-3">
+            <div className="relative">
+              <img 
+                src={logoImage} 
+                alt="Logo" 
+                className="h-11 w-11 rounded-xl shadow-sm ring-2 ring-primary/20" 
+              />
+              <div className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full bg-green-500 ring-2 ring-sidebar" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <h2 className="font-bold text-sm tracking-tight truncate">Lojamadrugadao</h2>
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <Sparkles className="h-3 w-3 text-primary" />
+                <span className="text-xs text-muted-foreground">Portal Atacado</span>
+              </div>
+            </div>
           </div>
         </div>
-        <div className="mt-3 space-y-1">
-          <p className="text-xs text-muted-foreground mb-1">Ver Catalogo como:</p>
+        
+        <div className="px-4 pb-4 pt-2">
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium mb-2">Visualizar como</p>
           <div className="flex gap-2">
             <Button
               variant="outline"
               size="sm"
-              className="flex-1"
+              className="flex-1 h-8 text-xs"
               onClick={() => window.open('/', '_blank')}
               data-testid="button-ver-varejo"
             >
-              <ExternalLink className="h-3 w-3 mr-1" />
+              <ExternalLink className="h-3 w-3 mr-1.5" />
               Varejo
             </Button>
             <Button
               variant="outline"
               size="sm"
-              className="flex-1"
+              className="flex-1 h-8 text-xs"
               onClick={() => window.open('/catalog', '_blank')}
               data-testid="button-ver-atacado"
             >
-              <ExternalLink className="h-3 w-3 mr-1" />
+              <ExternalLink className="h-3 w-3 mr-1.5" />
               Atacado
             </Button>
           </div>
         </div>
       </SidebarHeader>
-      <SidebarContent>
+
+      <SidebarContent className="px-2">
         <SidebarGroup>
-          <SidebarGroupLabel>Menu</SidebarGroupLabel>
+          <SidebarGroupLabel className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground px-2">
+            Navegacao
+          </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {items.map((item) => (
@@ -193,25 +230,39 @@ export function AppSidebar({ userRole = "customer", userName = "User", onLogout 
                     <SidebarMenuItem>
                       <CollapsibleTrigger asChild>
                         <SidebarMenuButton
+                          className="group/btn rounded-lg"
                           data-testid={`link-nav-${item.title.toLowerCase().replace(/\s+/g, "-")}`}
                         >
-                          <item.icon className="h-4 w-4" />
-                          <span>{item.title}</span>
-                          <ChevronRight className="ml-auto h-4 w-4 transition-transform group-data-[state=open]/collapsible:rotate-90" />
+                          <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-muted/50 group-hover/btn:bg-primary/10 transition-colors">
+                            <item.icon className="h-4 w-4 text-muted-foreground group-hover/btn:text-primary transition-colors" />
+                          </div>
+                          <span className="font-medium">{item.title}</span>
+                          {item.badge && (
+                            <Badge variant="secondary" className="ml-auto mr-2 h-5 text-[10px]">
+                              {item.badge}
+                            </Badge>
+                          )}
+                          <ChevronRight className="ml-auto h-4 w-4 text-muted-foreground transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
                         </SidebarMenuButton>
                       </CollapsibleTrigger>
-                      <CollapsibleContent>
-                        <SidebarMenuSub>
+                      <CollapsibleContent className="transition-all">
+                        <SidebarMenuSub className="ml-6 border-l border-border/50 pl-2">
                           {item.subItems.map((subItem) => (
                             <SidebarMenuSubItem key={subItem.title}>
                               <SidebarMenuSubButton
                                 asChild
                                 isActive={location === subItem.url}
+                                className="rounded-md"
                                 data-testid={`link-nav-${subItem.title.toLowerCase().replace(/\s+/g, "-")}`}
                               >
                                 <Link href={subItem.url}>
-                                  <subItem.icon className="h-4 w-4" />
-                                  <span>{subItem.title}</span>
+                                  <subItem.icon className="h-3.5 w-3.5" />
+                                  <span className="text-[13px]">{subItem.title}</span>
+                                  {subItem.badge && (
+                                    <Badge variant="secondary" className="ml-auto h-4 text-[9px] px-1.5">
+                                      {subItem.badge}
+                                    </Badge>
+                                  )}
                                 </Link>
                               </SidebarMenuSubButton>
                             </SidebarMenuSubItem>
@@ -225,11 +276,19 @@ export function AppSidebar({ userRole = "customer", userName = "User", onLogout 
                     <SidebarMenuButton 
                       asChild 
                       isActive={location === item.url}
+                      className="group/btn rounded-lg"
                       data-testid={`link-nav-${item.title.toLowerCase().replace(/\s+/g, "-")}`}
                     >
                       <Link href={item.url!}>
-                        <item.icon className="h-4 w-4" />
-                        <span>{item.title}</span>
+                        <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-muted/50 group-hover/btn:bg-primary/10 data-[active=true]:bg-primary/15 transition-colors">
+                          <item.icon className="h-4 w-4 text-muted-foreground group-hover/btn:text-primary transition-colors" />
+                        </div>
+                        <span className="font-medium">{item.title}</span>
+                        {item.badge && (
+                          <Badge variant="secondary" className="ml-auto h-5 text-[10px]">
+                            {item.badge}
+                          </Badge>
+                        )}
                       </Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
@@ -239,20 +298,24 @@ export function AppSidebar({ userRole = "customer", userName = "User", onLogout 
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
-      <SidebarFooter className="p-4 border-t border-sidebar-border">
-        <div className="flex items-center gap-3">
-          <Avatar className="h-9 w-9">
-            <AvatarFallback className="bg-primary/10 text-primary text-xs font-semibold">
+
+      <SidebarFooter className="p-3 mt-auto">
+        <div className="flex items-center gap-3 p-2 rounded-xl bg-muted/30">
+          <Avatar className="h-10 w-10 ring-2 ring-primary/20">
+            <AvatarFallback className="bg-gradient-to-br from-primary/20 to-primary/5 text-primary text-sm font-bold">
               {initials}
             </AvatarFallback>
           </Avatar>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium truncate">{userName}</p>
-            <p className="text-xs text-muted-foreground capitalize">{userRole}</p>
+            <p className="text-sm font-semibold truncate">{userName}</p>
+            <Badge variant={getRoleBadgeVariant(userRole)} className="h-4 text-[9px] px-1.5 mt-0.5">
+              {getRoleLabel(userRole)}
+            </Badge>
           </div>
           <Button 
             variant="ghost" 
-            size="icon" 
+            size="icon"
+            className="h-8 w-8 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10"
             onClick={onLogout}
             data-testid="button-logout"
           >

@@ -9,11 +9,16 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
+import { Slider } from "@/components/ui/slider";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Palette, Image, Layout, Store, Layers, Check, Plus, Trash2, Edit, GripVertical, Upload, Building2 } from "lucide-react";
+import { 
+  Palette, Image, Layout, Store, Layers, Check, Plus, Trash2, Edit, GripVertical, 
+  Building2, Sparkles, Moon, Sun, Monitor, Type, Circle, Square, 
+  Sidebar, PaintBucket, Wand2
+} from "lucide-react";
 import type { CatalogSlide } from "@shared/schema";
 
 const colorThemes = [
@@ -25,13 +30,92 @@ const colorThemes = [
   { id: "teal", name: "Verde Agua", primary: "173 80% 40%", description: "Calmo e sofisticado" },
   { id: "pink", name: "Rosa", primary: "330 80% 60%", description: "Moderno e jovem" },
   { id: "amber", name: "Dourado", primary: "45 93% 47%", description: "Premium e luxuoso" },
+  { id: "slate", name: "Grafite", primary: "215 25% 35%", description: "Discreto e profissional" },
+  { id: "cyan", name: "Ciano", primary: "190 95% 39%", description: "Tech e inovador" },
+  { id: "rose", name: "Rose", primary: "350 89% 60%", description: "Suave e acolhedor" },
+  { id: "indigo", name: "Indigo", primary: "239 84% 67%", description: "Misterioso e criativo" },
+];
+
+const completeThemes = [
+  {
+    id: "professional",
+    name: "Profissional",
+    description: "Clean e corporativo",
+    preview: { primary: "217 91% 60%", sidebar: "220 14% 98%", accent: "220 14% 92%" },
+    colors: {
+      primary: "217 91% 60%",
+      background: "220 14% 96%",
+      sidebar: "220 14% 98%",
+      card: "0 0% 100%",
+    }
+  },
+  {
+    id: "dark-elegance",
+    name: "Elegancia Escura",
+    description: "Sofisticado e moderno",
+    preview: { primary: "262 83% 58%", sidebar: "222 47% 11%", accent: "262 83% 58%" },
+    colors: {
+      primary: "262 83% 58%",
+      background: "222 47% 11%",
+      sidebar: "222 47% 11%",
+      card: "222 47% 13%",
+    }
+  },
+  {
+    id: "nature",
+    name: "Natureza",
+    description: "Fresco e organico",
+    preview: { primary: "142 71% 45%", sidebar: "140 30% 96%", accent: "142 50% 90%" },
+    colors: {
+      primary: "142 71% 45%",
+      background: "140 20% 97%",
+      sidebar: "140 30% 96%",
+      card: "0 0% 100%",
+    }
+  },
+  {
+    id: "sunset",
+    name: "Por do Sol",
+    description: "Quente e acolhedor",
+    preview: { primary: "25 95% 53%", sidebar: "30 20% 97%", accent: "25 80% 90%" },
+    colors: {
+      primary: "25 95% 53%",
+      background: "30 15% 96%",
+      sidebar: "30 20% 97%",
+      card: "0 0% 100%",
+    }
+  },
+  {
+    id: "ocean",
+    name: "Oceano",
+    description: "Calmo e sereno",
+    preview: { primary: "190 95% 39%", sidebar: "195 30% 97%", accent: "190 50% 90%" },
+    colors: {
+      primary: "190 95% 39%",
+      background: "195 20% 96%",
+      sidebar: "195 30% 97%",
+      card: "0 0% 100%",
+    }
+  },
+  {
+    id: "midnight",
+    name: "Meia Noite",
+    description: "Escuro e misterioso",
+    preview: { primary: "217 91% 60%", sidebar: "222 47% 8%", accent: "217 50% 20%" },
+    colors: {
+      primary: "217 91% 60%",
+      background: "222 47% 6%",
+      sidebar: "222 47% 8%",
+      card: "222 47% 10%",
+    }
+  },
 ];
 
 const designTemplates = [
-  { id: "modern", name: "Moderno", description: "Design limpo com bordas arredondadas" },
-  { id: "classic", name: "Classico", description: "Estilo tradicional e profissional" },
-  { id: "minimal", name: "Minimalista", description: "Foco no conteudo, sem distrações" },
-  { id: "bold", name: "Impactante", description: "Cores fortes e elementos grandes" },
+  { id: "modern", name: "Moderno", description: "Design limpo com bordas arredondadas", icon: Circle },
+  { id: "classic", name: "Classico", description: "Estilo tradicional e profissional", icon: Square },
+  { id: "minimal", name: "Minimalista", description: "Foco no conteudo, sem distrações", icon: Layout },
+  { id: "bold", name: "Impactante", description: "Cores fortes e elementos grandes", icon: Sparkles },
 ];
 
 const productsPerRowOptions = [
@@ -48,10 +132,28 @@ const categoryPositionOptions = [
   { value: "hidden", label: "Oculto" },
 ];
 
+const fontOptions = [
+  { value: "inter", label: "Inter", style: "font-sans" },
+  { value: "roboto", label: "Roboto", style: "font-sans" },
+  { value: "poppins", label: "Poppins", style: "font-sans" },
+  { value: "nunito", label: "Nunito", style: "font-sans" },
+  { value: "montserrat", label: "Montserrat", style: "font-sans" },
+];
+
+const borderRadiusOptions = [
+  { value: "none", label: "Sem bordas", radius: "0" },
+  { value: "sm", label: "Pequeno", radius: "0.25rem" },
+  { value: "md", label: "Medio", radius: "0.5rem" },
+  { value: "lg", label: "Grande", radius: "0.75rem" },
+  { value: "xl", label: "Extra Grande", radius: "1rem" },
+  { value: "full", label: "Arredondado", radius: "9999px" },
+];
+
 export default function AppearancePage() {
   const { theme, setTheme } = useTheme();
   const { toast } = useToast();
   const [selectedColor, setSelectedColor] = useState("orange");
+  const [selectedCompleteTheme, setSelectedCompleteTheme] = useState("");
   const [selectedTemplate, setSelectedTemplate] = useState("modern");
   const [productsPerRow, setProductsPerRow] = useState("4");
   const [categoryPosition, setCategoryPosition] = useState("top");
@@ -65,6 +167,11 @@ export default function AppearancePage() {
   const [storeEmail, setStoreEmail] = useState("");
   const [storeAddress, setStoreAddress] = useState("");
   const [storeLogo, setStoreLogo] = useState("");
+  
+  const [selectedFont, setSelectedFont] = useState("inter");
+  const [selectedRadius, setSelectedRadius] = useState("md");
+  const [sidebarStyle, setSidebarStyle] = useState("default");
+  const [animationsEnabled, setAnimationsEnabled] = useState(true);
 
   const { data: slides = [], isLoading: slidesLoading } = useQuery<CatalogSlide[]>({
     queryKey: ['/api/catalog/slides'],
@@ -117,6 +224,22 @@ export default function AppearancePage() {
   const { data: categoryPositionSetting } = useQuery<{ key: string; value: string | null }>({
     queryKey: ['/api/settings/category_position'],
   });
+  
+  const { data: fontSetting } = useQuery<{ key: string; value: string | null }>({
+    queryKey: ['/api/settings/font_family'],
+  });
+  
+  const { data: radiusSetting } = useQuery<{ key: string; value: string | null }>({
+    queryKey: ['/api/settings/border_radius'],
+  });
+  
+  const { data: sidebarStyleSetting } = useQuery<{ key: string; value: string | null }>({
+    queryKey: ['/api/settings/sidebar_style'],
+  });
+  
+  const { data: completeThemeSetting } = useQuery<{ key: string; value: string | null }>({
+    queryKey: ['/api/settings/complete_theme'],
+  });
 
   useEffect(() => {
     if (colorSetting?.value) setSelectedColor(colorSetting.value);
@@ -129,7 +252,34 @@ export default function AppearancePage() {
     if (storeEmailSetting?.value) setStoreEmail(storeEmailSetting.value);
     if (storeAddressSetting?.value) setStoreAddress(storeAddressSetting.value);
     if (storeLogoSetting?.value) setStoreLogo(storeLogoSetting.value);
-  }, [colorSetting, templateSetting, productsPerRowSetting, categoryPositionSetting, storeNameSetting, storeCnpjSetting, storePhoneSetting, storeEmailSetting, storeAddressSetting, storeLogoSetting]);
+    if (fontSetting?.value) setSelectedFont(fontSetting.value);
+    if (radiusSetting?.value) setSelectedRadius(radiusSetting.value);
+    if (sidebarStyleSetting?.value) setSidebarStyle(sidebarStyleSetting.value);
+    if (completeThemeSetting?.value) setSelectedCompleteTheme(completeThemeSetting.value);
+  }, [colorSetting, templateSetting, productsPerRowSetting, categoryPositionSetting, storeNameSetting, storeCnpjSetting, storePhoneSetting, storeEmailSetting, storeAddressSetting, storeLogoSetting, fontSetting, radiusSetting, sidebarStyleSetting, completeThemeSetting]);
+
+  useEffect(() => {
+    if (completeThemeSetting?.value) {
+      const themeConfig = completeThemes.find(t => t.id === completeThemeSetting.value);
+      if (themeConfig) {
+        document.documentElement.style.setProperty("--primary", themeConfig.colors.primary);
+        document.documentElement.style.setProperty("--sidebar", themeConfig.colors.sidebar);
+        document.documentElement.style.setProperty("--background", themeConfig.colors.background);
+        document.documentElement.style.setProperty("--card", themeConfig.colors.card);
+      }
+    } else if (colorSetting?.value) {
+      const colorConfig = colorThemes.find(t => t.id === colorSetting.value);
+      if (colorConfig) {
+        document.documentElement.style.setProperty("--primary", colorConfig.primary);
+      }
+    }
+    if (radiusSetting?.value) {
+      const radiusConfig = borderRadiusOptions.find(r => r.value === radiusSetting.value);
+      if (radiusConfig) {
+        document.documentElement.style.setProperty("--radius", radiusConfig.radius);
+      }
+    }
+  }, [completeThemeSetting, colorSetting, radiusSetting]);
 
   const saveSetting = useMutation({
     mutationFn: async ({ key, value }: { key: string; value: string }) => {
@@ -137,10 +287,10 @@ export default function AppearancePage() {
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: [`/api/settings/${variables.key}`] });
-      toast({ title: "Salvo", description: "Configuração atualizada com sucesso." });
+      toast({ title: "Salvo", description: "Configuracao atualizada com sucesso." });
     },
     onError: () => {
-      toast({ title: "Erro", description: "Não foi possível salvar.", variant: "destructive" });
+      toast({ title: "Erro", description: "Nao foi possivel salvar.", variant: "destructive" });
     },
   });
 
@@ -184,17 +334,50 @@ export default function AppearancePage() {
 
   const handleColorChange = (colorId: string) => {
     setSelectedColor(colorId);
+    setSelectedCompleteTheme("");
     const themeConfig = colorThemes.find(t => t.id === colorId);
     if (themeConfig) {
       document.documentElement.style.setProperty("--primary", themeConfig.primary);
       localStorage.setItem("sidebarTheme", colorId);
     }
     saveSetting.mutate({ key: 'primary_color', value: colorId });
+    saveSetting.mutate({ key: 'complete_theme', value: '' });
+  };
+
+  const handleCompleteThemeChange = (themeId: string) => {
+    setSelectedCompleteTheme(themeId);
+    const themeConfig = completeThemes.find(t => t.id === themeId);
+    if (themeConfig) {
+      document.documentElement.style.setProperty("--primary", themeConfig.colors.primary);
+      document.documentElement.style.setProperty("--sidebar", themeConfig.colors.sidebar);
+      document.documentElement.style.setProperty("--background", themeConfig.colors.background);
+      document.documentElement.style.setProperty("--card", themeConfig.colors.card);
+    }
+    saveSetting.mutate({ key: 'complete_theme', value: themeId });
   };
 
   const handleTemplateChange = (templateId: string) => {
     setSelectedTemplate(templateId);
     saveSetting.mutate({ key: 'design_template', value: templateId });
+  };
+  
+  const handleFontChange = (fontId: string) => {
+    setSelectedFont(fontId);
+    saveSetting.mutate({ key: 'font_family', value: fontId });
+  };
+  
+  const handleRadiusChange = (radiusId: string) => {
+    setSelectedRadius(radiusId);
+    const radiusConfig = borderRadiusOptions.find(r => r.value === radiusId);
+    if (radiusConfig) {
+      document.documentElement.style.setProperty("--radius", radiusConfig.radius);
+    }
+    saveSetting.mutate({ key: 'border_radius', value: radiusId });
+  };
+  
+  const handleSidebarStyleChange = (style: string) => {
+    setSidebarStyle(style);
+    saveSetting.mutate({ key: 'sidebar_style', value: style });
   };
 
   const handleOpenSlideDialog = (slide?: CatalogSlide) => {
@@ -238,35 +421,209 @@ export default function AppearancePage() {
   };
 
   return (
-    <div className="p-6 lg:p-8 space-y-6 max-w-5xl">
+    <div className="p-6 lg:p-8 space-y-6 max-w-6xl">
       <div>
-        <h1 className="text-3xl font-semibold">Aparência</h1>
-        <p className="text-muted-foreground mt-1">Personalize a aparência do seu site como um white-label</p>
+        <h1 className="text-3xl font-bold flex items-center gap-3">
+          <Wand2 className="h-8 w-8 text-primary" />
+          Personalizacao
+        </h1>
+        <p className="text-muted-foreground mt-1">Personalize completamente a aparencia do seu sistema</p>
       </div>
 
-      <Tabs defaultValue="branding" className="space-y-6">
-        <TabsList className="grid grid-cols-5 w-full max-w-2xl">
-          <TabsTrigger value="branding" className="flex items-center gap-1.5" data-testid="tab-branding">
-            <Store className="w-4 h-4" />
-            <span className="hidden sm:inline">Loja</span>
+      <Tabs defaultValue="themes" className="space-y-6">
+        <TabsList className="grid grid-cols-6 w-full max-w-3xl h-auto p-1">
+          <TabsTrigger value="themes" className="flex flex-col items-center gap-1 py-2" data-testid="tab-themes">
+            <Sparkles className="w-4 h-4" />
+            <span className="text-xs">Temas</span>
           </TabsTrigger>
-          <TabsTrigger value="banners" className="flex items-center gap-1.5" data-testid="tab-banners">
-            <Image className="w-4 h-4" />
-            <span className="hidden sm:inline">Banners</span>
-          </TabsTrigger>
-          <TabsTrigger value="colors" className="flex items-center gap-1.5" data-testid="tab-colors">
+          <TabsTrigger value="colors" className="flex flex-col items-center gap-1 py-2" data-testid="tab-colors">
             <Palette className="w-4 h-4" />
-            <span className="hidden sm:inline">Cores</span>
+            <span className="text-xs">Cores</span>
           </TabsTrigger>
-          <TabsTrigger value="layout" className="flex items-center gap-1.5" data-testid="tab-layout">
+          <TabsTrigger value="branding" className="flex flex-col items-center gap-1 py-2" data-testid="tab-branding">
+            <Store className="w-4 h-4" />
+            <span className="text-xs">Loja</span>
+          </TabsTrigger>
+          <TabsTrigger value="banners" className="flex flex-col items-center gap-1 py-2" data-testid="tab-banners">
+            <Image className="w-4 h-4" />
+            <span className="text-xs">Banners</span>
+          </TabsTrigger>
+          <TabsTrigger value="layout" className="flex flex-col items-center gap-1 py-2" data-testid="tab-layout">
             <Layout className="w-4 h-4" />
-            <span className="hidden sm:inline">Layout</span>
+            <span className="text-xs">Layout</span>
           </TabsTrigger>
-          <TabsTrigger value="templates" className="flex items-center gap-1.5" data-testid="tab-templates">
+          <TabsTrigger value="advanced" className="flex flex-col items-center gap-1 py-2" data-testid="tab-advanced">
             <Layers className="w-4 h-4" />
-            <span className="hidden sm:inline">Templates</span>
+            <span className="text-xs">Avancado</span>
           </TabsTrigger>
         </TabsList>
+
+        <TabsContent value="themes" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Sparkles className="h-5 w-5 text-primary" />
+                Temas Prontos
+              </CardTitle>
+              <CardDescription>Escolha um tema completo para aplicar instantaneamente</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {completeThemes.map((themeOption) => (
+                  <button
+                    key={themeOption.id}
+                    onClick={() => handleCompleteThemeChange(themeOption.id)}
+                    className={`relative text-left p-4 rounded-xl border-2 transition-all hover-elevate ${
+                      selectedCompleteTheme === themeOption.id
+                        ? "border-primary ring-2 ring-primary/20"
+                        : "border-border"
+                    }`}
+                    data-testid={`button-theme-${themeOption.id}`}
+                  >
+                    <div className="flex gap-1.5 mb-3">
+                      <div 
+                        className="w-8 h-8 rounded-lg shadow-sm"
+                        style={{ backgroundColor: `hsl(${themeOption.preview.primary})` }}
+                      />
+                      <div 
+                        className="w-8 h-8 rounded-lg shadow-sm border"
+                        style={{ backgroundColor: `hsl(${themeOption.preview.sidebar})` }}
+                      />
+                      <div 
+                        className="w-8 h-8 rounded-lg shadow-sm"
+                        style={{ backgroundColor: `hsl(${themeOption.preview.accent})` }}
+                      />
+                    </div>
+                    <p className="font-semibold">{themeOption.name}</p>
+                    <p className="text-sm text-muted-foreground mt-0.5">{themeOption.description}</p>
+                    {selectedCompleteTheme === themeOption.id && (
+                      <div className="absolute top-2 right-2 w-6 h-6 bg-primary rounded-full flex items-center justify-center">
+                        <Check className="w-4 h-4 text-primary-foreground" />
+                      </div>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <PaintBucket className="h-5 w-5" />
+                Modo de Aparencia
+              </CardTitle>
+              <CardDescription>Escolha entre modo claro ou escuro</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 gap-4 max-w-md">
+                <button
+                  onClick={() => setTheme("light")}
+                  className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all hover-elevate ${
+                    theme === "light" ? "border-primary bg-primary/5" : "border-border"
+                  }`}
+                  data-testid="button-theme-light"
+                >
+                  <div className="w-12 h-12 rounded-full bg-gradient-to-br from-amber-100 to-amber-300 flex items-center justify-center">
+                    <Sun className="w-6 h-6 text-amber-600" />
+                  </div>
+                  <span className="font-medium">Claro</span>
+                </button>
+                <button
+                  onClick={() => setTheme("dark")}
+                  className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all hover-elevate ${
+                    theme === "dark" ? "border-primary bg-primary/5" : "border-border"
+                  }`}
+                  data-testid="button-theme-dark"
+                >
+                  <div className="w-12 h-12 rounded-full bg-gradient-to-br from-slate-700 to-slate-900 flex items-center justify-center">
+                    <Moon className="w-6 h-6 text-slate-300" />
+                  </div>
+                  <span className="font-medium">Escuro</span>
+                </button>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="colors" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Palette className="h-5 w-5" />
+                Cor Principal
+              </CardTitle>
+              <CardDescription>Escolha a cor que define a identidade visual do site</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-3">
+                {colorThemes.map((colorOption) => (
+                  <button
+                    key={colorOption.id}
+                    onClick={() => handleColorChange(colorOption.id)}
+                    className={`relative flex flex-col items-center gap-2 p-3 rounded-xl border-2 transition-all hover-elevate ${
+                      selectedColor === colorOption.id && !selectedCompleteTheme
+                        ? "border-primary ring-2 ring-primary/20"
+                        : "border-border"
+                    }`}
+                    data-testid={`button-color-${colorOption.id}`}
+                  >
+                    <div
+                      className="w-10 h-10 rounded-full shadow-md ring-2 ring-white/50"
+                      style={{ backgroundColor: `hsl(${colorOption.primary})` }}
+                    />
+                    <span className="text-xs font-medium">{colorOption.name}</span>
+                    {selectedColor === colorOption.id && !selectedCompleteTheme && (
+                      <div className="absolute -top-1 -right-1 w-5 h-5 bg-primary rounded-full flex items-center justify-center">
+                        <Check className="w-3 h-3 text-primary-foreground" />
+                      </div>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Layers className="h-5 w-5" />
+                Template de Design
+              </CardTitle>
+              <CardDescription>Escolha o estilo visual do seu site</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                {designTemplates.map((template) => {
+                  const Icon = template.icon;
+                  return (
+                    <button
+                      key={template.id}
+                      onClick={() => handleTemplateChange(template.id)}
+                      className={`relative text-left p-4 rounded-xl border-2 transition-all hover-elevate ${
+                        selectedTemplate === template.id
+                          ? "border-primary bg-primary/5"
+                          : "border-border"
+                      }`}
+                      data-testid={`button-template-${template.id}`}
+                    >
+                      <div className="flex items-center gap-2 mb-2">
+                        <Icon className="h-5 w-5 text-muted-foreground" />
+                        <p className="font-semibold">{template.name}</p>
+                      </div>
+                      <p className="text-sm text-muted-foreground">{template.description}</p>
+                      {selectedTemplate === template.id && (
+                        <div className="absolute top-2 right-2 w-5 h-5 bg-primary rounded-full flex items-center justify-center">
+                          <Check className="w-3 h-3 text-primary-foreground" />
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
 
         <TabsContent value="branding" className="space-y-6">
           <Card>
@@ -275,7 +632,7 @@ export default function AppearancePage() {
                 <Building2 className="h-5 w-5" />
                 Dados da Loja
               </CardTitle>
-              <CardDescription>Informações que aparecem no site e documentos</CardDescription>
+              <CardDescription>Informacoes que aparecem no site e documentos</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid gap-4 sm:grid-cols-2">
@@ -317,9 +674,9 @@ export default function AppearancePage() {
                 </div>
               </div>
               <div className="space-y-2">
-                <Label>Endereço</Label>
+                <Label>Endereco</Label>
                 <Input 
-                  placeholder="Rua, número, bairro, cidade - UF" 
+                  placeholder="Rua, numero, bairro, cidade - UF" 
                   value={storeAddress}
                   onChange={(e) => setStoreAddress(e.target.value)}
                   data-testid="input-store-address"
@@ -335,8 +692,8 @@ export default function AppearancePage() {
                   data-testid="input-store-logo"
                 />
                 {storeLogo && (
-                  <div className="mt-2 p-4 border rounded-lg bg-muted/30">
-                    <p className="text-sm text-muted-foreground mb-2">Prévia:</p>
+                  <div className="mt-2 p-4 border rounded-xl bg-muted/30">
+                    <p className="text-sm text-muted-foreground mb-2">Previa:</p>
                     <img src={storeLogo} alt="Logo" className="max-h-16 object-contain" />
                   </div>
                 )}
@@ -349,14 +706,14 @@ export default function AppearancePage() {
 
           <Card>
             <CardHeader>
-              <CardTitle>Modos de Exibição</CardTitle>
-              <CardDescription>Configure como o catálogo é exibido</CardDescription>
+              <CardTitle>Modos de Exibicao</CardTitle>
+              <CardDescription>Configure como o catalogo e exibido</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex items-center justify-between">
                 <div>
                   <Label>Modo Atacado</Label>
-                  <p className="text-sm text-muted-foreground">Exibir preços e opções para atacado</p>
+                  <p className="text-sm text-muted-foreground">Exibir precos e opcoes para atacado</p>
                 </div>
                 <Switch
                   checked={isWholesaleEnabled}
@@ -374,18 +731,6 @@ export default function AppearancePage() {
                   checked={isDeliveryModeEnabled}
                   onCheckedChange={(checked) => saveSetting.mutate({ key: 'delivery_catalog_mode', value: checked ? 'true' : 'false' })}
                   data-testid="switch-delivery-mode"
-                />
-              </div>
-              <Separator />
-              <div className="flex items-center justify-between">
-                <div>
-                  <Label>Modo Escuro</Label>
-                  <p className="text-sm text-muted-foreground">Tema escuro para a interface</p>
-                </div>
-                <Switch
-                  checked={theme === "dark"}
-                  onCheckedChange={(checked) => setTheme(checked ? "dark" : "light")}
-                  data-testid="switch-dark-mode"
                 />
               </div>
             </CardContent>
@@ -415,9 +760,9 @@ export default function AppearancePage() {
                   </DialogHeader>
                   <div className="space-y-4">
                     <div className="space-y-2">
-                      <Label>Título (opcional)</Label>
+                      <Label>Titulo (opcional)</Label>
                       <Input 
-                        placeholder="Promoção de verão" 
+                        placeholder="Promocao de verao" 
                         value={slideForm.title}
                         onChange={(e) => setSlideForm({ ...slideForm, title: e.target.value })}
                         data-testid="input-banner-title"
@@ -450,7 +795,7 @@ export default function AppearancePage() {
                       <Label>Banner ativo</Label>
                     </div>
                     {slideForm.imageUrl && (
-                      <div className="border rounded-lg overflow-hidden">
+                      <div className="border rounded-xl overflow-hidden">
                         <img src={slideForm.imageUrl} alt="Preview" className="w-full h-32 object-cover" />
                       </div>
                     )}
@@ -478,15 +823,15 @@ export default function AppearancePage() {
                   {slides.map((slide) => (
                     <div 
                       key={slide.id} 
-                      className="flex items-center gap-3 p-3 border rounded-lg bg-muted/30"
+                      className="flex items-center gap-3 p-3 border rounded-xl bg-muted/30"
                       data-testid={`banner-item-${slide.id}`}
                     >
                       <GripVertical className="w-4 h-4 text-muted-foreground cursor-grab" />
-                      <div className="w-24 h-14 rounded overflow-hidden bg-muted shrink-0">
+                      <div className="w-24 h-14 rounded-lg overflow-hidden bg-muted shrink-0">
                         <img src={slide.imageUrl} alt={slide.title || "Banner"} className="w-full h-full object-cover" />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="font-medium truncate">{slide.title || "Sem título"}</p>
+                        <p className="font-medium truncate">{slide.title || "Sem titulo"}</p>
                         <p className="text-xs text-muted-foreground truncate">{slide.imageUrl}</p>
                       </div>
                       <Badge variant={slide.active ? "default" : "secondary"}>
@@ -506,54 +851,14 @@ export default function AppearancePage() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="colors" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Palette className="h-5 w-5" />
-                Cor Principal
-              </CardTitle>
-              <CardDescription>Escolha a cor que define a identidade visual do site</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                {colorThemes.map((colorOption) => (
-                  <button
-                    key={colorOption.id}
-                    onClick={() => handleColorChange(colorOption.id)}
-                    className={`relative flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-all hover-elevate ${
-                      selectedColor === colorOption.id
-                        ? "border-primary bg-primary/5"
-                        : "border-border"
-                    }`}
-                    data-testid={`button-color-${colorOption.id}`}
-                  >
-                    <div
-                      className="w-12 h-12 rounded-full shadow-sm"
-                      style={{ backgroundColor: `hsl(${colorOption.primary})` }}
-                    />
-                    <span className="text-sm font-medium">{colorOption.name}</span>
-                    <span className="text-xs text-muted-foreground text-center">{colorOption.description}</span>
-                    {selectedColor === colorOption.id && (
-                      <div className="absolute top-2 right-2 w-5 h-5 bg-primary rounded-full flex items-center justify-center">
-                        <Check className="w-3 h-3 text-primary-foreground" />
-                      </div>
-                    )}
-                  </button>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
         <TabsContent value="layout" className="space-y-6">
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Layout className="h-5 w-5" />
-                Configurações de Layout
+                Configuracoes de Layout
               </CardTitle>
-              <CardDescription>Ajuste como os produtos são exibidos</CardDescription>
+              <CardDescription>Ajuste como os produtos sao exibidos</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="grid gap-4 sm:grid-cols-2">
@@ -575,7 +880,7 @@ export default function AppearancePage() {
                   <p className="text-xs text-muted-foreground">Quantos produtos aparecem em cada linha no desktop</p>
                 </div>
                 <div className="space-y-2">
-                  <Label>Posição das Categorias</Label>
+                  <Label>Posicao das Categorias</Label>
                   <Select value={categoryPosition} onValueChange={(v) => {
                     setCategoryPosition(v);
                     saveSetting.mutate({ key: 'category_position', value: v });
@@ -589,44 +894,133 @@ export default function AppearancePage() {
                       ))}
                     </SelectContent>
                   </Select>
-                  <p className="text-xs text-muted-foreground">Onde as categorias aparecem no catálogo</p>
+                  <p className="text-xs text-muted-foreground">Onde as categorias aparecem no catalogo</p>
                 </div>
               </div>
             </CardContent>
           </Card>
         </TabsContent>
 
-        <TabsContent value="templates" className="space-y-6">
+        <TabsContent value="advanced" className="space-y-6">
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Layers className="h-5 w-5" />
-                Template de Design
+                <Type className="h-5 w-5" />
+                Tipografia
               </CardTitle>
-              <CardDescription>Escolha o estilo visual do seu site</CardDescription>
+              <CardDescription>Escolha a fonte usada em todo o site</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="grid sm:grid-cols-2 gap-4">
-                {designTemplates.map((template) => (
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                {fontOptions.map((font) => (
                   <button
-                    key={template.id}
-                    onClick={() => handleTemplateChange(template.id)}
-                    className={`relative text-left p-4 rounded-lg border-2 transition-all hover-elevate ${
-                      selectedTemplate === template.id
+                    key={font.value}
+                    onClick={() => handleFontChange(font.value)}
+                    className={`p-4 rounded-xl border-2 transition-all hover-elevate text-center ${
+                      selectedFont === font.value
                         ? "border-primary bg-primary/5"
                         : "border-border"
                     }`}
-                    data-testid={`button-template-${template.id}`}
+                    data-testid={`button-font-${font.value}`}
                   >
-                    <p className="font-medium">{template.name}</p>
-                    <p className="text-sm text-muted-foreground mt-1">{template.description}</p>
-                    {selectedTemplate === template.id && (
-                      <div className="absolute top-2 right-2 w-5 h-5 bg-primary rounded-full flex items-center justify-center">
-                        <Check className="w-3 h-3 text-primary-foreground" />
-                      </div>
-                    )}
+                    <span className="text-lg font-semibold">{font.label}</span>
+                    <p className="text-xs text-muted-foreground mt-1">Aa Bb Cc</p>
                   </button>
                 ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Square className="h-5 w-5" />
+                Arredondamento de Bordas
+              </CardTitle>
+              <CardDescription>Ajuste o arredondamento dos elementos</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
+                {borderRadiusOptions.map((radius) => (
+                  <button
+                    key={radius.value}
+                    onClick={() => handleRadiusChange(radius.value)}
+                    className={`p-4 rounded-xl border-2 transition-all hover-elevate ${
+                      selectedRadius === radius.value
+                        ? "border-primary bg-primary/5"
+                        : "border-border"
+                    }`}
+                    data-testid={`button-radius-${radius.value}`}
+                  >
+                    <div 
+                      className="w-10 h-10 bg-primary/20 mx-auto mb-2"
+                      style={{ borderRadius: radius.radius }}
+                    />
+                    <span className="text-xs font-medium">{radius.label}</span>
+                  </button>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Sidebar className="h-5 w-5" />
+                Estilo do Menu
+              </CardTitle>
+              <CardDescription>Configure a aparencia do menu lateral</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid sm:grid-cols-3 gap-4">
+                <button
+                  onClick={() => handleSidebarStyleChange("default")}
+                  className={`p-4 rounded-xl border-2 transition-all hover-elevate text-left ${
+                    sidebarStyle === "default"
+                      ? "border-primary bg-primary/5"
+                      : "border-border"
+                  }`}
+                  data-testid="button-sidebar-default"
+                >
+                  <div className="flex gap-2 mb-2">
+                    <div className="w-4 h-16 bg-muted rounded" />
+                    <div className="flex-1 h-16 bg-muted/50 rounded" />
+                  </div>
+                  <p className="font-medium">Padrao</p>
+                  <p className="text-xs text-muted-foreground">Menu lateral classico</p>
+                </button>
+                <button
+                  onClick={() => handleSidebarStyleChange("compact")}
+                  className={`p-4 rounded-xl border-2 transition-all hover-elevate text-left ${
+                    sidebarStyle === "compact"
+                      ? "border-primary bg-primary/5"
+                      : "border-border"
+                  }`}
+                  data-testid="button-sidebar-compact"
+                >
+                  <div className="flex gap-2 mb-2">
+                    <div className="w-2 h-16 bg-muted rounded" />
+                    <div className="flex-1 h-16 bg-muted/50 rounded" />
+                  </div>
+                  <p className="font-medium">Compacto</p>
+                  <p className="text-xs text-muted-foreground">Menu recolhido por padrao</p>
+                </button>
+                <button
+                  onClick={() => handleSidebarStyleChange("floating")}
+                  className={`p-4 rounded-xl border-2 transition-all hover-elevate text-left ${
+                    sidebarStyle === "floating"
+                      ? "border-primary bg-primary/5"
+                      : "border-border"
+                  }`}
+                  data-testid="button-sidebar-floating"
+                >
+                  <div className="relative mb-2">
+                    <div className="h-16 bg-muted/50 rounded" />
+                    <div className="absolute left-1 top-1 bottom-1 w-3 bg-card border rounded shadow-sm" />
+                  </div>
+                  <p className="font-medium">Flutuante</p>
+                  <p className="text-xs text-muted-foreground">Menu sobre o conteudo</p>
+                </button>
               </div>
             </CardContent>
           </Card>
