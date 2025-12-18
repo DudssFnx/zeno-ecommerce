@@ -194,6 +194,8 @@ export function CustomerMap() {
           <span style="font-size: 12px; color: #888;">
             ${customer.city || ""}${customer.city && customer.state ? ", " : ""}${customer.state || ""}
           </span>
+          <br/>
+          <a href="/users?highlight=${customer.userId}" style="color: #3b82f6; font-size: 12px; text-decoration: underline;">Ver cliente</a>
         </div>
       `);
     });
