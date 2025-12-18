@@ -59,7 +59,7 @@ export default function UsersPage() {
   });
 
   const { data: brandsData = [] } = useQuery<string[]>({
-    queryKey: ['/api/brands'],
+    queryKey: ['/api/admin/all-brands'],
   });
 
   const { data: userPermissions } = useQuery<{ userId: string; modules: string[] }>({

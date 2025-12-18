@@ -1160,6 +1160,24 @@ export async function registerRoutes(
     }
   });
 
+  // Get all brands (admin only - for user management)
+  app.get('/api/admin/all-brands', isAuthenticated, isAdmin, async (req: any, res) => {
+    try {
+      const productsResult = await storage.getProducts();
+      const allProducts = productsResult.products;
+      const brandsSet = new Set<string>();
+      allProducts.forEach((p: { brand: string | null }) => {
+        if (p.brand) brandsSet.add(p.brand);
+      });
+      
+      const brands = Array.from(brandsSet).sort();
+      res.json(brands);
+    } catch (error) {
+      console.error("Error fetching all brands:", error);
+      res.status(500).json({ message: "Failed to fetch brands" });
+    }
+  });
+
   // ========== USERS (Admin Only) ==========
   app.get('/api/users', isAuthenticated, isAdmin, async (req, res) => {
     try {
