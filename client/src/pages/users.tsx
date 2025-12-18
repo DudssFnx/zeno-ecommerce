@@ -3,7 +3,7 @@ import { UserCard, type UserData, type UserRole, type CustomerType } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Search, RefreshCw, Loader2, Plus, Settings, Shield } from "lucide-react";
+import { Search, RefreshCw, Loader2, Plus, Settings, Shield, Tag, Instagram, StickyNote } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -28,6 +28,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
+import { Textarea } from "@/components/ui/textarea";
 
 type UserStatus = "pending" | "approved" | "rejected";
 
@@ -37,7 +38,11 @@ export default function UsersPage() {
   const [activeTab, setActiveTab] = useState("all");
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isPermissionsOpen, setIsPermissionsOpen] = useState(false);
+  const [isExtrasOpen, setIsExtrasOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<UserData | null>(null);
+  const [extrasTag, setExtrasTag] = useState("");
+  const [extrasInstagram, setExtrasInstagram] = useState("");
+  const [extrasNotes, setExtrasNotes] = useState("");
   const [newUserName, setNewUserName] = useState("");
   const [newUserEmail, setNewUserEmail] = useState("");
   const [newUserPassword, setNewUserPassword] = useState("");
@@ -164,6 +169,9 @@ export default function UsersPage() {
     role: u.role as UserRole,
     customerType: (u.customerType || "varejo") as CustomerType,
     status: u.approved ? "approved" : "pending" as UserStatus,
+    tag: u.tag || undefined,
+    instagram: u.instagram || undefined,
+    notes: u.notes || undefined,
   }));
 
   const filteredUsers = users.filter((user) => {
@@ -242,6 +250,39 @@ export default function UsersPage() {
         },
       }
     );
+  };
+
+  const handleOpenExtras = (user: UserData) => {
+    setSelectedUser(user);
+    setExtrasTag(user.tag || "");
+    setExtrasInstagram(user.instagram || "");
+    setExtrasNotes(user.notes || "");
+    setIsExtrasOpen(true);
+  };
+
+  const handleSaveExtras = () => {
+    if (selectedUser) {
+      updateUserMutation.mutate(
+        { 
+          id: selectedUser.id, 
+          data: { 
+            tag: extrasTag || null, 
+            instagram: extrasInstagram || null, 
+            notes: extrasNotes || null 
+          } 
+        },
+        {
+          onSuccess: () => {
+            toast({ title: "Extras Salvos", description: "Informacoes extras atualizadas com sucesso." });
+            setIsExtrasOpen(false);
+            setSelectedUser(null);
+          },
+          onError: () => {
+            toast({ title: "Erro", description: "Falha ao salvar extras", variant: "destructive" });
+          },
+        }
+      );
+    }
   };
 
   const pendingCount = users.filter((u) => u.status === "pending").length;
@@ -422,6 +463,7 @@ export default function UsersPage() {
                     onReject={handleReject}
                     onChangeRole={handleChangeRole}
                     onChangeCustomerType={handleChangeCustomerType}
+                    onEditExtras={handleOpenExtras}
                   />
                   {user.role !== "admin" && (
                     <Button
@@ -492,6 +534,88 @@ export default function UsersPage() {
                 </>
               ) : (
                 "Salvar Permissoes"
+              )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isExtrasOpen} onOpenChange={setIsExtrasOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Tag className="h-5 w-5" />
+              Extras de {selectedUser?.name}
+            </DialogTitle>
+            <DialogDescription>
+              Adicione informacoes extras como tag, Instagram e notas
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="extras-tag" className="flex items-center gap-2">
+                <Tag className="h-4 w-4" />
+                Tag
+              </Label>
+              <Input
+                id="extras-tag"
+                value={extrasTag}
+                onChange={(e) => setExtrasTag(e.target.value)}
+                placeholder="Ex: VIP, Parceiro, Novo"
+                data-testid="input-extras-tag"
+              />
+              <p className="text-xs text-muted-foreground">
+                Uma etiqueta para identificar o cliente rapidamente
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="extras-instagram" className="flex items-center gap-2">
+                <Instagram className="h-4 w-4" />
+                Instagram
+              </Label>
+              <Input
+                id="extras-instagram"
+                value={extrasInstagram}
+                onChange={(e) => setExtrasInstagram(e.target.value)}
+                placeholder="@usuario"
+                data-testid="input-extras-instagram"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="extras-notes" className="flex items-center gap-2">
+                <StickyNote className="h-4 w-4" />
+                Notas
+              </Label>
+              <Textarea
+                id="extras-notes"
+                value={extrasNotes}
+                onChange={(e) => setExtrasNotes(e.target.value)}
+                placeholder="Observacoes sobre o cliente..."
+                rows={4}
+                data-testid="input-extras-notes"
+              />
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setIsExtrasOpen(false)}>
+              Cancelar
+            </Button>
+            <Button 
+              onClick={handleSaveExtras}
+              disabled={updateUserMutation.isPending}
+              data-testid="button-save-extras"
+            >
+              {updateUserMutation.isPending ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Salvando...
+                </>
+              ) : (
+                "Salvar Extras"
               )}
             </Button>
           </div>

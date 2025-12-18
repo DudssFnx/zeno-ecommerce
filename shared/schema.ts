@@ -40,6 +40,9 @@ export const users = pgTable("users", {
   neighborhood: text("neighborhood"),
   city: text("city"),
   state: text("state"),
+  tag: text("tag"),
+  instagram: text("instagram"),
+  notes: text("notes"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

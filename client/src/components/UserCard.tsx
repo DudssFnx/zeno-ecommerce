@@ -2,7 +2,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { StatusBadge, type UserStatus } from "./StatusBadge";
-import { Check, X, MoreHorizontal } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Check, X, MoreHorizontal, Edit, Instagram, Tag, StickyNote } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -21,6 +22,9 @@ export interface UserData {
   role: UserRole;
   customerType: CustomerType;
   status: UserStatus;
+  tag?: string;
+  instagram?: string;
+  notes?: string;
 }
 
 interface UserCardProps {
@@ -29,9 +33,10 @@ interface UserCardProps {
   onReject?: (user: UserData) => void;
   onChangeRole?: (user: UserData, role: UserRole) => void;
   onChangeCustomerType?: (user: UserData, customerType: CustomerType) => void;
+  onEditExtras?: (user: UserData) => void;
 }
 
-export function UserCard({ user, onApprove, onReject, onChangeRole, onChangeCustomerType }: UserCardProps) {
+export function UserCard({ user, onApprove, onReject, onChangeRole, onChangeCustomerType, onEditExtras }: UserCardProps) {
   const initials = user.name
     .split(" ")
     .map((n) => n[0])
@@ -49,20 +54,38 @@ export function UserCard({ user, onApprove, onReject, onChangeRole, onChangeCust
             </AvatarFallback>
           </Avatar>
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-1">
+            <div className="flex items-center gap-2 mb-1 flex-wrap">
               <h3 className="font-medium truncate" data-testid={`text-user-name-${user.id}`}>
                 {user.name}
               </h3>
               <StatusBadge status={user.status} />
+              {user.tag && (
+                <Badge variant="secondary" className="text-xs">
+                  <Tag className="h-3 w-3 mr-1" />
+                  {user.tag}
+                </Badge>
+              )}
             </div>
             <p className="text-sm text-muted-foreground truncate">{user.email}</p>
             {user.company && (
               <p className="text-sm text-muted-foreground">{user.company}</p>
             )}
-            <p className="text-xs text-muted-foreground mt-1 capitalize">Função: {user.role}</p>
+            {user.instagram && (
+              <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                <Instagram className="h-3 w-3" />
+                @{user.instagram.replace('@', '')}
+              </p>
+            )}
+            <p className="text-xs text-muted-foreground mt-1 capitalize">Funcao: {user.role}</p>
             {user.role === "customer" && (
               <p className="text-xs text-muted-foreground capitalize">
                 Tipo: {user.customerType === "atacado" ? "Atacado" : "Varejo"}
+              </p>
+            )}
+            {user.notes && (
+              <p className="text-xs text-muted-foreground mt-1 flex items-start gap-1">
+                <StickyNote className="h-3 w-3 mt-0.5 flex-shrink-0" />
+                <span className="line-clamp-2">{user.notes}</span>
               </p>
             )}
           </div>
@@ -115,6 +138,10 @@ export function UserCard({ user, onApprove, onReject, onChangeRole, onChangeCust
                     </DropdownMenuItem>
                   </>
                 )}
+                <DropdownMenuItem onClick={() => onEditExtras?.(user)} data-testid={`button-extras-${user.id}`}>
+                  <Edit className="h-4 w-4 mr-2" />
+                  Editar Extras
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
