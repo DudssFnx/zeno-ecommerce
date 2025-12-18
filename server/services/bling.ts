@@ -656,19 +656,18 @@ export async function syncProducts(): Promise<{ created: number; updated: number
       const pageProducts = await fetchProductListWithRetry(page, limit);
       if (pageProducts.length === 0) break;
       
+      // Import ALL products (active and inactive, with and without stock)
       for (const p of pageProducts) {
-        if (p.situacao === "A") {
-          basicProducts.push(p);
-        }
+        basicProducts.push(p);
       }
-      updateProgress({ message: `Página ${page}: ${basicProducts.length} produtos ativos encontrados` });
-      console.log(`Page ${page}: ${pageProducts.length} products (${basicProducts.length} active total)`);
+      updateProgress({ message: `Página ${page}: ${basicProducts.length} produtos encontrados` });
+      console.log(`Page ${page}: ${pageProducts.length} products (${basicProducts.length} total)`);
       
       if (pageProducts.length < limit) break;
       page++;
     }
     
-    console.log(`Found ${basicProducts.length} active products.`);
+    console.log(`Found ${basicProducts.length} products (all).`);
     const totalProducts = basicProducts.length;
     const totalSteps = totalProducts * 2;
     
