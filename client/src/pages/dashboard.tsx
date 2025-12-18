@@ -12,6 +12,7 @@ import type { Order as SchemaOrder, Product, User } from "@shared/schema";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, Legend } from "recharts";
+import { CustomerMap } from "@/components/CustomerMap";
 
 interface OrderWithItems extends SchemaOrder {
   items?: { id: number; quantity: number }[];
@@ -397,6 +398,8 @@ export default function DashboardPage() {
           </Card>
         </div>
       )}
+
+      {isAdmin && <CustomerMap />}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
