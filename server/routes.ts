@@ -3316,6 +3316,7 @@ export async function registerRoutes(
         { key: "appearance", label: "Aparencia", description: "Personalizar aparencia do sistema", icon: "Palette", defaultRoles: ["admin"], sortOrder: 9 },
         { key: "pdv", label: "PDV", description: "Ponto de Venda / Orcamento rapido", icon: "Monitor", defaultRoles: ["admin", "sales"], sortOrder: 10 },
         { key: "agenda", label: "Agenda", description: "Calendario de eventos", icon: "Calendar", defaultRoles: ["admin", "sales"], sortOrder: 11 },
+        { key: "brands", label: "Marcas", description: "Visualizar analytics de marcas", icon: "Tag", defaultRoles: ["admin", "supplier"], sortOrder: 12 },
       ];
 
       for (const mod of defaultModules) {

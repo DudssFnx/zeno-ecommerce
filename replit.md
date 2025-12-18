@@ -164,23 +164,30 @@ Sistema granular de permissões por módulo, permitindo controle fino de acesso 
 - `user_module_permissions`: Permissões de cada usuário para cada módulo
 
 **Módulos Disponíveis:**
-1. `catalog` - Catálogo de produtos
-2. `orders` - Gerenciamento de pedidos
-3. `products` - Gerenciamento de produtos
-4. `customers` - Gerenciamento de clientes
-5. `financial_receivables` - Contas a Receber
-6. `financial_payables` - Contas a Pagar
-7. `reports` - Relatórios e dashboards
-8. `settings` - Configurações do sistema
-9. `appearance` - Personalização visual
-10. `pdv` - Ponto de Venda
-11. `agenda` - Agenda/Calendário
+1. `catalog` - Catálogo de produtos (admin, sales, customer)
+2. `orders` - Gerenciamento de pedidos (admin, sales, customer)
+3. `products` - Gerenciamento de produtos (admin, sales)
+4. `customers` - Gerenciamento de clientes (admin, sales)
+5. `financial_receivables` - Contas a Receber (admin, sales)
+6. `financial_payables` - Contas a Pagar (admin)
+7. `reports` - Relatórios e dashboards (admin)
+8. `settings` - Configurações do sistema (admin)
+9. `appearance` - Personalização visual (admin)
+10. `pdv` - Ponto de Venda (admin, sales)
+11. `agenda` - Agenda/Calendário (admin, sales)
+12. `brands` - Visualizar analytics de marcas (admin, supplier)
 
 ### Funcionamento
 - **Seed automático**: Módulos são criados automaticamente no startup do servidor
 - **Admin bypass**: Usuários admin têm acesso a todos os módulos automaticamente
-- **Permissões padrão por role**: Cada módulo tem roles padrão (admin, sales, customer)
+- **Permissões padrão por role**: Cada módulo tem defaultRoles (veja lista acima)
+- **Fallback automático**: Se usuário não tem permissões específicas, usa defaultRoles do módulo
 - **Personalização por usuário**: Admin pode selecionar módulos específicos ao criar/editar usuários
+
+### Menu Específico por Role
+- **Customer**: Menu simplificado (Painel, Categorias, Catálogo, Meus Pedidos)
+- **Supplier**: Menu restrito apenas ao módulo Marcas (brand-analytics)
+- **Admin/Sales**: Menu completo filtrado por permissões
 
 ### API Endpoints
 - `GET /api/modules` - Lista todos módulos (admin only)
