@@ -2440,6 +2440,11 @@ export async function registerRoutes(
       let updated = 0;
       const errors: string[] = [];
       
+      // Fetch stock from dedicated endpoint (more reliable)
+      console.log(`[import] Fetching stock for ${productIds.length} products...`);
+      const stockMap = await blingService.fetchBlingStock(productIds);
+      console.log(`[import] Got stock for ${stockMap.size} products. Non-zero: ${Array.from(stockMap.values()).filter(v => v > 0).length}`);
+      
       for (const productId of productIds) {
         await new Promise(resolve => setTimeout(resolve, 600));
         
@@ -2472,7 +2477,8 @@ export async function registerRoutes(
           }
           
           const description = blingProduct.descricaoComplementar || blingProduct.descricaoCurta || null;
-          const stock = blingProduct.estoque?.saldoVirtual ?? blingProduct.estoque?.saldoFisico ?? 0;
+          // Get stock from dedicated endpoint first, fallback to product details
+          const stock = stockMap.get(productId) ?? blingProduct.estoque?.saldoVirtual ?? blingProduct.estoque?.saldoFisico ?? 0;
           
           const productData = {
             name: blingProduct.nome,
