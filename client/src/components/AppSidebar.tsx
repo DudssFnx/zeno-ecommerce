@@ -74,7 +74,7 @@ const allMenuItems: MenuItem[] = [
       { title: "Analise de Produtos", url: "/product-analytics", icon: TrendingUp, moduleKey: "reports" },
       { title: "Analise de Funcionarios", url: "/employee-analytics", icon: Users, moduleKey: "reports" },
       { title: "Compras", url: "/purchases", icon: ShoppingCart, moduleKey: "reports" },
-      { title: "Marcas", url: "/brand-analytics", icon: Tag, moduleKey: "reports" },
+      { title: "Marcas", url: "/brand-analytics", icon: Tag, moduleKey: "brands" },
     ]
   },
   { title: "Categorias", url: "/categories", icon: Grid3X3, moduleKey: "catalog" },
@@ -104,6 +104,10 @@ const customerMenuItems: MenuItem[] = [
   { title: "Categorias", url: "/categories", icon: Grid3X3, moduleKey: "catalog" },
   { title: "Catalogo", url: "/catalog", icon: Package, moduleKey: "catalog" },
   { title: "Meus Pedidos", url: "/orders", icon: ClipboardList, moduleKey: "orders" },
+];
+
+const supplierMenuItems: MenuItem[] = [
+  { title: "Marcas", url: "/brand-analytics", icon: Tag, moduleKey: "brands" },
 ];
 
 export function AppSidebar({ userRole = "customer", userName = "User", onLogout }: AppSidebarProps) {
@@ -143,7 +147,11 @@ export function AppSidebar({ userRole = "customer", userName = "User", onLogout 
       });
   };
 
-  const baseItems = userRole === "customer" ? customerMenuItems : allMenuItems;
+  const baseItems = userRole === "customer" 
+    ? customerMenuItems 
+    : userRole === "supplier" 
+      ? supplierMenuItems 
+      : allMenuItems;
   const items = filterMenuItems(baseItems);
 
   const initials = userName
@@ -157,6 +165,7 @@ export function AppSidebar({ userRole = "customer", userName = "User", onLogout 
     switch (role) {
       case "admin": return "default";
       case "sales": return "secondary";
+      case "supplier": return "secondary";
       default: return "outline";
     }
   };
@@ -165,6 +174,7 @@ export function AppSidebar({ userRole = "customer", userName = "User", onLogout 
     switch (role) {
       case "admin": return "Administrador";
       case "sales": return "Vendedor";
+      case "supplier": return "Fornecedor";
       default: return "Cliente";
     }
   };

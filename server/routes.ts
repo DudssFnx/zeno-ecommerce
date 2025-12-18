@@ -3382,8 +3382,22 @@ export async function registerRoutes(
         return res.json({ modules: allModules.map(m => m.key), role: "admin" });
       }
 
+      // Check if user has specific permissions set
       const permissionKeys = await storage.getUserPermissionKeys(userId);
-      res.json({ modules: permissionKeys, role: user?.role || "customer" });
+      
+      // If user has specific permissions, use them
+      if (permissionKeys.length > 0) {
+        return res.json({ modules: permissionKeys, role: user?.role || "customer" });
+      }
+      
+      // Otherwise, use default roles from modules
+      const userRole = user?.role || "customer";
+      const allModules = await storage.getModules();
+      const defaultModules = allModules
+        .filter(m => m.defaultRoles?.includes(userRole))
+        .map(m => m.key);
+      
+      res.json({ modules: defaultModules, role: userRole });
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch permissions" });
     }
