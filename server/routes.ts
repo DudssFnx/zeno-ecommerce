@@ -1072,6 +1072,8 @@ export async function registerRoutes(
   app.get('/api/admin/product-analytics', isAuthenticated, isAdminOrSales, async (req: any, res) => {
     try {
       const analytics = await storage.getProductAnalytics();
+      console.log("Product analytics overview:", JSON.stringify(analytics.overview));
+      console.log("Product analytics ranking30d:", JSON.stringify(analytics.rankingByRevenue.days30));
       res.json(analytics);
     } catch (error) {
       console.error("Error fetching product analytics:", error);
