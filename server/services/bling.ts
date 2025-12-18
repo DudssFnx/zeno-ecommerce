@@ -377,10 +377,14 @@ export async function fetchBlingStock(productIds: number[]): Promise<Map<number,
       
       await new Promise(resolve => setTimeout(resolve, 500));
     } catch (error) {
-      console.error(`[fetchBlingStock] Failed to fetch stock for batch starting at ${i}:`, error);
-      if (String(error).includes("429")) {
+      const errorStr = String(error);
+      if (errorStr.includes("404") || errorStr.includes("RESOURCE_NOT_FOUND")) {
+        console.log(`[fetchBlingStock] Batch ${i}: No stock data found (products may not have deposits configured)`);
+      } else if (errorStr.includes("429")) {
         console.log("[fetchBlingStock] Rate limit hit on stock, waiting 30 seconds...");
         await new Promise(resolve => setTimeout(resolve, 30000));
+      } else {
+        console.error(`[fetchBlingStock] Failed to fetch stock for batch starting at ${i}:`, error);
       }
     }
   }
