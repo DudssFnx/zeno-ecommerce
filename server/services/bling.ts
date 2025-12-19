@@ -18,8 +18,16 @@ interface BlingProductBasic {
   nome: string;
   codigo: string;
   preco: number;
+  precoCusto?: number;
   tipo: string;
   situacao: string;
+  formato?: string;
+  descricaoCurta?: string;
+  imagemURL?: string;
+  estoque?: {
+    saldoVirtualTotal?: number;
+    saldoFisicoTotal?: number;
+  };
 }
 
 interface BlingProductFull {
@@ -744,16 +752,37 @@ export async function syncProducts(): Promise<{ created: number; updated: number
     );
     console.log(`Fetched all product details.`);
 
-    // Fetch stock from dedicated stock endpoint (more reliable than product details)
+    // Build stock map from basic product listing first (as fallback)
+    const stockFromListing = new Map<number, number>();
+    for (const bp of basicProducts) {
+      const stock = bp.estoque?.saldoVirtualTotal ?? bp.estoque?.saldoFisicoTotal ?? 0;
+      if (stock > 0) {
+        stockFromListing.set(bp.id, stock);
+      }
+    }
+    console.log(`[import] Stock from listing: ${stockFromListing.size} products with stock > 0`);
+    
+    // Try to fetch from dedicated stock endpoint (may fail if module not enabled)
     updateProgress({
       phase: 'Buscando estoque',
       currentStep: totalProducts,
       message: 'Buscando estoque dos produtos...',
     });
     
-    console.log(`Fetching stock for ${productIds.length} products...`);
-    const stockMap = await fetchBlingStock(productIds);
-    console.log(`Fetched stock for ${stockMap.size} products.`);
+    console.log(`[import] Fetching stock for ${productIds.length} products...`);
+    const stockFromEndpoint = await fetchBlingStock(productIds);
+    const nonZeroFromEndpoint = Array.from(stockFromEndpoint.values()).filter(v => v > 0).length;
+    console.log(`[import] Got stock for ${stockFromEndpoint.size} products. Non-zero: ${nonZeroFromEndpoint}`);
+    
+    // Merge: prefer endpoint stock, fallback to listing stock
+    const stockMap = new Map<number, number>();
+    for (const id of productIds) {
+      const fromEndpoint = stockFromEndpoint.get(id);
+      const fromListing = stockFromListing.get(id);
+      stockMap.set(id, fromEndpoint ?? fromListing ?? 0);
+    }
+    const finalNonZero = Array.from(stockMap.values()).filter(v => v > 0).length;
+    console.log(`[import] Final stock map: ${finalNonZero} products with stock > 0`);
 
     updateProgress({
       phase: 'Salvando produtos',
