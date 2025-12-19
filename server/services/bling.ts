@@ -1,12 +1,41 @@
 import { db } from "../db";
-import { products, categories, type InsertProduct, type InsertCategory } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { products, categories, blingTokens, type InsertProduct, type InsertCategory } from "@shared/schema";
+import { eq, desc } from "drizzle-orm";
 import crypto from "crypto";
 
 const BLING_API_BASE = "https://api.bling.com.br/Api/v3";
 const BLING_OAUTH_URL = "https://www.bling.com.br/Api/v3/oauth";
 
-interface BlingTokens {
+// Encryption key for tokens (uses SESSION_SECRET as base)
+const ENCRYPTION_KEY = crypto.scryptSync(
+  process.env.SESSION_SECRET || 'bling-token-encryption-key',
+  'salt',
+  32
+);
+
+function encryptToken(text: string): string {
+  const iv = crypto.randomBytes(16);
+  const cipher = crypto.createCipheriv('aes-256-cbc', ENCRYPTION_KEY, iv);
+  let encrypted = cipher.update(text, 'utf8', 'hex');
+  encrypted += cipher.final('hex');
+  return iv.toString('hex') + ':' + encrypted;
+}
+
+function decryptToken(encryptedText: string): string {
+  try {
+    const [ivHex, encrypted] = encryptedText.split(':');
+    if (!ivHex || !encrypted) return encryptedText; // Return as-is if not encrypted
+    const iv = Buffer.from(ivHex, 'hex');
+    const decipher = crypto.createDecipheriv('aes-256-cbc', ENCRYPTION_KEY, iv);
+    let decrypted = decipher.update(encrypted, 'hex', 'utf8');
+    decrypted += decipher.final('utf8');
+    return decrypted;
+  } catch {
+    return encryptedText; // Return as-is if decryption fails
+  }
+}
+
+interface BlingTokensResponse {
   access_token: string;
   refresh_token: string;
   expires_in: number;
@@ -75,10 +104,106 @@ interface BlingCategory {
   };
 }
 
-let cachedTokens: BlingTokens | null = null;
+let cachedTokens: BlingTokensResponse | null = null;
 let tokenExpiresAt: number = 0;
 let isRefreshing: boolean = false;
-let refreshPromise: Promise<BlingTokens> | null = null;
+let refreshPromise: Promise<BlingTokensResponse> | null = null;
+
+// ========== TOKEN PERSISTENCE ==========
+
+async function saveTokensToDb(tokens: BlingTokensResponse): Promise<void> {
+  try {
+    const expiresAt = new Date(Date.now() + (tokens.expires_in * 1000));
+    
+    // Delete old tokens and insert new one
+    await db.delete(blingTokens);
+    await db.insert(blingTokens).values({
+      accessToken: encryptToken(tokens.access_token),
+      refreshToken: encryptToken(tokens.refresh_token),
+      expiresAt,
+      tokenType: tokens.token_type || 'Bearer',
+    });
+    
+    console.log("[Bling] Tokens saved to database. Expires at:", expiresAt.toISOString());
+  } catch (error) {
+    console.error("[Bling] Failed to save tokens to database:", error);
+  }
+}
+
+async function loadTokensFromDb(): Promise<BlingTokensResponse | null> {
+  try {
+    const rows = await db.select().from(blingTokens).orderBy(desc(blingTokens.id)).limit(1);
+    
+    if (rows.length === 0) {
+      console.log("[Bling] No tokens found in database");
+      return null;
+    }
+    
+    const row = rows[0];
+    const accessToken = decryptToken(row.accessToken);
+    const refreshToken = decryptToken(row.refreshToken);
+    const expiresIn = Math.floor((row.expiresAt.getTime() - Date.now()) / 1000);
+    
+    console.log("[Bling] Tokens loaded from database. Expires in:", expiresIn, "seconds");
+    
+    return {
+      access_token: accessToken,
+      refresh_token: refreshToken,
+      expires_in: expiresIn > 0 ? expiresIn : 0,
+      token_type: row.tokenType,
+    };
+  } catch (error) {
+    console.error("[Bling] Failed to load tokens from database:", error);
+    return null;
+  }
+}
+
+export async function initializeBlingTokens(): Promise<boolean> {
+  console.log("[Bling] Initializing tokens from database...");
+  
+  const tokens = await loadTokensFromDb();
+  
+  if (!tokens) {
+    console.log("[Bling] No stored tokens found. Authorization required.");
+    return false;
+  }
+  
+  // Set in memory
+  cachedTokens = tokens;
+  tokenExpiresAt = Date.now() + (tokens.expires_in * 1000) - 120000;
+  
+  // Also set in environment for compatibility
+  process.env.BLING_ACCESS_TOKEN = tokens.access_token;
+  process.env.BLING_REFRESH_TOKEN = tokens.refresh_token;
+  
+  // If token is expired or about to expire, refresh it
+  if (tokens.expires_in < 300) { // Less than 5 minutes
+    console.log("[Bling] Token expired or expiring soon, refreshing...");
+    try {
+      await refreshAccessToken();
+      return true;
+    } catch (error) {
+      console.error("[Bling] Failed to refresh token on init:", error);
+      return false;
+    }
+  }
+  
+  console.log("[Bling] Tokens initialized successfully");
+  return true;
+}
+
+export async function clearBlingTokens(): Promise<void> {
+  try {
+    await db.delete(blingTokens);
+    cachedTokens = null;
+    tokenExpiresAt = 0;
+    delete process.env.BLING_ACCESS_TOKEN;
+    delete process.env.BLING_REFRESH_TOKEN;
+    console.log("[Bling] Tokens cleared from database");
+  } catch (error) {
+    console.error("[Bling] Failed to clear tokens:", error);
+  }
+}
 
 // ========== SYNC PROGRESS MANAGEMENT ==========
 export interface SyncProgress {
@@ -174,7 +299,7 @@ export function getAuthorizationUrl(redirectUri: string): string {
   return `${BLING_OAUTH_URL}/authorize?response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}`;
 }
 
-export async function exchangeCodeForTokens(code: string, redirectUri: string): Promise<BlingTokens> {
+export async function exchangeCodeForTokens(code: string, redirectUri: string): Promise<BlingTokensResponse> {
   const response = await fetch(`${BLING_OAUTH_URL}/token`, {
     method: "POST",
     headers: {
@@ -194,17 +319,20 @@ export async function exchangeCodeForTokens(code: string, redirectUri: string): 
     throw new Error(`Failed to exchange code for tokens: ${response.status}`);
   }
 
-  const tokens: BlingTokens = await response.json();
+  const tokens: BlingTokensResponse = await response.json();
   cachedTokens = tokens;
   tokenExpiresAt = Date.now() + (tokens.expires_in * 1000) - 60000;
   
   process.env.BLING_ACCESS_TOKEN = tokens.access_token;
   process.env.BLING_REFRESH_TOKEN = tokens.refresh_token;
   
+  // Save tokens to database for persistence
+  await saveTokensToDb(tokens);
+  
   return tokens;
 }
 
-export async function refreshAccessToken(): Promise<BlingTokens> {
+export async function refreshAccessToken(): Promise<BlingTokensResponse> {
   // Prevent concurrent refresh attempts
   if (isRefreshing && refreshPromise) {
     console.log("[Bling] Waiting for ongoing token refresh...");
@@ -242,7 +370,7 @@ export async function refreshAccessToken(): Promise<BlingTokens> {
         throw new Error(`Failed to refresh token: ${response.status}`);
       }
 
-      const tokens: BlingTokens = await response.json();
+      const tokens: BlingTokensResponse = await response.json();
       cachedTokens = tokens;
       // Set expiration with 2-minute buffer for safety
       tokenExpiresAt = Date.now() + (tokens.expires_in * 1000) - 120000;
@@ -250,7 +378,10 @@ export async function refreshAccessToken(): Promise<BlingTokens> {
       process.env.BLING_ACCESS_TOKEN = tokens.access_token;
       process.env.BLING_REFRESH_TOKEN = tokens.refresh_token;
       
-      console.log("[Bling] Token refreshed successfully. Expires at:", new Date(tokenExpiresAt).toISOString());
+      // Save refreshed tokens to database
+      await saveTokensToDb(tokens);
+      
+      console.log("[Bling] Token refreshed and saved. Expires at:", new Date(tokenExpiresAt).toISOString());
       return tokens;
     } finally {
       isRefreshing = false;

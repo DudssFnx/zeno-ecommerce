@@ -539,3 +539,23 @@ export const insertUserModulePermissionSchema = createInsertSchema(userModulePer
 
 export type InsertUserModulePermission = z.infer<typeof insertUserModulePermissionSchema>;
 export type UserModulePermission = typeof userModulePermissions.$inferSelect;
+
+// Bling OAuth tokens - persisted storage for API tokens
+export const blingTokens = pgTable("bling_tokens", {
+  id: serial("id").primaryKey(),
+  accessToken: text("access_token").notNull(),
+  refreshToken: text("refresh_token").notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+  tokenType: text("token_type").notNull().default("Bearer"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertBlingTokensSchema = createInsertSchema(blingTokens).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertBlingTokens = z.infer<typeof insertBlingTokensSchema>;
+export type BlingTokens = typeof blingTokens.$inferSelect;

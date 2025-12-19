@@ -2,6 +2,7 @@ import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
+import { initializeBlingTokens } from "./services/bling";
 
 const app = express();
 const httpServer = createServer(app);
@@ -61,6 +62,18 @@ app.use((req, res, next) => {
 
 (async () => {
   await registerRoutes(httpServer, app);
+  
+  // Initialize Bling tokens from database on server startup
+  try {
+    const blingInitialized = await initializeBlingTokens();
+    if (blingInitialized) {
+      console.log("[Bling] Connection restored from database");
+    } else {
+      console.log("[Bling] No saved connection found - authorization required");
+    }
+  } catch (error) {
+    console.error("[Bling] Failed to initialize tokens:", error);
+  }
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
