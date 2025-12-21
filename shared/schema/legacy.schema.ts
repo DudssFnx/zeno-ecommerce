@@ -192,6 +192,7 @@ export const orders = pgTable("orders", {
   shippingMethod: text("shipping_method"),
   // Payment info
   paymentMethod: text("payment_method"),
+  paymentTypeId: integer("payment_type_id"),
   paymentNotes: text("payment_notes"),
   notes: text("notes"),
   printed: boolean("printed").notNull().default(false),

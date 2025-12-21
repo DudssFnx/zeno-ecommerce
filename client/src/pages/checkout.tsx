@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -12,6 +13,7 @@ import { useCart } from "@/contexts/CartContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import type { PaymentType } from "@shared/schema";
 import { 
   ArrowLeft, 
   ArrowRight, 
@@ -85,7 +87,16 @@ export default function CheckoutPage() {
   
   // Payment state
   const [paymentMethod, setPaymentMethod] = useState<string>("");
+  const [paymentTypeId, setPaymentTypeId] = useState<number | null>(null);
   const [paymentNotes, setPaymentNotes] = useState("");
+  
+  // Fetch payment types from database
+  const { data: paymentTypes = [], isLoading: loadingPaymentTypes } = useQuery<PaymentType[]>({
+    queryKey: ["/api/payment-types"],
+  });
+  
+  // Filter only active payment types
+  const activePaymentTypes = paymentTypes.filter(pt => pt.active);
   
   // Guest checkout state
   const [isGuestCheckout, setIsGuestCheckout] = useState(false);
@@ -275,7 +286,7 @@ export default function CheckoutPage() {
       return;
     }
 
-    if (!paymentMethod) {
+    if (!paymentTypeId) {
       toast({
         title: "Selecione o pagamento",
         description: "Escolha uma forma de pagamento",
@@ -302,6 +313,7 @@ export default function CheckoutPage() {
         },
         shippingMethod: selectedFreight,
         paymentMethod: paymentMethod,
+        paymentTypeId: paymentTypeId,
         paymentNotes: paymentNotes,
         notes: `Frete: ${selectedFreight} | Pagamento: ${paymentMethod}${paymentNotes ? ` | Obs: ${paymentNotes}` : ''}`,
       };
@@ -936,34 +948,57 @@ export default function CheckoutPage() {
                 <CardContent className="space-y-6">
                   <div className="space-y-3">
                     <Label>Selecione o metodo de pagamento *</Label>
-                    <RadioGroup value={paymentMethod} onValueChange={setPaymentMethod}>
-                      {[
-                        { value: "pix", label: "PIX", description: "Transferencia instantanea" },
-                        { value: "boleto", label: "Boleto Bancario", description: "Vencimento em 3 dias uteis" },
-                        { value: "cartao", label: "Cartao de Credito", description: "Ate 12x sem juros" },
-                        { value: "transferencia", label: "Transferencia Bancaria", description: "TED ou DOC" },
-                        { value: "combinar", label: "A Combinar", description: "Combinar com vendedor" },
-                      ].map((method) => (
-                        <div 
-                          key={method.value}
-                          className={`flex items-center space-x-3 p-4 rounded-lg border cursor-pointer transition-colors ${
-                            paymentMethod === method.value 
-                              ? "border-orange-500 bg-orange-500/10" 
-                              : "border-border hover:border-orange-500/50"
-                          }`}
-                          onClick={() => setPaymentMethod(method.value)}
-                          data-testid={`payment-option-${method.value}`}
-                        >
-                          <RadioGroupItem value={method.value} id={method.value} />
-                          <div className="flex-1">
-                            <Label htmlFor={method.value} className="font-medium cursor-pointer">
-                              {method.label}
-                            </Label>
-                            <p className="text-sm text-muted-foreground">{method.description}</p>
+                    {loadingPaymentTypes ? (
+                      <div className="flex items-center justify-center py-8">
+                        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                      </div>
+                    ) : activePaymentTypes.length === 0 ? (
+                      <div className="p-4 rounded-lg bg-muted/50 text-center">
+                        <p className="text-muted-foreground">Nenhuma forma de pagamento disponivel</p>
+                        <p className="text-sm text-muted-foreground mt-1">Entre em contato com a loja</p>
+                      </div>
+                    ) : (
+                      <RadioGroup 
+                        value={paymentTypeId?.toString() || ""} 
+                        onValueChange={(value) => {
+                          const id = parseInt(value);
+                          const selectedType = activePaymentTypes.find(pt => pt.id === id);
+                          setPaymentTypeId(id);
+                          setPaymentMethod(selectedType?.name || "");
+                        }}
+                      >
+                        {activePaymentTypes.map((pt) => (
+                          <div 
+                            key={pt.id}
+                            className={`flex items-center space-x-3 p-4 rounded-lg border cursor-pointer transition-colors ${
+                              paymentTypeId === pt.id 
+                                ? "border-orange-500 bg-orange-500/10" 
+                                : "border-border hover:border-orange-500/50"
+                            }`}
+                            onClick={() => {
+                              setPaymentTypeId(pt.id);
+                              setPaymentMethod(pt.name);
+                            }}
+                            data-testid={`payment-option-${pt.id}`}
+                          >
+                            <RadioGroupItem value={pt.id.toString()} id={`payment-${pt.id}`} />
+                            <div className="flex-1">
+                              <Label htmlFor={`payment-${pt.id}`} className="font-medium cursor-pointer">
+                                {pt.name}
+                              </Label>
+                              {pt.description && (
+                                <p className="text-sm text-muted-foreground">{pt.description}</p>
+                              )}
+                              {pt.feeValue && parseFloat(pt.feeValue) > 0 && (
+                                <p className="text-xs text-muted-foreground mt-1">
+                                  Taxa: {pt.feeType === "PERCENTUAL" ? `${pt.feeValue}%` : `R$ ${pt.feeValue}`}
+                                </p>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      ))}
-                    </RadioGroup>
+                        ))}
+                      </RadioGroup>
+                    )}
                   </div>
 
                   <div>
@@ -986,7 +1021,7 @@ export default function CheckoutPage() {
                     <Button 
                       className="bg-orange-500 hover:bg-orange-600"
                       onClick={goToNextStep}
-                      disabled={!paymentMethod}
+                      disabled={!paymentTypeId}
                       data-testid="button-confirm-pagamento"
                     >
                       Continuar

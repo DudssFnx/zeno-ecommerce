@@ -27,7 +27,7 @@ Preferred communication style: Simple, everyday language.
 - **Financial Modules**:
     - **Accounts Receivable**: Manages customer credits, including debit/credit entries, payment tracking, and status management.
     - **Accounts Payable**: Manages company expenses, including categorization, due dates, and payment tracking.
-- **Payment Module**: Manages custom payment types (e.g., "Cash on Delivery") and integrations with various payment gateways (Mercado Pago, PagSeguro, Stripe, PayPal, Asaas, Pix Manual).
+- **Payment Module**: Manages custom payment types (e.g., "Cash on Delivery") and integrations with various payment gateways (Mercado Pago, PagSeguro, Stripe, PayPal, Asaas, Pix Manual). Payment method selection is mandatory for all orders (PDV and checkout).
 
 ### Key Design Patterns
 - **Shared Schema**: Database schemas and TypeScript types defined once in `shared/schema.ts` for both frontend and backend.

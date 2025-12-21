@@ -512,7 +512,7 @@ export async function registerRoutes(
     try {
       const loggedUserId = req.user.claims.sub;
       const loggedUser = await storage.getUser(loggedUserId);
-      const { items, notes, subtotal, shippingCost, shippingAddress, shippingMethod, paymentMethod, paymentNotes, userId: targetUserId } = req.body;
+      const { items, notes, subtotal, shippingCost, shippingAddress, shippingMethod, paymentMethod, paymentTypeId, paymentNotes, userId: targetUserId } = req.body;
       
       // Admin/Sales can create orders for other customers
       const userId = (loggedUser?.role === 'admin' || loggedUser?.role === 'sales') && targetUserId 
@@ -559,6 +559,7 @@ export async function registerRoutes(
         shippingAddress: shippingAddressStr,
         shippingMethod: shippingMethod || null,
         paymentMethod: paymentMethod || null,
+        paymentTypeId: paymentTypeId || null,
         paymentNotes: paymentNotes || null,
         notes: notes || null,
         isGuestOrder: false,
@@ -610,7 +611,7 @@ export async function registerRoutes(
   // Guest checkout - no authentication required
   app.post('/api/orders/guest', async (req: any, res) => {
     try {
-      const { items, notes, subtotal, shippingCost, shippingAddress, shippingMethod, paymentMethod, paymentNotes, guestCpf, guestName, guestEmail, guestPhone } = req.body;
+      const { items, notes, subtotal, shippingCost, shippingAddress, shippingMethod, paymentMethod, paymentTypeId, paymentNotes, guestCpf, guestName, guestEmail, guestPhone } = req.body;
       
       if (!items || !Array.isArray(items) || items.length === 0) {
         return res.status(400).json({ message: "Order must have at least one item" });
@@ -657,6 +658,7 @@ export async function registerRoutes(
         shippingAddress: shippingAddressStr,
         shippingMethod: shippingMethod || null,
         paymentMethod: paymentMethod || null,
+        paymentTypeId: paymentTypeId || null,
         paymentNotes: paymentNotes || null,
         notes: notes || null,
         isGuestOrder: true,

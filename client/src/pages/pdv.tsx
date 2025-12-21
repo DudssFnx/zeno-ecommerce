@@ -4,7 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import type { Product, User, Category } from "@shared/schema";
+import type { Product, User, Category, PaymentType } from "@shared/schema";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -69,6 +69,7 @@ export default function PDVPage() {
   const [showCustomerModal, setShowCustomerModal] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [quoteResult, setQuoteResult] = useState<QuoteResult | null>(null);
+  const [selectedPaymentTypeId, setSelectedPaymentTypeId] = useState<number | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   const showPDV = isAdmin || isSales;
@@ -87,6 +88,13 @@ export default function PDVPage() {
     queryKey: ['/api/categories'],
     enabled: showPDV,
   });
+
+  const { data: paymentTypesData = [] } = useQuery<PaymentType[]>({
+    queryKey: ['/api/payment-types'],
+    enabled: showPDV,
+  });
+
+  const activePaymentTypes = paymentTypesData.filter(pt => pt.active);
 
   const productsData = productsResponse?.products || [];
   const approvedCustomers = customersData.filter(u => u.approved && u.role === "customer");
@@ -116,6 +124,8 @@ export default function PDVPage() {
       notes?: string;
       subtotal: number;
       total: number;
+      paymentTypeId?: number;
+      paymentMethod?: string;
     }) => {
       const res = await apiRequest("POST", "/api/orders", data);
       return res.json();
@@ -145,6 +155,7 @@ export default function PDVPage() {
     setCustomerSearch("");
     setQuoteResult(null);
     setShowSuccessModal(false);
+    setSelectedPaymentTypeId(null);
   };
 
   const formatPrice = (price: number) => {
@@ -213,7 +224,13 @@ export default function PDVPage() {
       toast({ title: "Carrinho vazio", description: "Adicione produtos ao carrinho", variant: "destructive" });
       return;
     }
+    if (!selectedPaymentTypeId) {
+      toast({ title: "Selecione uma forma de pagamento", description: "Escolha como o cliente vai pagar", variant: "destructive" });
+      return;
+    }
 
+    const selectedPaymentType = activePaymentTypes.find(pt => pt.id === selectedPaymentTypeId);
+    
     createOrderMutation.mutate({
       userId: selectedCustomer.id,
       items: cartItems.map(item => ({ 
@@ -224,7 +241,9 @@ export default function PDVPage() {
       })),
       notes: comment || undefined,
       subtotal: cartTotal,
-      total: cartTotal
+      total: cartTotal,
+      paymentTypeId: selectedPaymentTypeId,
+      paymentMethod: selectedPaymentType?.name
     });
   };
 
@@ -482,6 +501,33 @@ export default function PDVPage() {
                 className="min-h-[60px] text-sm resize-none"
                 data-testid="input-pdv-comment"
               />
+              
+              <Separator />
+              
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Forma de Pagamento</Label>
+                <Select
+                  value={selectedPaymentTypeId?.toString() || ""}
+                  onValueChange={(val) => setSelectedPaymentTypeId(parseInt(val))}
+                >
+                  <SelectTrigger className="w-full" data-testid="select-pdv-payment-type">
+                    <SelectValue placeholder="Selecione a forma de pagamento" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {activePaymentTypes.map((pt) => (
+                      <SelectItem key={pt.id} value={pt.id.toString()} data-testid={`select-item-payment-${pt.id}`}>
+                        <span>{pt.name}</span>
+                        {pt.feePercentage && parseFloat(pt.feePercentage) > 0 && (
+                          <span className="text-muted-foreground ml-2">({pt.feePercentage}%)</span>
+                        )}
+                        {pt.feeFixed && parseFloat(pt.feeFixed) > 0 && (
+                          <span className="text-muted-foreground ml-2">(+R${pt.feeFixed})</span>
+                        )}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
               
               <Separator />
               
