@@ -2,7 +2,7 @@
 
 ## Overview
 
-A private, closed B2B wholesale catalog and order management platform inspired by Mercos. This system provides a complete wholesale ordering experience for registered business clients, featuring product catalog browsing, order generation (no online payment), and role-based access control. The platform is designed for internal business use only, requiring authentication to access any functionality.
+A private, closed B2B wholesale catalog and order management platform for registered business clients. It facilitates product catalog browsing and order generation, specifically designed for internal business use with required authentication and role-based access control. The system aims to modernize a legacy system by incrementally migrating to a new B2B model while supporting existing functionalities.
 
 ## User Preferences
 
@@ -10,253 +10,48 @@ Preferred communication style: Simple, everyday language.
 
 ## System Architecture
 
-### Frontend Architecture
-- **Framework**: React 18 with TypeScript
+### UI/UX Decisions
+- **Frontend Framework**: React 18 with TypeScript
+- **UI Components**: shadcn/ui built on Radix UI primitives
+- **Styling**: Tailwind CSS with custom design tokens and CSS variables
 - **Routing**: Wouter (lightweight React router)
 - **State Management**: TanStack React Query for server state, React Context for client state (Auth, Cart, Theme)
-- **UI Components**: shadcn/ui component library built on Radix UI primitives
-- **Styling**: Tailwind CSS with custom design tokens and CSS variables for theming
-- **Build Tool**: Vite with hot module replacement
+- **Delivery Mode Catalog**: An alternative, mobile-first catalog view inspired by delivery apps (iFood), featuring horizontal category scroll, large product cards, direct quantity controls, and a prominent "Highlights" section.
 
-### Backend Architecture
-- **Runtime**: Node.js with Express.js
-- **Language**: TypeScript (ESM modules)
-- **API Design**: RESTful endpoints under `/api/*` prefix
-- **Authentication**: Replit OpenID Connect (OIDC) with Passport.js
-- **Session Management**: Express sessions stored in PostgreSQL via connect-pg-simple
-
-### Data Layer
-- **Database**: PostgreSQL
-- **ORM**: Drizzle ORM with drizzle-zod for schema validation
-- **Schema Location**: Modular schemas in `shared/schema/` directory
-- **Migrations**: Managed via `drizzle-kit push`
-
-### Schema Organization (Dual-Schema Architecture)
-
-O projeto usa arquitetura dual-schema para permitir migração incremental do modelo legado para o novo modelo B2B:
-
-**Estrutura de Arquivos:**
-```
-shared/schema/
-├── index.ts              # Re-exports de todos os schemas
-├── legacy.schema.ts      # Schema original (users, products, orders, etc.)
-├── companies.schema.ts   # Tabela companies (multi-tenant)
-├── users.schema.ts       # b2b_users (novo modelo de usuário)
-├── userCompanies.schema.ts # Relacionamento N:N user-company
-├── products.schema.ts    # b2b_products (preco_varejo/atacado)
-├── orders.schema.ts      # b2b_orders (channel, status, etapa)
-├── orderItems.schema.ts  # b2b_order_items (snapshot comercial)
-└── orderItemDiscounts.schema.ts # Governança de descontos
-```
-
-**Tabelas Legadas (em uso):**
-- `users`, `products`, `categories`, `orders`, `order_items`
-- `customer_credits`, `accounts_payable`, `modules`, etc.
-
-**Novas Tabelas B2B (preparadas para migração):**
-- `companies` - Multi-tenant: empresa como entidade principal
-- `b2b_users` - Usuários com vínculo a empresas
-- `user_companies` - Relacionamento N:N (usuário pode operar múltiplas empresas)
-- `b2b_products` - Produtos com preço varejo e atacado separados
-- `b2b_orders` - Pedidos com company_id, channel, status/etapa
-- `b2b_order_items` - Itens com snapshot comercial completo
-- `order_item_discounts` - Workflow de aprovação de descontos
-
-**Estratégia de Migração:**
-1. Código legado continua usando tabelas originais via exports do legacy.schema.ts
-2. Novas funcionalidades podem usar tabelas b2b_*
-3. Services/adapters traduzem entre modelos durante transição
-4. Após migração completa, tabelas legadas serão removidas
-
-### Role-Based Access Control
-Four user roles with hierarchical permissions:
-- **Admin**: Full system access including user management, product management, all orders
-- **Sales**: Can view all orders and catalog, cannot manage users or products
-- **Customer**: Can browse catalog, create orders, view own orders only
-- **Supplier**: Acesso restrito às marcas atribuídas pelo admin - vê analytics de estoque e vendas apenas das suas marcas
-
-Users require admin approval before accessing the system (except admins who are auto-approved).
-
-### Supplier Brand Access
-- Campo `allowedBrands` (array de strings) na tabela users controla quais marcas cada fornecedor pode ver
-- Endpoints `/api/admin/brand-analytics` e `/api/brands` filtram dados por allowedBrands para suppliers
-- Admin pode atribuir marcas específicas ao criar/editar usuário do tipo supplier
+### Technical Implementations
+- **Backend**: Node.js with Express.js, TypeScript (ESM modules), RESTful API.
+- **Authentication**: Replit OpenID Connect (OIDC) with Passport.js; sessions stored in PostgreSQL.
+- **Database**: PostgreSQL with Drizzle ORM and `drizzle-zod` for schema validation.
+- **Dual-Schema Architecture**: Supports incremental migration from a legacy database model to a new B2B model, allowing new features to use `b2b_*` tables while legacy code continues with original tables.
+- **Role-Based Access Control (RBAC)**: Four hierarchical roles (Admin, Sales, Customer, Supplier) with granular, module-based permissions. Admins can customize user permissions, and user menus are filtered based on assigned access.
+- **Financial Modules**:
+    - **Accounts Receivable**: Manages customer credits, including debit/credit entries, payment tracking, and status management.
+    - **Accounts Payable**: Manages company expenses, including categorization, due dates, and payment tracking.
+- **Payment Module**: Manages custom payment types (e.g., "Cash on Delivery") and integrations with various payment gateways (Mercado Pago, PagSeguro, Stripe, PayPal, Asaas, Pix Manual).
 
 ### Key Design Patterns
-- **Shared Schema**: Database schemas and TypeScript types are defined once in `shared/schema.ts` and used by both frontend and backend
-- **Storage Interface**: `server/storage.ts` implements the `IStorage` interface for all database operations
-- **Query Client Configuration**: Centralized API request handling in `client/src/lib/queryClient.ts`
+- **Shared Schema**: Database schemas and TypeScript types defined once in `shared/schema.ts` for both frontend and backend.
+- **Storage Interface**: `server/storage.ts` provides a consistent interface for all database operations.
+- **Query Client Configuration**: Centralized API request handling in `client/src/lib/queryClient.ts`.
 
 ## External Dependencies
 
 ### Database
-- **PostgreSQL**: Primary data store for users, products, categories, orders, and sessions
-- **Connection**: Via `DATABASE_URL` environment variable
+- **PostgreSQL**: Primary data store for application data and sessions.
 
 ### Authentication
-- **Replit OIDC**: OpenID Connect authentication provider
-- **Configuration**: `ISSUER_URL`, `REPL_ID`, `SESSION_SECRET` environment variables
+- **Replit OIDC**: OpenID Connect authentication provider.
 
 ### UI Libraries
-- **Radix UI**: Accessible component primitives (dialogs, dropdowns, forms, etc.)
-- **Lucide React**: Icon library
-- **Embla Carousel**: Carousel functionality
-- **React Hook Form**: Form state management with Zod validation
+- **Radix UI**: Accessible component primitives.
+- **Lucide React**: Icon library.
+- **Embla Carousel**: Carousel functionality.
+- **React Hook Form**: Form state management with Zod validation.
 
 ### Build & Development
-- **Vite**: Frontend development server and bundler
-- **esbuild**: Server-side bundling for production
-- **TSX**: TypeScript execution for development
+- **Vite**: Frontend development server and bundler.
+- **esbuild**: Server-side bundling for production.
+- **TSX**: TypeScript execution for development.
 
-## Integração Bling (Implementado)
-
-### Documentação
-- Ver `docs/bling-api-integration.md` para detalhes completos
-
-### Resumo
-- **API**: Bling API v3 (OAuth 2.0)
-- **Base URL**: `https://api.bling.com.br/Api/v3`
-- **Autenticação**: Bearer token via OAuth 2.0
-
-### Funcionalidades Implementadas
-1. **Sincronização de Produtos**: Importa produtos do Bling para o catálogo (`GET /produtos`)
-2. **Sincronização de Categorias**: Importa categorias do Bling
-3. **Webhooks**: Recebe atualizações em tempo real de produtos e estoque
-4. **Envio de Pedidos**: Quando um pedido é criado no site, é enviado automaticamente ao Bling (`POST /pedidos/vendas`)
-
-### Credenciais Necessárias
-- `BLING_CLIENT_ID` - ID do aplicativo OAuth
-- `BLING_CLIENT_SECRET` - Secret do aplicativo
-- `BLING_ACCESS_TOKEN` - Token de acesso
-- `BLING_REFRESH_TOKEN` - Token para renovar acesso
-
-## Sistema Financeiro
-
-O sistema financeiro é composto por dois módulos acessíveis através do menu "Financeiro" na sidebar:
-
-### 1. Contas a Receber (Créditos de Clientes)
-Gerencia créditos concedidos a clientes (vendas fiadas):
-
-**Funcionalidades:**
-- Dashboard com métricas: total pendente, vencido, recebido, clientes em débito
-- Lançamentos de DÉBITO (vendas fiadas) e CRÉDITO (ajustes)
-- Status automático: PENDENTE → PARCIAL → PAGO
-- Registro de pagamentos parciais ou totais
-- Histórico de pagamentos por crédito
-- Calendário de vencimentos e atrasados
-- Calculadora de juros simples
-
-**Tabelas:**
-- `customer_credits`: Lançamentos de crédito/débito
-- `credit_payments`: Pagamentos recebidos
-
-**API Endpoints:**
-- `GET /api/credits` - Lista créditos (admin/sales)
-- `GET /api/credits/dashboard` - Dashboard com métricas (admin/sales)
-- `GET /api/credits/user/:userId` - Créditos de um cliente (admin/sales)
-- `POST /api/credits` - Criar lançamento (admin/sales)
-- `PATCH /api/credits/:id` - Atualizar lançamento (admin/sales)
-- `DELETE /api/credits/:id` - Excluir lançamento (admin only)
-- `POST /api/credits/:id/payments` - Registrar pagamento (admin/sales)
-- `GET /api/credits/:id/payments` - Histórico de pagamentos (admin/sales)
-
-### 2. Contas a Pagar (Despesas da Empresa)
-Gerencia despesas e dívidas com fornecedores:
-
-**Funcionalidades:**
-- Dashboard com métricas: total de despesas, pendente, pago, vencido
-- Categorização de despesas: fornecedor, aluguel, salário, impostos, etc.
-- Registro de despesas com data de vencimento
-- Status automático: PENDENTE → PAGO
-- Registro de pagamentos parciais ou totais
-- Histórico de pagamentos por despesa
-- Calendário de vencimentos
-
-**Tabelas:**
-- `accounts_payable`: Lançamentos de despesas
-- `payable_payments`: Pagamentos realizados
-
-**API Endpoints (Admin only):**
-- `GET /api/payables` - Lista despesas
-- `GET /api/payables/dashboard` - Dashboard com métricas
-- `GET /api/payables/:id` - Detalhe de despesa
-- `POST /api/payables` - Criar despesa
-- `PATCH /api/payables/:id` - Atualizar despesa
-- `DELETE /api/payables/:id` - Excluir despesa
-- `POST /api/payables/:id/payments` - Registrar pagamento
-- `GET /api/payables/:id/payments` - Histórico de pagamentos
-
-### Controle de Acesso
-- **Contas a Receber**: Admin e Sales podem acessar
-- **Contas a Pagar**: Somente Admin pode acessar
-
-## Sistema de Permissões ERP
-
-Sistema granular de permissões por módulo, permitindo controle fino de acesso para cada usuário.
-
-### Arquitetura
-
-**Tabelas:**
-- `modules`: Módulos disponíveis no sistema (catalog, orders, products, etc.)
-- `user_module_permissions`: Permissões de cada usuário para cada módulo
-
-**Módulos Disponíveis:**
-1. `catalog` - Catálogo de produtos (admin, sales, customer)
-2. `orders` - Gerenciamento de pedidos (admin, sales, customer)
-3. `products` - Gerenciamento de produtos (admin, sales)
-4. `customers` - Gerenciamento de clientes (admin, sales)
-5. `financial_receivables` - Contas a Receber (admin, sales)
-6. `financial_payables` - Contas a Pagar (admin)
-7. `reports` - Relatórios e dashboards (admin)
-8. `settings` - Configurações do sistema (admin)
-9. `appearance` - Personalização visual (admin)
-10. `pdv` - Ponto de Venda (admin, sales)
-11. `agenda` - Agenda/Calendário (admin, sales)
-12. `brands` - Visualizar analytics de marcas (admin, supplier)
-
-### Funcionamento
-- **Seed automático**: Módulos são criados automaticamente no startup do servidor
-- **Admin bypass**: Usuários admin têm acesso a todos os módulos automaticamente
-- **Permissões padrão por role**: Cada módulo tem defaultRoles (veja lista acima)
-- **Fallback automático**: Se usuário não tem permissões específicas, usa defaultRoles do módulo
-- **Personalização por usuário**: Admin pode selecionar módulos específicos ao criar/editar usuários
-
-### Menu Específico por Role
-- **Customer**: Menu simplificado (Painel, Categorias, Catálogo, Meus Pedidos)
-- **Supplier**: Menu restrito apenas ao módulo Marcas (brand-analytics)
-- **Admin/Sales**: Menu completo filtrado por permissões
-
-### API Endpoints
-- `GET /api/modules` - Lista todos módulos (admin only)
-- `GET /api/users/:id/permissions` - Permissões de um usuário (admin only)
-- `POST /api/users/:id/permissions` - Define permissões de um usuário (admin only)
-- `GET /api/auth/permissions` - Permissões do usuário logado (para filtrar menu)
-
-### Frontend
-- `AppSidebar.tsx`: Filtra menu baseado em `/api/auth/permissions`
-- `users.tsx`: Checkboxes para selecionar módulos ao criar/editar usuários
-
-## Modo Delivery (Catálogo Estilo iFood)
-
-O sistema oferece um modo de catálogo alternativo inspirado em apps de delivery como iFood, Zé Delivery e Rappi.
-
-### Ativação
-- Acesse Configurações (Settings) → Catálogo
-- Ative "Modo Delivery" para transformar o catálogo
-
-### Características do Modo Delivery
-- **Design Mobile-First**: Interface otimizada para dispositivos móveis
-- **Scroll Horizontal de Categorias**: Navegação rápida entre categorias
-- **Cards de Produto Grandes**: Visualização destacada com imagem, preço e controles de quantidade
-- **Controles de Quantidade Diretos**: Botões + e - para ajustar quantidade sem abrir modal
-- **Seção de Destaques**: Produtos em destaque aparecem no topo quando não há busca/filtro ativo
-- **Paginação**: 24 produtos por página com navegação anterior/próxima
-- **Busca Integrada**: Campo de busca na barra fixa superior
-
-### Componente
-- `client/src/components/DeliveryCatalog.tsx` - Componente do catálogo delivery
-- Usa setting key: `delivery_catalog_mode` (true/false)
-
-### Funcionamento
-- Quando ativado, substitui o catálogo padrão tanto na área autenticada quanto no catálogo público
-- Mantém todas as funcionalidades de carrinho e checkout
+### Integrations
+- **Bling API v3**: Integrated for product and category synchronization, webhooks for real-time updates, and automatic order submission.
