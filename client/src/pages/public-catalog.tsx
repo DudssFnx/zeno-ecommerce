@@ -67,6 +67,11 @@ export default function PublicCatalogPage() {
 
   const { data: maintenanceModeSetting } = useQuery<{ key: string; value: string | null }>({
     queryKey: ['/api/public/settings/catalog_maintenance_mode'],
+    queryFn: async () => {
+      const res = await fetch('/api/public/settings/catalog_maintenance_mode');
+      if (!res.ok) throw new Error('Failed to fetch maintenance setting');
+      return res.json();
+    },
   });
 
   const isDeliveryMode = deliveryModeSetting?.value === 'true';
