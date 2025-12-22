@@ -216,6 +216,26 @@ export default function CustomersPage() {
     } catch (e) {}
   };
 
+  const fetchCEPDataEdit = async (cep: string) => {
+    const cleanCep = cep.replace(/\D/g, '');
+    if (cleanCep.length !== 8 || !editingCustomer) return;
+    try {
+      const response = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`);
+      if (response.ok) {
+        const data = await response.json();
+        if (!data.erro) {
+          setEditingCustomer({
+            ...editingCustomer,
+            address: data.logradouro || editingCustomer.address,
+            neighborhood: data.bairro || editingCustomer.neighborhood,
+            city: data.localidade || editingCustomer.city,
+            state: data.uf || editingCustomer.state,
+          });
+        }
+      }
+    } catch (e) {}
+  };
+
   const createCustomerMutation = useMutation({
     mutationFn: async (data: typeof newCustomer) => {
       await apiRequest("POST", "/api/register", {
@@ -626,8 +646,14 @@ export default function CustomersPage() {
                   <Label>CEP</Label>
                   <Input
                     value={newCustomer.cep}
-                    onChange={(e) => setNewCustomer(p => ({ ...p, cep: e.target.value }))}
-                    onBlur={() => fetchCEPData(newCustomer.cep)}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setNewCustomer(p => ({ ...p, cep: value }));
+                      const cleanCep = value.replace(/\D/g, '');
+                      if (cleanCep.length === 8) {
+                        fetchCEPData(value);
+                      }
+                    }}
                     placeholder="00000-000"
                     data-testid="input-cep"
                   />
@@ -780,7 +806,14 @@ export default function CustomersPage() {
                     <Label>CEP</Label>
                     <Input
                       value={editingCustomer.cep || ""}
-                      onChange={(e) => setEditingCustomer({...editingCustomer, cep: e.target.value})}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        setEditingCustomer({...editingCustomer, cep: value});
+                        const cleanCep = value.replace(/\D/g, '');
+                        if (cleanCep.length === 8) {
+                          fetchCEPDataEdit(value);
+                        }
+                      }}
                       data-testid="input-edit-cep"
                     />
                   </div>
