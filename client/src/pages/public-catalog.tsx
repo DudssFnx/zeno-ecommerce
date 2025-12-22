@@ -217,6 +217,43 @@ export default function PublicCatalogPage() {
     setQuantities(prev => ({ ...prev, [product.id]: 0 }));
   };
 
+  if (isMaintenanceMode) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col">
+        <header className="sticky top-0 z-50 bg-zinc-900 text-white">
+          <div className="container mx-auto px-4 py-3">
+            <div className="flex items-center justify-center gap-3">
+              <img 
+                src={logoImage} 
+                alt="Lojamadrugadao" 
+                className="h-10 w-10 rounded-full border-2 border-white/20"
+                data-testid="img-logo-maintenance"
+              />
+              <h1 className="font-bold text-lg tracking-wide">LOJAMADRUGADAO</h1>
+            </div>
+          </div>
+        </header>
+        <div className="flex-1 flex items-center justify-center p-8">
+          <div className="text-center max-w-md">
+            <div className="mx-auto w-24 h-24 bg-muted rounded-full flex items-center justify-center mb-6">
+              <Store className="h-12 w-12 text-muted-foreground" />
+            </div>
+            <h2 className="text-2xl font-bold mb-3" data-testid="text-maintenance-title">
+              Catálogo em Manutenção
+            </h2>
+            <p className="text-muted-foreground mb-6" data-testid="text-maintenance-message">
+              Estamos realizando melhorias em nosso sistema. Por favor, volte em alguns instantes.
+            </p>
+            <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+              <Phone className="h-4 w-4" />
+              <span>Dúvidas? Ligue: 11 99294-0168</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (isDeliveryMode) {
     return (
       <div className="min-h-screen bg-background">
@@ -267,43 +304,6 @@ export default function PublicCatalogPage() {
           </div>
         </header>
         <DeliveryCatalog isPublic={true} />
-      </div>
-    );
-  }
-
-  if (isMaintenanceMode) {
-    return (
-      <div className="min-h-screen bg-background flex flex-col">
-        <header className="sticky top-0 z-50 bg-zinc-900 text-white">
-          <div className="container mx-auto px-4 py-3">
-            <div className="flex items-center justify-center gap-3">
-              <img 
-                src={logoImage} 
-                alt="Lojamadrugadao" 
-                className="h-10 w-10 rounded-full border-2 border-white/20"
-                data-testid="img-logo-maintenance"
-              />
-              <h1 className="font-bold text-lg tracking-wide">LOJAMADRUGADAO</h1>
-            </div>
-          </div>
-        </header>
-        <div className="flex-1 flex items-center justify-center p-8">
-          <div className="text-center max-w-md">
-            <div className="mx-auto w-24 h-24 bg-muted rounded-full flex items-center justify-center mb-6">
-              <Store className="h-12 w-12 text-muted-foreground" />
-            </div>
-            <h2 className="text-2xl font-bold mb-3" data-testid="text-maintenance-title">
-              Catálogo em Manutenção
-            </h2>
-            <p className="text-muted-foreground mb-6" data-testid="text-maintenance-message">
-              Estamos realizando melhorias em nosso sistema. Por favor, volte em alguns instantes.
-            </p>
-            <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
-              <Phone className="h-4 w-4" />
-              <span>Dúvidas? Ligue: 11 99294-0168</span>
-            </div>
-          </div>
-        </div>
       </div>
     );
   }
