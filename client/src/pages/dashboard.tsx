@@ -161,7 +161,7 @@ export default function DashboardPage() {
   const recentOrders: Order[] = ordersData.slice(0, 5).map((order) => ({
     id: String(order.id),
     orderNumber: order.orderNumber,
-    customer: order.userId.substring(0, 8) + "...",
+    customer: order.userId ? order.userId.substring(0, 8) + "..." : "Convidado",
     date: format(new Date(order.createdAt), "MMM d, yyyy"),
     status: order.status as Order["status"],
     total: parseFloat(order.total),
