@@ -20,7 +20,7 @@ export async function createB2bOrder({
     .values({
       ...data,
       companyId,
-      createdBy: userId,
+      createdByUserId: userId,
     })
     .returning();
 

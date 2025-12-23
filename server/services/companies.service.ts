@@ -23,18 +23,18 @@ export async function createCompany(data: InsertCompany) {
 export async function linkUserToCompany({
   userId,
   companyId,
-  role,
+  roleNaEmpresa,
 }: {
   userId: string;
   companyId: string;
-  role: string;
+  roleNaEmpresa: string;
 }) {
   const [link] = await db
     .insert(userCompanies)
     .values({
       userId,
       companyId,
-      role,
+      roleNaEmpresa,
     })
     .returning();
 
@@ -52,7 +52,7 @@ export async function getCompaniesByUser(userId: string) {
       nomeFantasia: companies.nomeFantasia,
       tipoCliente: companies.tipoCliente,
       approvalStatus: companies.approvalStatus,
-      role: userCompanies.role,
+      roleNaEmpresa: userCompanies.roleNaEmpresa,
     })
     .from(userCompanies)
     .innerJoin(companies, eq(userCompanies.companyId, companies.id))

@@ -1,0 +1,180 @@
+Este projeto já está avançado e possui toda a modelagem de banco pronta usando Drizzle ORM.
+Os schemas já existem em shared/schema/* (companies, users, orders, products, etc.).
+O banco PostgreSQL já está provisionado no Railway e a variável DATABASE_URL já está configurada no Replit.
+O backend já conecta ao banco com Drizzle.
+
+Objetivo agora:
+Ativar e consolidar o banco de dados para que o MVP funcione de ponta a ponta, garantindo persistência real (PostgreSQL) e removendo dependências de storage temporário/memória.
+
+IMPORTANTE:
+
+NÃO recriar schemas
+
+NÃO refatorar arquitetura
+
+NÃO alterar frontend
+
+NÃO remover funcionalidades existentes
+
+Fazer o menor ajuste possível, respeitando o código atual
+
+O foco é MVP funcional, não sistema final
+
+🎯 ETAPA 1 — CONSOLIDAR SCHEMA DRIZZLE
+1.1 Conferir arquivo indexador de schema
+
+Garantir que o arquivo:
+
+shared/schema.ts
+
+
+exporta TODOS os schemas existentes em shared/schema/.
+
+Exemplo esperado:
+
+export * from "./schema/companies.schema";
+export * from "./schema/users.schema";
+export * from "./schema/orders.schema";
+export * from "./schema/orderItems.schema";
+export * from "./schema/products.schema";
+export * from "./schema/payments.schema";
+export * from "./schema/userCompanies.schema";
+
+
+👉 Se algum schema existir na pasta e não estiver exportado, apenas adicionar o export.
+
+1.2 Conferir configuração do Drizzle
+
+Garantir que drizzle.config.ts esteja apontando para:
+
+schema: "./shared/schema.ts"
+
+
+E usando:
+
+connectionString: process.env.DATABASE_URL
+
+
+Sem alterar paths desnecessariamente.
+
+1.3 Ativar o banco
+
+Executar o comando de sincronização do Drizzle:
+
+npm run db:push
+
+
+Esse comando deve:
+
+Criar todas as tabelas no PostgreSQL
+
+Manter relações
+
+Não apagar dados
+
+Não gerar SQL manual
+
+🎯 ETAPA 2 — CONSOLIDAR SERVICES PARA USAR BANCO REAL
+Objetivo
+
+Garantir que os services principais do MVP utilizem Drizzle + PostgreSQL, e não storage temporário.
+
+Ordem correta (não mudar):
+
+companies.service.ts
+
+users.service.ts
+
+orders.service.ts
+
+2.1 Companies (obrigatório para MVP)
+
+Arquivo:
+
+server/services/companies.service.ts
+
+
+Ajustar para:
+
+Usar db.insert(companies)
+
+Usar db.select().from(companies)
+
+Remover dependência de storage se existir
+
+Manter tipagem e retorno atuais
+
+👉 Esse service é a base do atacado.
+
+2.2 Users (login funcional)
+
+Arquivo:
+
+server/services/users.service.ts
+
+
+Ajustar para:
+
+Criar usuário no banco
+
+Relacionar com company_id
+
+Manter hash de senha existente
+
+NÃO mudar fluxo de autenticação
+
+2.3 Orders (pedido mínimo do MVP)
+
+Arquivo:
+
+server/services/orders.service.ts
+
+
+Ajustar para:
+
+Criar pedido simples
+
+Persistir company_id, total, status
+
+Não mexer ainda em estoque avançado ou fiscal
+
+🎯 ETAPA 3 — MVP FUNCIONAL (CRITÉRIOS DE SUCESSO)
+
+O MVP será considerado PRONTO quando:
+
+✅ Cadastro de empresa (atacado) persiste no banco
+
+✅ Usuário consegue se cadastrar e logar
+
+✅ Pedido é criado e salvo no PostgreSQL
+
+✅ Recarregar o app não perde dados
+
+✅ Nenhum dado crítico depende de memória/local storage
+
+🚨 REGRAS IMPORTANTES
+
+NÃO refatorar frontend
+
+NÃO criar novas tabelas
+
+NÃO criar migrations complexas
+
+NÃO apagar código antigo sem necessidade
+
+Se algo estiver sendo usado em produção, preservar
+
+📌 OBJETIVO FINAL
+
+Deixar o projeto:
+
+Estável
+
+Persistente
+
+Pronto para validação real com cliente
+
+Base sólida para evoluir depois para ERP / B2B completo
+
+Resumo:
+Ative o banco existente, conecte os services essenciais e entregue um MVP funcional, sem reescrever o projeto.
