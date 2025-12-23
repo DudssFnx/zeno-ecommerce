@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
-import { useSearch } from "wouter";
+import { useSearch, Link } from "wouter";
 import { CatalogFilters } from "@/components/CatalogFilters";
 import { ProductGrid } from "@/components/ProductGrid";
 import { DeliveryCatalog } from "@/components/DeliveryCatalog";
@@ -221,11 +221,11 @@ export default function CatalogPage() {
                       </p>
                     )}
                     {slide.buttonText && slide.buttonLink && (
-                      <a href={slide.buttonLink} data-testid={`slide-button-${slide.id}`}>
+                      <Link href={slide.buttonLink} data-testid={`slide-button-${slide.id}`}>
                         <Button variant="default" size="lg">
                           {slide.buttonText}
                         </Button>
-                      </a>
+                      </Link>
                     )}
                   </div>
                 </div>

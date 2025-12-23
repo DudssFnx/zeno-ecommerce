@@ -114,29 +114,6 @@ export async function registerRoutes(
     });
   }
 
-  storage
-    .getUser(userId)
-    .then((user) => {
-      if (!user) {
-        return res.status(401).json({ message: "User not found" });
-      }
-      if (!user.approved && user.role !== "admin") {
-        return res.status(403).json({ message: "Account pending approval" });
-      }
-      next();
-    })
-    .catch(() => {
-      res.status(500).json({ message: "Server error" });
-    });
-}
-
-export async function registerRoutes(
-  httpServer: Server,
-  app: Express,
-): Promise<Server> {
-  // Setup Replit Auth
-  await setupAuth(app);
-
   // Public registration endpoint
   app.post("/api/register", async (req, res) => {
     try {
