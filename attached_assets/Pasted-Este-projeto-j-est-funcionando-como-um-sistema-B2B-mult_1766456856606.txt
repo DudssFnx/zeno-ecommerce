@@ -1,0 +1,129 @@
+Este projeto já está funcionando como um sistema B2B multiempresa com PostgreSQL e Drizzle.
+Existem empresas (companies), usuários (b2b_users) e vínculos (user_companies).
+O sistema está estável e NÃO deve ser refatorado.
+
+Objetivo exclusivo deste pedido:
+Criar suporte a um usuário SUPER_ADMIN para gestão do sistema (empresas, usuários e pedidos),
+garantindo que apenas os donos do sistema tenham esse acesso.
+
+⚠️ REGRAS ABSOLUTAS
+
+NÃO alterar o comportamento de login dos usuários clientes
+
+NÃO modificar schemas existentes sem extrema necessidade
+
+NÃO vincular SUPER_ADMIN a nenhuma empresa
+
+NÃO permitir que clientes se tornem SUPER_ADMIN
+
+Fazer a menor alteração possível no código
+
+O SUPER_ADMIN deve ser tratado como “usuário do sistema”, não como cliente.
+
+🎯 ETAPA 1 — Identificação do SUPER_ADMIN
+
+Implementar a lógica de SUPER_ADMIN usando UMA das opções abaixo (preferencialmente ambas):
+
+Opção principal (obrigatória):
+
+Campo lógico isSuperAdmin resolvido no backend
+
+Determinado por:
+
+user.role === 'SUPER_ADMIN' OU
+
+email presente em uma variável de ambiente segura
+
+Criar variável de ambiente:
+
+SUPER_ADMIN_EMAILS=admin@sistema.com,owner@sistema.com
+
+
+Durante o login:
+
+Se o email do usuário estiver nessa lista → isSuperAdmin = true
+
+Caso contrário → isSuperAdmin = false
+
+🎯 ETAPA 2 — Criação do usuário SUPER_ADMIN
+
+Criar apenas UM usuário inicial, manualmente, com as seguintes regras:
+
+Inserido na tabela b2b_users
+
+Email pertencente à lista SUPER_ADMIN_EMAILS
+
+Senha hash segura
+
+Status ativo
+
+NÃO criar nenhum registro em user_companies
+
+Esse usuário:
+
+Não pertence a nenhuma empresa
+
+Não cria pedidos
+
+Não acessa catálogo de clientes
+
+🎯 ETAPA 3 — Middleware de proteção
+
+Criar (ou ajustar) um middleware que:
+
+Bloqueia qualquer rota /admin se isSuperAdmin !== true
+
+Garante que usuários normais:
+
+Mesmo com is_admin = true
+
+Mesmo sendo ADMIN da empresa
+NUNCA tenham acesso ao painel global
+
+Exemplo conceitual:
+
+if (!ctx.isSuperAdmin) {
+  return res.status(403).json({ message: "Acesso restrito" });
+}
+
+🎯 ETAPA 4 — Separação clara de escopos
+
+Garantir no backend que:
+
+SUPER_ADMIN:
+
+Pode acessar TODAS as empresas
+
+Não usa company_id
+
+Usuário cliente:
+
+Sempre exige company_id
+
+Nunca acessa dados globais
+
+Essa separação deve ser explícita e segura.
+
+🎯 ETAPA 5 — NÃO FAZER
+
+⚠️ Explicitamente proibido:
+
+Criar SUPER_ADMIN via cadastro público
+
+Expor flag de admin no frontend
+
+Usar is_admin da empresa como critério de SUPER_ADMIN
+
+Permitir escalonamento de privilégio
+
+📌 RESULTADO ESPERADO
+
+Ao final:
+
+Existe exatamente 1 (ou poucos) usuários SUPER_ADMIN
+
+Apenas donos do sistema conseguem acessar /admin
+
+Clientes jamais conseguem acessar painel global
+
+O restante do sistema continua funcionando igual
