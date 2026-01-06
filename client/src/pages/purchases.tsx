@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
-import { Plus, Search, Package, Truck, CheckCircle, XCircle, RotateCcw, Eye, Trash2 } from "lucide-react";
+import { Plus, Search, Package, MoreVertical, Eye, Trash2, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -21,6 +21,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -42,12 +49,17 @@ const STATUS_LABELS: Record<string, { label: string; variant: "default" | "secon
   STOCK_REVERSED: { label: "Estoque Devolvido", variant: "destructive" },
 };
 
+type ConfirmAction = {
+  type: "delete" | "post" | "reverse";
+  orderId: number;
+} | null;
+
 export default function PurchasesPage() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [deleteId, setDeleteId] = useState<number | null>(null);
+  const [confirmAction, setConfirmAction] = useState<ConfirmAction>(null);
 
   const { data: orders = [], isLoading } = useQuery<PurchaseOrder[]>({
     queryKey: ["/api/purchases", statusFilter, search],
@@ -63,15 +75,60 @@ export default function PurchasesPage() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
-      await apiRequest("DELETE", `/api/purchases/${id}`);
+      const res = await apiRequest("DELETE", `/api/purchases/${id}`);
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.message);
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/purchases"] });
       toast({ title: "Pedido excluido com sucesso" });
-      setDeleteId(null);
+      setConfirmAction(null);
     },
-    onError: () => {
-      toast({ title: "Erro ao excluir pedido", variant: "destructive" });
+    onError: (err: Error) => {
+      toast({ title: err.message || "Erro ao excluir pedido", variant: "destructive" });
+      setConfirmAction(null);
+    },
+  });
+
+  const postStockMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await apiRequest("POST", `/api/purchases/${id}/post-stock`);
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.message);
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/purchases"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/products"] });
+      toast({ title: "Estoque lancado com sucesso" });
+      setConfirmAction(null);
+    },
+    onError: (err: Error) => {
+      toast({ title: err.message || "Erro ao lancar estoque", variant: "destructive" });
+      setConfirmAction(null);
+    },
+  });
+
+  const reverseStockMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await apiRequest("POST", `/api/purchases/${id}/reverse-stock`);
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.message);
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/purchases"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/products"] });
+      toast({ title: "Estoque estornado com sucesso" });
+      setConfirmAction(null);
+    },
+    onError: (err: Error) => {
+      toast({ title: err.message || "Erro ao estornar estoque", variant: "destructive" });
+      setConfirmAction(null);
     },
   });
 
@@ -161,26 +218,53 @@ export default function PurchasesPage() {
                     </TableCell>
                     <TableCell className="text-right">{formatCurrency(order.totalValue)}</TableCell>
                     <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          onClick={() => navigate(`/purchase-orders/${order.id}`)}
-                          data-testid={`button-view-${order.id}`}
-                        >
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                        {(order.status === "DRAFT" || order.status === "STOCK_REVERSED") && (
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            onClick={() => setDeleteId(order.id)}
-                            data-testid={`button-delete-${order.id}`}
-                          >
-                            <Trash2 className="h-4 w-4 text-destructive" />
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button size="icon" variant="ghost" data-testid={`button-actions-${order.id}`}>
+                            <MoreVertical className="h-4 w-4" />
                           </Button>
-                        )}
-                      </div>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem
+                            onClick={() => navigate(`/purchase-orders/${order.id}`)}
+                            data-testid={`menu-view-${order.id}`}
+                          >
+                            <Eye className="mr-2 h-4 w-4" />
+                            Visualizar
+                          </DropdownMenuItem>
+                          {(order.status === "DRAFT" || order.status === "FINALIZED") && (
+                            <DropdownMenuItem
+                              onClick={() => setConfirmAction({ type: "post", orderId: order.id })}
+                              data-testid={`menu-post-${order.id}`}
+                            >
+                              <Package className="mr-2 h-4 w-4" />
+                              Lancar Estoque
+                            </DropdownMenuItem>
+                          )}
+                          {order.status === "STOCK_POSTED" && (
+                            <DropdownMenuItem
+                              onClick={() => setConfirmAction({ type: "reverse", orderId: order.id })}
+                              data-testid={`menu-reverse-${order.id}`}
+                            >
+                              <RotateCcw className="mr-2 h-4 w-4" />
+                              Estornar Estoque
+                            </DropdownMenuItem>
+                          )}
+                          {(order.status === "DRAFT" || order.status === "STOCK_REVERSED") && (
+                            <>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                onClick={() => setConfirmAction({ type: "delete", orderId: order.id })}
+                                className="text-destructive"
+                                data-testid={`menu-delete-${order.id}`}
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                Apagar
+                              </DropdownMenuItem>
+                            </>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -190,22 +274,32 @@ export default function PurchasesPage() {
         </CardContent>
       </Card>
 
-      <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
+      <AlertDialog open={!!confirmAction} onOpenChange={() => setConfirmAction(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Excluir pedido?</AlertDialogTitle>
+            <AlertDialogTitle>
+              {confirmAction?.type === "delete" && "Apagar pedido?"}
+              {confirmAction?.type === "post" && "Lancar Estoque?"}
+              {confirmAction?.type === "reverse" && "Estornar Estoque?"}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              Esta acao nao pode ser desfeita. O pedido sera permanentemente removido.
+              {confirmAction?.type === "delete" && "Esta acao nao pode ser desfeita. O pedido sera permanentemente removido."}
+              {confirmAction?.type === "post" && "O estoque dos produtos sera atualizado com as quantidades deste pedido."}
+              {confirmAction?.type === "reverse" && "O estoque sera revertido, removendo as quantidades que foram lancadas."}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel data-testid="button-cancel-delete">Cancelar</AlertDialogCancel>
+            <AlertDialogCancel data-testid="button-cancel-action">Cancelar</AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => deleteId && deleteMutation.mutate(deleteId)}
-              className="bg-destructive text-destructive-foreground"
-              data-testid="button-confirm-delete"
+              onClick={() => {
+                if (confirmAction?.type === "delete") deleteMutation.mutate(confirmAction.orderId);
+                if (confirmAction?.type === "post") postStockMutation.mutate(confirmAction.orderId);
+                if (confirmAction?.type === "reverse") reverseStockMutation.mutate(confirmAction.orderId);
+              }}
+              className={confirmAction?.type === "delete" ? "bg-destructive text-destructive-foreground" : ""}
+              data-testid="button-confirm-action"
             >
-              Excluir
+              {confirmAction?.type === "delete" ? "Apagar" : "Confirmar"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
