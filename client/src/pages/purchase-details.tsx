@@ -3,7 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, useLocation } from "wouter";
 import { 
   ArrowLeft, Package, Truck, CheckCircle, RotateCcw, 
-  FileText, Calendar, DollarSign, User, Clock
+  FileText, Calendar, DollarSign, User, Clock, Printer, Trash2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -48,7 +48,7 @@ export default function PurchaseDetailsPage() {
   const { id } = useParams<{ id: string }>();
   const [, navigate] = useLocation();
   const { toast } = useToast();
-  const [confirmAction, setConfirmAction] = useState<"finalize" | "post" | "reverse" | null>(null);
+  const [confirmAction, setConfirmAction] = useState<"finalize" | "post" | "reverse" | "delete" | null>(null);
 
   const { data, isLoading, error } = useQuery<OrderDetails>({
     queryKey: ["/api/purchases", id],
@@ -118,6 +118,29 @@ export default function PurchaseDetailsPage() {
     },
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("DELETE", `/api/purchases/${id}`);
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.message);
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/purchases"] });
+      toast({ title: "Pedido excluido com sucesso" });
+      navigate("/purchase-orders");
+    },
+    onError: (err: Error) => {
+      toast({ title: err.message || "Erro ao excluir pedido", variant: "destructive" });
+      setConfirmAction(null);
+    },
+  });
+
+  const handlePrint = () => {
+    window.open(`/api/purchases/${id}/pdf`, "_blank");
+  };
+
   const formatCurrency = (value: string | number) => {
     const num = typeof value === "string" ? parseFloat(value) : value;
     return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(num);
@@ -179,7 +202,17 @@ export default function PurchaseDetailsPage() {
           {order.status === "STOCK_POSTED" && (
             <Button variant="outline" onClick={() => setConfirmAction("reverse")} data-testid="button-reverse-stock">
               <RotateCcw className="mr-2 h-4 w-4" />
-              Devolver Estoque
+              Estornar Estoque
+            </Button>
+          )}
+          <Button variant="outline" onClick={handlePrint} data-testid="button-print">
+            <Printer className="mr-2 h-4 w-4" />
+            Imprimir
+          </Button>
+          {(order.status === "DRAFT" || order.status === "STOCK_REVERSED") && (
+            <Button variant="destructive" onClick={() => setConfirmAction("delete")} data-testid="button-delete">
+              <Trash2 className="mr-2 h-4 w-4" />
+              Apagar
             </Button>
           )}
         </div>
@@ -346,12 +379,14 @@ export default function PurchaseDetailsPage() {
             <AlertDialogTitle>
               {confirmAction === "finalize" && "Finalizar Pedido?"}
               {confirmAction === "post" && "Lancar Estoque?"}
-              {confirmAction === "reverse" && "Devolver Estoque?"}
+              {confirmAction === "reverse" && "Estornar Estoque?"}
+              {confirmAction === "delete" && "Apagar Pedido?"}
             </AlertDialogTitle>
             <AlertDialogDescription>
               {confirmAction === "finalize" && "Apos finalizar, o pedido nao podera mais ser editado. Os itens serao travados."}
               {confirmAction === "post" && "O estoque dos produtos sera atualizado com as quantidades deste pedido."}
               {confirmAction === "reverse" && "O estoque sera revertido, removendo as quantidades que foram lancadas."}
+              {confirmAction === "delete" && "Esta acao nao pode ser desfeita. O pedido sera permanentemente removido. Nao e possivel apagar pedidos com estoque lancado."}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -361,10 +396,12 @@ export default function PurchaseDetailsPage() {
                 if (confirmAction === "finalize") finalizeMutation.mutate();
                 if (confirmAction === "post") postStockMutation.mutate();
                 if (confirmAction === "reverse") reverseStockMutation.mutate();
+                if (confirmAction === "delete") deleteMutation.mutate();
               }}
+              className={confirmAction === "delete" ? "bg-destructive text-destructive-foreground" : ""}
               data-testid="button-confirm-action"
             >
-              Confirmar
+              {confirmAction === "delete" ? "Apagar" : "Confirmar"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
