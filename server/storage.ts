@@ -21,7 +21,10 @@ import {
   type UserModulePermission, type InsertUserModulePermission,
   type PaymentType, type InsertPaymentType,
   type PaymentIntegration, type InsertPaymentIntegration,
-  users, categories, suppliers, products, orders, orderItems, priceTables, customerPrices, coupons, agendaEvents, siteSettings, catalogBanners, catalogSlides, catalogConfig, customerCredits, creditPayments, accountsPayable, payablePayments, modules, userModulePermissions, paymentTypes, paymentIntegrations
+  type PurchaseOrder, type InsertPurchaseOrder,
+  type PurchaseOrderItem, type InsertPurchaseOrderItem,
+  type StockMovement, type InsertStockMovement,
+  users, categories, suppliers, products, orders, orderItems, priceTables, customerPrices, coupons, agendaEvents, siteSettings, catalogBanners, catalogSlides, catalogConfig, customerCredits, creditPayments, accountsPayable, payablePayments, modules, userModulePermissions, paymentTypes, paymentIntegrations, purchaseOrders, purchaseOrderItems, stockMovements
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, ilike, and, or, sql, count } from "drizzle-orm";
@@ -204,6 +207,28 @@ export interface IStorage {
   createPaymentIntegration(integration: InsertPaymentIntegration): Promise<PaymentIntegration>;
   updatePaymentIntegration(id: number, integration: Partial<InsertPaymentIntegration>): Promise<PaymentIntegration | undefined>;
   deletePaymentIntegration(id: number): Promise<boolean>;
+
+  // Purchase Orders
+  getPurchaseOrders(filters?: { status?: string; search?: string }): Promise<PurchaseOrder[]>;
+  getPurchaseOrder(id: number): Promise<PurchaseOrder | undefined>;
+  getPurchaseOrderWithDetails(id: number): Promise<{ order: PurchaseOrder; items: PurchaseOrderItem[]; supplier: Supplier | null; movements: StockMovement[] } | undefined>;
+  getNextPurchaseOrderNumber(): Promise<string>;
+  createPurchaseOrder(order: InsertPurchaseOrder): Promise<PurchaseOrder>;
+  updatePurchaseOrder(id: number, order: Partial<InsertPurchaseOrder>): Promise<PurchaseOrder | undefined>;
+  deletePurchaseOrder(id: number): Promise<boolean>;
+  finalizePurchaseOrder(id: number): Promise<{ success: boolean; error?: string }>;
+  postPurchaseOrderStock(id: number): Promise<{ success: boolean; error?: string }>;
+  reversePurchaseOrderStock(id: number): Promise<{ success: boolean; error?: string }>;
+
+  // Purchase Order Items
+  getPurchaseOrderItems(orderId: number): Promise<PurchaseOrderItem[]>;
+  createPurchaseOrderItem(item: InsertPurchaseOrderItem): Promise<PurchaseOrderItem>;
+  updatePurchaseOrderItem(id: number, item: Partial<InsertPurchaseOrderItem>): Promise<PurchaseOrderItem | undefined>;
+  deletePurchaseOrderItem(id: number): Promise<boolean>;
+
+  // Stock Movements
+  getStockMovements(productId?: number): Promise<StockMovement[]>;
+  getStockMovementsByRef(refType: string, refId: number): Promise<StockMovement[]>;
 }
 
 // Customer Analytics Types
@@ -3245,6 +3270,224 @@ export class DatabaseStorage implements IStorage {
   async deletePaymentIntegration(id: number): Promise<boolean> {
     const result = await db.delete(paymentIntegrations).where(eq(paymentIntegrations.id, id));
     return true;
+  }
+
+  // ========== PURCHASE ORDERS ==========
+  async getPurchaseOrders(filters?: { status?: string; search?: string }): Promise<PurchaseOrder[]> {
+    let query = db.select().from(purchaseOrders);
+    const conditions = [];
+    
+    if (filters?.status) {
+      conditions.push(eq(purchaseOrders.status, filters.status));
+    }
+    if (filters?.search) {
+      conditions.push(ilike(purchaseOrders.number, `%${filters.search}%`));
+    }
+    
+    if (conditions.length > 0) {
+      return db.select().from(purchaseOrders).where(and(...conditions)).orderBy(desc(purchaseOrders.createdAt));
+    }
+    return db.select().from(purchaseOrders).orderBy(desc(purchaseOrders.createdAt));
+  }
+
+  async getPurchaseOrder(id: number): Promise<PurchaseOrder | undefined> {
+    const [order] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, id));
+    return order;
+  }
+
+  async getPurchaseOrderWithDetails(id: number): Promise<{ order: PurchaseOrder; items: PurchaseOrderItem[]; supplier: Supplier | null; movements: StockMovement[] } | undefined> {
+    const order = await this.getPurchaseOrder(id);
+    if (!order) return undefined;
+
+    const items = await db.select().from(purchaseOrderItems).where(eq(purchaseOrderItems.purchaseOrderId, id));
+    const supplier = order.supplierId ? await this.getSupplier(order.supplierId) : null;
+    const movements = await db.select().from(stockMovements)
+      .where(and(eq(stockMovements.refType, 'PURCHASE_ORDER'), eq(stockMovements.refId, id)))
+      .orderBy(desc(stockMovements.createdAt));
+
+    return { order, items, supplier: supplier || null, movements };
+  }
+
+  async getNextPurchaseOrderNumber(): Promise<string> {
+    const [result] = await db.select({ maxNum: sql<string>`MAX(${purchaseOrders.number})` }).from(purchaseOrders);
+    const maxNum = result?.maxNum;
+    if (!maxNum) return 'PC-000001';
+    const num = parseInt(maxNum.replace('PC-', ''), 10);
+    return `PC-${String(num + 1).padStart(6, '0')}`;
+  }
+
+  async createPurchaseOrder(order: InsertPurchaseOrder): Promise<PurchaseOrder> {
+    const number = await this.getNextPurchaseOrderNumber();
+    const [newOrder] = await db.insert(purchaseOrders).values({ ...order, number }).returning();
+    return newOrder;
+  }
+
+  async updatePurchaseOrder(id: number, order: Partial<InsertPurchaseOrder>): Promise<PurchaseOrder | undefined> {
+    const [updated] = await db.update(purchaseOrders)
+      .set({ ...order, updatedAt: new Date() })
+      .where(eq(purchaseOrders.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deletePurchaseOrder(id: number): Promise<boolean> {
+    const order = await this.getPurchaseOrder(id);
+    if (!order || order.status !== 'DRAFT') return false;
+    await db.delete(purchaseOrderItems).where(eq(purchaseOrderItems.purchaseOrderId, id));
+    await db.delete(purchaseOrders).where(eq(purchaseOrders.id, id));
+    return true;
+  }
+
+  async finalizePurchaseOrder(id: number): Promise<{ success: boolean; error?: string }> {
+    const order = await this.getPurchaseOrder(id);
+    if (!order) return { success: false, error: 'Pedido nao encontrado' };
+    if (order.status !== 'DRAFT') return { success: false, error: 'Pedido ja foi finalizado' };
+    if (!order.supplierId) return { success: false, error: 'Fornecedor obrigatorio para finalizar' };
+    
+    const items = await this.getPurchaseOrderItems(id);
+    if (items.length === 0) return { success: false, error: 'Adicione ao menos um item' };
+
+    await this.updatePurchaseOrder(id, { status: 'FINALIZED', finalizedAt: new Date() } as any);
+    return { success: true };
+  }
+
+  async postPurchaseOrderStock(id: number): Promise<{ success: boolean; error?: string }> {
+    const order = await this.getPurchaseOrder(id);
+    if (!order) return { success: false, error: 'Pedido nao encontrado' };
+    if (order.status !== 'FINALIZED') return { success: false, error: 'Pedido precisa estar finalizado para lancar estoque' };
+
+    const items = await this.getPurchaseOrderItems(id);
+    
+    // Atomic transaction
+    for (const item of items) {
+      // Create stock movement
+      await db.insert(stockMovements).values({
+        type: 'IN',
+        reason: 'PURCHASE_POST',
+        refType: 'PURCHASE_ORDER',
+        refId: id,
+        productId: item.productId,
+        qty: item.qty,
+        unitCost: item.unitCost,
+      });
+      // Update product stock
+      await db.update(products)
+        .set({ stock: sql`${products.stock} + ${parseInt(item.qty)}` })
+        .where(eq(products.id, item.productId));
+    }
+
+    await this.updatePurchaseOrder(id, { status: 'STOCK_POSTED', postedAt: new Date() } as any);
+    return { success: true };
+  }
+
+  async reversePurchaseOrderStock(id: number): Promise<{ success: boolean; error?: string }> {
+    const order = await this.getPurchaseOrder(id);
+    if (!order) return { success: false, error: 'Pedido nao encontrado' };
+    if (order.status !== 'STOCK_POSTED') return { success: false, error: 'Estoque nao foi lancado ainda' };
+
+    const items = await this.getPurchaseOrderItems(id);
+    
+    // Check for negative stock
+    for (const item of items) {
+      const product = await this.getProduct(item.productId);
+      if (!product) continue;
+      const newStock = product.stock - parseInt(item.qty);
+      if (newStock < 0) {
+        return { success: false, error: `Estoque insuficiente para ${product.name}. Estoque atual: ${product.stock}` };
+      }
+    }
+
+    // Atomic transaction
+    for (const item of items) {
+      // Create stock movement (OUT)
+      await db.insert(stockMovements).values({
+        type: 'OUT',
+        reason: 'PURCHASE_REVERSE',
+        refType: 'PURCHASE_ORDER',
+        refId: id,
+        productId: item.productId,
+        qty: item.qty,
+        unitCost: item.unitCost,
+      });
+      // Update product stock
+      await db.update(products)
+        .set({ stock: sql`${products.stock} - ${parseInt(item.qty)}` })
+        .where(eq(products.id, item.productId));
+    }
+
+    await this.updatePurchaseOrder(id, { status: 'STOCK_REVERSED', reversedAt: new Date() } as any);
+    return { success: true };
+  }
+
+  // ========== PURCHASE ORDER ITEMS ==========
+  async getPurchaseOrderItems(orderId: number): Promise<PurchaseOrderItem[]> {
+    return db.select().from(purchaseOrderItems).where(eq(purchaseOrderItems.purchaseOrderId, orderId));
+  }
+
+  async createPurchaseOrderItem(item: InsertPurchaseOrderItem): Promise<PurchaseOrderItem> {
+    const product = await this.getProduct(item.productId);
+    const lineTotal = parseFloat(item.qty) * parseFloat(item.unitCost);
+    
+    const [newItem] = await db.insert(purchaseOrderItems).values({
+      ...item,
+      descriptionSnapshot: product?.name || '',
+      skuSnapshot: product?.sku || '',
+      lineTotal: lineTotal.toFixed(2),
+    }).returning();
+
+    // Recalculate order total
+    await this.recalculatePurchaseOrderTotal(item.purchaseOrderId);
+    return newItem;
+  }
+
+  async updatePurchaseOrderItem(id: number, item: Partial<InsertPurchaseOrderItem>): Promise<PurchaseOrderItem | undefined> {
+    const existing = await db.select().from(purchaseOrderItems).where(eq(purchaseOrderItems.id, id));
+    if (!existing[0]) return undefined;
+
+    const qty = item.qty || existing[0].qty;
+    const unitCost = item.unitCost || existing[0].unitCost;
+    const lineTotal = parseFloat(qty) * parseFloat(unitCost);
+
+    const [updated] = await db.update(purchaseOrderItems)
+      .set({ ...item, lineTotal: lineTotal.toFixed(2) })
+      .where(eq(purchaseOrderItems.id, id))
+      .returning();
+
+    await this.recalculatePurchaseOrderTotal(updated.purchaseOrderId);
+    return updated;
+  }
+
+  async deletePurchaseOrderItem(id: number): Promise<boolean> {
+    const [item] = await db.select().from(purchaseOrderItems).where(eq(purchaseOrderItems.id, id));
+    if (!item) return false;
+
+    await db.delete(purchaseOrderItems).where(eq(purchaseOrderItems.id, id));
+    await this.recalculatePurchaseOrderTotal(item.purchaseOrderId);
+    return true;
+  }
+
+  private async recalculatePurchaseOrderTotal(orderId: number): Promise<void> {
+    const items = await this.getPurchaseOrderItems(orderId);
+    const total = items.reduce((sum, item) => sum + parseFloat(item.lineTotal), 0);
+    await db.update(purchaseOrders)
+      .set({ totalValue: total.toFixed(2), updatedAt: new Date() })
+      .where(eq(purchaseOrders.id, orderId));
+  }
+
+  // ========== STOCK MOVEMENTS ==========
+  async getStockMovements(productId?: number): Promise<StockMovement[]> {
+    if (productId) {
+      return db.select().from(stockMovements)
+        .where(eq(stockMovements.productId, productId))
+        .orderBy(desc(stockMovements.createdAt));
+    }
+    return db.select().from(stockMovements).orderBy(desc(stockMovements.createdAt));
+  }
+
+  async getStockMovementsByRef(refType: string, refId: number): Promise<StockMovement[]> {
+    return db.select().from(stockMovements)
+      .where(and(eq(stockMovements.refType, refType), eq(stockMovements.refId, refId)))
+      .orderBy(desc(stockMovements.createdAt));
   }
 }
 
