@@ -4,7 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { 
   Search, 
@@ -34,6 +35,7 @@ export default function CustomersPage() {
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<User | null>(null);
   const [formLoading, setFormLoading] = useState(false);
+  const [customerToDelete, setCustomerToDelete] = useState<User | null>(null);
   const [newCustomer, setNewCustomer] = useState({
     personType: "juridica",
     cnpj: "", cpf: "", company: "", tradingName: "", firstName: "", email: "", phone: "",
@@ -86,6 +88,20 @@ export default function CustomersPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/users'] });
+    },
+  });
+
+  const deleteUserMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest("DELETE", `/api/users/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/users'] });
+      toast({ title: "Cliente Excluido", description: "O cliente foi removido com sucesso." });
+      setCustomerToDelete(null);
+    },
+    onError: () => {
+      toast({ title: "Erro", description: "Falha ao excluir cliente", variant: "destructive" });
     },
   });
 
@@ -458,6 +474,15 @@ export default function CustomersPage() {
                         )}
                         <Button variant="ghost" size="icon" onClick={() => handleEdit(customer)} data-testid={`button-edit-${customer.id}`}>
                           <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          onClick={() => setCustomerToDelete(customer)} 
+                          className="text-destructive hover:text-destructive"
+                          data-testid={`button-delete-${customer.id}`}
+                        >
+                          <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>
                     </div>
@@ -885,6 +910,31 @@ export default function CustomersPage() {
           )}
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={!!customerToDelete} onOpenChange={(open) => !open && setCustomerToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmar Exclusao</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja excluir o cliente{" "}
+              <strong>{customerToDelete?.firstName || customerToDelete?.company || customerToDelete?.email}</strong>?
+              Esta acao nao pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-delete">Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => customerToDelete && deleteUserMutation.mutate(customerToDelete.id)}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={deleteUserMutation.isPending}
+              data-testid="button-confirm-delete"
+            >
+              {deleteUserMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
