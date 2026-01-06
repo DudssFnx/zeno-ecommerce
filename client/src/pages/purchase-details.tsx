@@ -48,7 +48,7 @@ export default function PurchaseDetailsPage() {
   const { id } = useParams<{ id: string }>();
   const [, navigate] = useLocation();
   const { toast } = useToast();
-  const [confirmAction, setConfirmAction] = useState<"finalize" | "post" | "reverse" | "delete" | null>(null);
+  const [confirmAction, setConfirmAction] = useState<"finalize" | "post" | "reverse" | "delete" | "reset-pending" | null>(null);
 
   const { data, isLoading, error } = useQuery<OrderDetails>({
     queryKey: ["/api/purchases", id],
@@ -114,6 +114,25 @@ export default function PurchaseDetailsPage() {
     },
     onError: (err: Error) => {
       toast({ title: err.message || "Erro ao devolver estoque", variant: "destructive" });
+      setConfirmAction(null);
+    },
+  });
+
+  const resetPendingMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/purchases/${id}/reset-pending`);
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.message);
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/purchases", id] });
+      toast({ title: "Pedido marcado como Lancamento Pendente" });
+      setConfirmAction(null);
+    },
+    onError: (err: Error) => {
+      toast({ title: err.message || "Erro ao marcar como pendente", variant: "destructive" });
       setConfirmAction(null);
     },
   });
@@ -205,11 +224,17 @@ export default function PurchaseDetailsPage() {
               Estornar Estoque
             </Button>
           )}
+          {order.status === "STOCK_REVERSED" && (
+            <Button variant="outline" onClick={() => setConfirmAction("reset-pending")} data-testid="button-reset-pending">
+              <Clock className="mr-2 h-4 w-4" />
+              Marcar como Pendente
+            </Button>
+          )}
           <Button variant="outline" onClick={handlePrint} data-testid="button-print">
             <Printer className="mr-2 h-4 w-4" />
             Imprimir
           </Button>
-          {(order.status === "DRAFT" || order.status === "STOCK_REVERSED") && (
+          {(order.status === "DRAFT" || order.status === "FINALIZED" || order.status === "STOCK_REVERSED") && (
             <Button variant="destructive" onClick={() => setConfirmAction("delete")} data-testid="button-delete">
               <Trash2 className="mr-2 h-4 w-4" />
               Apagar
@@ -381,12 +406,14 @@ export default function PurchaseDetailsPage() {
               {confirmAction === "post" && "Lancar Estoque?"}
               {confirmAction === "reverse" && "Estornar Estoque?"}
               {confirmAction === "delete" && "Apagar Pedido?"}
+              {confirmAction === "reset-pending" && "Marcar como Pendente?"}
             </AlertDialogTitle>
             <AlertDialogDescription>
               {confirmAction === "finalize" && "Apos finalizar, o pedido nao podera mais ser editado. Os itens serao travados."}
               {confirmAction === "post" && "O estoque dos produtos sera atualizado com as quantidades deste pedido."}
               {confirmAction === "reverse" && "O estoque sera revertido, removendo as quantidades que foram lancadas."}
               {confirmAction === "delete" && "Esta acao nao pode ser desfeita. O pedido sera permanentemente removido. Nao e possivel apagar pedidos com estoque lancado."}
+              {confirmAction === "reset-pending" && "O pedido voltara ao status de Lancamento Pendente, permitindo o lancamento de estoque novamente."}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -397,6 +424,7 @@ export default function PurchaseDetailsPage() {
                 if (confirmAction === "post") postStockMutation.mutate();
                 if (confirmAction === "reverse") reverseStockMutation.mutate();
                 if (confirmAction === "delete") deleteMutation.mutate();
+                if (confirmAction === "reset-pending") resetPendingMutation.mutate();
               }}
               className={confirmAction === "delete" ? "bg-destructive text-destructive-foreground" : ""}
               data-testid="button-confirm-action"
