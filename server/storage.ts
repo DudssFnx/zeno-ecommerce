@@ -3354,9 +3354,12 @@ export class DatabaseStorage implements IStorage {
   async postPurchaseOrderStock(id: number): Promise<{ success: boolean; error?: string }> {
     const order = await this.getPurchaseOrder(id);
     if (!order) return { success: false, error: 'Pedido nao encontrado' };
-    if (order.status !== 'FINALIZED') return { success: false, error: 'Pedido precisa estar finalizado para lancar estoque' };
+    if (order.status !== 'DRAFT' && order.status !== 'FINALIZED') {
+      return { success: false, error: 'Estoque ja foi lancado para este pedido' };
+    }
 
     const items = await this.getPurchaseOrderItems(id);
+    if (items.length === 0) return { success: false, error: 'Adicione ao menos um item antes de lancar estoque' };
     
     // Atomic transaction
     for (const item of items) {

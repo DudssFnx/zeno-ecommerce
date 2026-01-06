@@ -170,13 +170,7 @@ export default function PurchaseDetailsPage() {
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
-          {order.status === "DRAFT" && (
-            <Button onClick={() => setConfirmAction("finalize")} data-testid="button-finalize">
-              <CheckCircle className="mr-2 h-4 w-4" />
-              Finalizar
-            </Button>
-          )}
-          {order.status === "FINALIZED" && (
+          {(order.status === "DRAFT" || order.status === "FINALIZED") && (
             <Button onClick={() => setConfirmAction("post")} data-testid="button-post-stock">
               <Package className="mr-2 h-4 w-4" />
               Lancar Estoque
