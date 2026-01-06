@@ -2976,6 +2976,11 @@ export async function registerRoutes(
   });
 
   app.post("/api/bling/webhook", async (req: any, res) => {
+    // TEMPORARILY DISABLED - Remove this block to re-enable webhooks
+    console.log("[WEBHOOK] Bling webhooks temporarily disabled");
+    return res.status(200).json({ success: true, message: "Webhooks temporarily disabled" });
+    // END DISABLED BLOCK
+
     const signature = req.headers["x-bling-signature-256"] as string;
     // Use rawBody captured by express.json() middleware in index.ts
     const rawBody = req.rawBody
