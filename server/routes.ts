@@ -4840,6 +4840,191 @@ export async function registerRoutes(
     },
   );
 
+  // ========== PURCHASE ORDERS (COMPRAS) ==========
+  
+  // List purchase orders with optional filters
+  app.get("/api/purchases", isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const { status, search } = req.query;
+      const orders = await storage.getPurchaseOrders({
+        status: status as string | undefined,
+        search: search as string | undefined,
+      });
+      res.json(orders);
+    } catch (error) {
+      console.error("Error fetching purchase orders:", error);
+      res.status(500).json({ message: "Erro ao buscar pedidos de compra" });
+    }
+  });
+
+  // Get single purchase order with details
+  app.get("/api/purchases/:id", isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const details = await storage.getPurchaseOrderWithDetails(parseInt(req.params.id));
+      if (!details) {
+        return res.status(404).json({ message: "Pedido nao encontrado" });
+      }
+      res.json(details);
+    } catch (error) {
+      console.error("Error fetching purchase order:", error);
+      res.status(500).json({ message: "Erro ao buscar pedido" });
+    }
+  });
+
+  // Create new purchase order (DRAFT)
+  app.post("/api/purchases", isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const order = await storage.createPurchaseOrder(req.body);
+      res.status(201).json(order);
+    } catch (error) {
+      console.error("Error creating purchase order:", error);
+      res.status(500).json({ message: "Erro ao criar pedido de compra" });
+    }
+  });
+
+  // Update purchase order (only DRAFT)
+  app.put("/api/purchases/:id", isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const order = await storage.getPurchaseOrder(parseInt(req.params.id));
+      if (!order) {
+        return res.status(404).json({ message: "Pedido nao encontrado" });
+      }
+      if (order.status !== "DRAFT") {
+        return res.status(400).json({ message: "Apenas rascunhos podem ser editados" });
+      }
+      const updated = await storage.updatePurchaseOrder(parseInt(req.params.id), req.body);
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating purchase order:", error);
+      res.status(500).json({ message: "Erro ao atualizar pedido" });
+    }
+  });
+
+  // Delete purchase order (only DRAFT)
+  app.delete("/api/purchases/:id", isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const deleted = await storage.deletePurchaseOrder(parseInt(req.params.id));
+      if (!deleted) {
+        return res.status(400).json({ message: "Apenas rascunhos podem ser excluidos" });
+      }
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting purchase order:", error);
+      res.status(500).json({ message: "Erro ao excluir pedido" });
+    }
+  });
+
+  // Finalize purchase order
+  app.post("/api/purchases/:id/finalize", isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const result = await storage.finalizePurchaseOrder(parseInt(req.params.id));
+      if (!result.success) {
+        return res.status(400).json({ message: result.error });
+      }
+      const updated = await storage.getPurchaseOrder(parseInt(req.params.id));
+      res.json(updated);
+    } catch (error) {
+      console.error("Error finalizing purchase order:", error);
+      res.status(500).json({ message: "Erro ao finalizar pedido" });
+    }
+  });
+
+  // Post stock (lancar estoque)
+  app.post("/api/purchases/:id/post-stock", isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const result = await storage.postPurchaseOrderStock(parseInt(req.params.id));
+      if (!result.success) {
+        return res.status(400).json({ message: result.error });
+      }
+      const updated = await storage.getPurchaseOrder(parseInt(req.params.id));
+      res.json(updated);
+    } catch (error) {
+      console.error("Error posting stock:", error);
+      res.status(500).json({ message: "Erro ao lancar estoque" });
+    }
+  });
+
+  // Reverse stock (devolver estoque)
+  app.post("/api/purchases/:id/reverse-stock", isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const result = await storage.reversePurchaseOrderStock(parseInt(req.params.id));
+      if (!result.success) {
+        return res.status(400).json({ message: result.error });
+      }
+      const updated = await storage.getPurchaseOrder(parseInt(req.params.id));
+      res.json(updated);
+    } catch (error) {
+      console.error("Error reversing stock:", error);
+      res.status(500).json({ message: "Erro ao devolver estoque" });
+    }
+  });
+
+  // ========== PURCHASE ORDER ITEMS ==========
+  
+  // Add item to purchase order
+  app.post("/api/purchases/:id/items", isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const order = await storage.getPurchaseOrder(parseInt(req.params.id));
+      if (!order) {
+        return res.status(404).json({ message: "Pedido nao encontrado" });
+      }
+      if (order.status !== "DRAFT") {
+        return res.status(400).json({ message: "Apenas rascunhos podem ser editados" });
+      }
+      const item = await storage.createPurchaseOrderItem({
+        ...req.body,
+        purchaseOrderId: parseInt(req.params.id),
+      });
+      res.status(201).json(item);
+    } catch (error) {
+      console.error("Error adding item:", error);
+      res.status(500).json({ message: "Erro ao adicionar item" });
+    }
+  });
+
+  // Update item
+  app.patch("/api/purchases/:orderId/items/:itemId", isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const order = await storage.getPurchaseOrder(parseInt(req.params.orderId));
+      if (!order || order.status !== "DRAFT") {
+        return res.status(400).json({ message: "Apenas rascunhos podem ser editados" });
+      }
+      const updated = await storage.updatePurchaseOrderItem(parseInt(req.params.itemId), req.body);
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating item:", error);
+      res.status(500).json({ message: "Erro ao atualizar item" });
+    }
+  });
+
+  // Delete item
+  app.delete("/api/purchases/:orderId/items/:itemId", isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const order = await storage.getPurchaseOrder(parseInt(req.params.orderId));
+      if (!order || order.status !== "DRAFT") {
+        return res.status(400).json({ message: "Apenas rascunhos podem ser editados" });
+      }
+      await storage.deletePurchaseOrderItem(parseInt(req.params.itemId));
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting item:", error);
+      res.status(500).json({ message: "Erro ao remover item" });
+    }
+  });
+
+  // ========== STOCK MOVEMENTS ==========
+  
+  app.get("/api/stock-movements", isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const { productId } = req.query;
+      const movements = await storage.getStockMovements(productId ? parseInt(productId as string) : undefined);
+      res.json(movements);
+    } catch (error) {
+      console.error("Error fetching stock movements:", error);
+      res.status(500).json({ message: "Erro ao buscar movimentacoes" });
+    }
+  });
+
   /* =========================================================
      SUPER ADMIN ROUTES - Global System Management
      Apenas usuários com isSuperAdmin = true podem acessar
