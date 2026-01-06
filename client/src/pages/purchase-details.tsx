@@ -1,9 +1,8 @@
-import { useState } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useParams, useLocation } from "wouter";
 import { 
-  ArrowLeft, Package, Truck, CheckCircle, RotateCcw, 
-  FileText, Calendar, DollarSign, User, Clock, Printer, Trash2
+  ArrowLeft, Package, RotateCcw, 
+  FileText, DollarSign, User, Clock, Printer
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,18 +15,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { PurchaseOrder, PurchaseOrderItem, Supplier, StockMovement } from "@shared/schema";
 
 const STATUS_CONFIG: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline"; icon: typeof Package; className?: string }> = {
@@ -47,8 +34,6 @@ interface OrderDetails {
 export default function PurchaseDetailsPage() {
   const { id } = useParams<{ id: string }>();
   const [, navigate] = useLocation();
-  const { toast } = useToast();
-  const [confirmAction, setConfirmAction] = useState<"finalize" | "post" | "reverse" | "delete" | "reset-pending" | null>(null);
 
   const { data, isLoading, error } = useQuery<OrderDetails>({
     queryKey: ["/api/purchases", id],
@@ -56,103 +41,6 @@ export default function PurchaseDetailsPage() {
       const res = await fetch(`/api/purchases/${id}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch");
       return res.json();
-    },
-  });
-
-  const finalizeMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", `/api/purchases/${id}/finalize`);
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.message);
-      }
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/purchases", id] });
-      toast({ title: "Pedido finalizado com sucesso" });
-      setConfirmAction(null);
-    },
-    onError: (err: Error) => {
-      toast({ title: err.message || "Erro ao finalizar", variant: "destructive" });
-      setConfirmAction(null);
-    },
-  });
-
-  const postStockMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", `/api/purchases/${id}/post-stock`);
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.message);
-      }
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/purchases", id] });
-      queryClient.invalidateQueries({ queryKey: ["/api/products"] });
-      toast({ title: "Estoque lancado com sucesso" });
-      setConfirmAction(null);
-    },
-    onError: (err: Error) => {
-      toast({ title: err.message || "Erro ao lancar estoque", variant: "destructive" });
-      setConfirmAction(null);
-    },
-  });
-
-  const reverseStockMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", `/api/purchases/${id}/reverse-stock`);
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.message);
-      }
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/purchases", id] });
-      queryClient.invalidateQueries({ queryKey: ["/api/products"] });
-      toast({ title: "Estoque devolvido com sucesso" });
-      setConfirmAction(null);
-    },
-    onError: (err: Error) => {
-      toast({ title: err.message || "Erro ao devolver estoque", variant: "destructive" });
-      setConfirmAction(null);
-    },
-  });
-
-  const resetPendingMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", `/api/purchases/${id}/reset-pending`);
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.message);
-      }
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/purchases", id] });
-      toast({ title: "Pedido marcado como Lancamento Pendente" });
-      setConfirmAction(null);
-    },
-    onError: (err: Error) => {
-      toast({ title: err.message || "Erro ao marcar como pendente", variant: "destructive" });
-      setConfirmAction(null);
-    },
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("DELETE", `/api/purchases/${id}`);
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.message);
-      }
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/purchases"] });
-      toast({ title: "Pedido excluido com sucesso" });
-      navigate("/purchase-orders");
-    },
-    onError: (err: Error) => {
-      toast({ title: err.message || "Erro ao excluir pedido", variant: "destructive" });
-      setConfirmAction(null);
     },
   });
 
@@ -212,34 +100,10 @@ export default function PurchaseDetailsPage() {
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
-          {(order.status === "DRAFT" || order.status === "FINALIZED") && (
-            <Button onClick={() => setConfirmAction("post")} data-testid="button-post-stock">
-              <Package className="mr-2 h-4 w-4" />
-              Lancar Estoque
-            </Button>
-          )}
-          {order.status === "STOCK_POSTED" && (
-            <Button variant="outline" onClick={() => setConfirmAction("reverse")} data-testid="button-reverse-stock">
-              <RotateCcw className="mr-2 h-4 w-4" />
-              Estornar Estoque
-            </Button>
-          )}
-          {order.status === "STOCK_REVERSED" && (
-            <Button variant="outline" onClick={() => setConfirmAction("reset-pending")} data-testid="button-reset-pending">
-              <Clock className="mr-2 h-4 w-4" />
-              Marcar como Pendente
-            </Button>
-          )}
           <Button variant="outline" onClick={handlePrint} data-testid="button-print">
             <Printer className="mr-2 h-4 w-4" />
             Imprimir
           </Button>
-          {(order.status === "DRAFT" || order.status === "FINALIZED" || order.status === "STOCK_REVERSED") && (
-            <Button variant="destructive" onClick={() => setConfirmAction("delete")} data-testid="button-delete">
-              <Trash2 className="mr-2 h-4 w-4" />
-              Apagar
-            </Button>
-          )}
         </div>
       </div>
 
@@ -344,7 +208,7 @@ export default function PurchaseDetailsPage() {
               )}
               {order.reversedAt && (
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Estoque devolvido:</span>
+                  <span className="text-muted-foreground">Estoque estornado:</span>
                   <span>{formatDate(order.reversedAt)}</span>
                 </div>
               )}
@@ -397,43 +261,6 @@ export default function PurchaseDetailsPage() {
           </CardContent>
         </Card>
       )}
-
-      <AlertDialog open={!!confirmAction} onOpenChange={() => setConfirmAction(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {confirmAction === "finalize" && "Finalizar Pedido?"}
-              {confirmAction === "post" && "Lancar Estoque?"}
-              {confirmAction === "reverse" && "Estornar Estoque?"}
-              {confirmAction === "delete" && "Apagar Pedido?"}
-              {confirmAction === "reset-pending" && "Marcar como Pendente?"}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {confirmAction === "finalize" && "Apos finalizar, o pedido nao podera mais ser editado. Os itens serao travados."}
-              {confirmAction === "post" && "O estoque dos produtos sera atualizado com as quantidades deste pedido."}
-              {confirmAction === "reverse" && "O estoque sera revertido, removendo as quantidades que foram lancadas."}
-              {confirmAction === "delete" && "Esta acao nao pode ser desfeita. O pedido sera permanentemente removido. Nao e possivel apagar pedidos com estoque lancado."}
-              {confirmAction === "reset-pending" && "O pedido voltara ao status de Lancamento Pendente, permitindo o lancamento de estoque novamente."}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel data-testid="button-cancel-action">Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => {
-                if (confirmAction === "finalize") finalizeMutation.mutate();
-                if (confirmAction === "post") postStockMutation.mutate();
-                if (confirmAction === "reverse") reverseStockMutation.mutate();
-                if (confirmAction === "delete") deleteMutation.mutate();
-                if (confirmAction === "reset-pending") resetPendingMutation.mutate();
-              }}
-              className={confirmAction === "delete" ? "bg-destructive text-destructive-foreground" : ""}
-              data-testid="button-confirm-action"
-            >
-              {confirmAction === "delete" ? "Apagar" : "Confirmar"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 }
