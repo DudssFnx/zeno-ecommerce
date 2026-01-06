@@ -142,7 +142,7 @@ export default function PurchaseDetailsPage() {
     return (
       <div className="p-6 text-center">
         <p className="text-destructive mb-4">Pedido nao encontrado</p>
-        <Button onClick={() => navigate("/purchases")}>Voltar</Button>
+        <Button onClick={() => navigate("/purchase-orders")}>Voltar</Button>
       </div>
     );
   }
@@ -155,7 +155,7 @@ export default function PurchaseDetailsPage() {
     <div className="p-6 space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={() => navigate("/purchases")} data-testid="button-back">
+          <Button variant="ghost" size="icon" onClick={() => navigate("/purchase-orders")} data-testid="button-back">
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <div>

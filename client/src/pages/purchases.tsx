@@ -93,7 +93,7 @@ export default function PurchasesPage() {
           <p className="text-muted-foreground">Gerencie suas compras e estoque</p>
         </div>
         <Button asChild data-testid="button-new-purchase">
-          <Link href="/purchases/new">
+          <Link href="/purchase-orders/new">
             <Plus className="mr-2 h-4 w-4" />
             Nova Compra
           </Link>
@@ -135,7 +135,7 @@ export default function PurchasesPage() {
               <Package className="mx-auto h-12 w-12 mb-4 opacity-50" />
               <p>Nenhum pedido encontrado</p>
               <Button variant="outline" className="mt-4" asChild>
-                <Link href="/purchases/new">Criar primeiro pedido</Link>
+                <Link href="/purchase-orders/new">Criar primeiro pedido</Link>
               </Button>
             </div>
           ) : (
@@ -165,7 +165,7 @@ export default function PurchasesPage() {
                         <Button
                           size="icon"
                           variant="ghost"
-                          onClick={() => navigate(`/purchases/${order.id}`)}
+                          onClick={() => navigate(`/purchase-orders/${order.id}`)}
                           data-testid={`button-view-${order.id}`}
                         >
                           <Eye className="h-4 w-4" />

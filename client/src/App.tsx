@@ -113,9 +113,9 @@ function AuthenticatedApp() {
               <Route path="/pdv" component={PDVPage} />
               {isAdmin && <Route path="/products" component={ProductsPage} />}
               {isAdmin && <Route path="/suppliers" component={SuppliersPage} />}
-              {isAdmin && <Route path="/purchases" component={PurchasesPage} />}
-              {isAdmin && <Route path="/purchases/new" component={PurchaseNewPage} />}
-              {isAdmin && <Route path="/purchases/:id" component={PurchaseDetailsPage} />}
+              {isAdmin && <Route path="/purchase-orders" component={PurchasesPage} />}
+              {isAdmin && <Route path="/purchase-orders/new" component={PurchaseNewPage} />}
+              {isAdmin && <Route path="/purchase-orders/:id" component={PurchaseDetailsPage} />}
               {isAdmin && <Route path="/customers" component={CustomersPage} />}
               {isAdmin && <Route path="/users" component={UsersPage} />}
               {isAdmin && <Route path="/settings" component={SettingsPage} />}
@@ -124,7 +124,7 @@ function AuthenticatedApp() {
               {isAdmin && <Route path="/customer-analytics" component={CustomerAnalyticsPage} />}
               {isAdmin && <Route path="/product-analytics" component={ProductAnalyticsPage} />}
               {isAdmin && <Route path="/employee-analytics" component={EmployeeAnalyticsPage} />}
-              {isAdmin && <Route path="/purchases" component={PurchasesDashboardPage} />}
+              {isAdmin && <Route path="/purchases-dashboard" component={PurchasesDashboardPage} />}
               {(isAdmin || isSales || isSupplier) && <Route path="/brand-analytics" component={BrandAnalyticsPage} />}
               {isAdmin && <Route path="/agenda" component={AgendaPage} />}
               {isAdmin && <Route path="/catalog-customization" component={CatalogCustomizationPage} />}

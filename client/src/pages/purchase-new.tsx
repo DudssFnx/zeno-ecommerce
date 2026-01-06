@@ -96,7 +96,7 @@ export default function PurchaseNewPage() {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/purchases"] });
       toast({ title: "Pedido criado com sucesso" });
-      navigate(`/purchases/${data.id}`);
+      navigate(`/purchase-orders/${data.id}`);
     },
     onError: () => {
       toast({ title: "Erro ao criar pedido", variant: "destructive" });
@@ -144,7 +144,7 @@ export default function PurchaseNewPage() {
   return (
     <div className="p-6 space-y-6">
       <div className="flex flex-wrap items-center gap-4">
-        <Button variant="ghost" size="icon" onClick={() => navigate("/purchases")} data-testid="button-back">
+        <Button variant="ghost" size="icon" onClick={() => navigate("/purchase-orders")} data-testid="button-back">
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <div>

@@ -75,7 +75,7 @@ const allMenuItems: MenuItem[] = [
       { title: "Analise de Clientes", url: "/customer-analytics", icon: BarChart3, moduleKey: "reports" },
       { title: "Analise de Produtos", url: "/product-analytics", icon: TrendingUp, moduleKey: "reports" },
       { title: "Analise de Funcionarios", url: "/employee-analytics", icon: Users, moduleKey: "reports" },
-      { title: "Compras", url: "/purchases", icon: ShoppingCart, moduleKey: "reports" },
+      { title: "Analise de Compras", url: "/purchases-dashboard", icon: ShoppingCart, moduleKey: "reports" },
       { title: "Marcas", url: "/brand-analytics", icon: Tag, moduleKey: "brands" },
     ]
   },
@@ -86,7 +86,7 @@ const allMenuItems: MenuItem[] = [
   { title: "Clientes", url: "/customers", icon: UserCheck, moduleKey: "customers" },
   { title: "Usuarios", url: "/users", icon: Users, moduleKey: "customers" },
   { title: "Fornecedores", url: "/suppliers", icon: Truck, moduleKey: "products" },
-  { title: "Compras", url: "/purchases", icon: ShoppingBag, moduleKey: "products" },
+  { title: "Pedidos de Compra", url: "/purchase-orders", icon: ShoppingBag, moduleKey: "products" },
   { title: "Cupons", url: "/coupons", icon: Ticket, moduleKey: "products" },
   { 
     title: "Financeiro", 
