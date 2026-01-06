@@ -4969,6 +4969,124 @@ export async function registerRoutes(
     }
   });
 
+  // Generate PDF for purchase order
+  app.get("/api/purchases/:id/pdf", isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const orderId = parseInt(req.params.id);
+      const order = await storage.getPurchaseOrder(orderId);
+      if (!order) {
+        return res.status(404).json({ message: "Pedido nao encontrado" });
+      }
+      
+      const items = await storage.getPurchaseOrderItems(orderId);
+      const supplier = order.supplierId ? await storage.getSupplier(order.supplierId) : null;
+      
+      const doc = new PDFDocument({ margin: 40, size: "A4" });
+      
+      const fileName = `Pedido_Compra_${order.number}.pdf`;
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
+      
+      doc.pipe(res);
+      
+      // Header
+      doc.fontSize(18).font("Helvetica-Bold").text("PEDIDO DE COMPRA", { align: "center" });
+      doc.moveDown(0.5);
+      doc.fontSize(14).font("Helvetica").text(order.number, { align: "center" });
+      doc.moveDown(1);
+      
+      // Status and date
+      const statusLabels: Record<string, string> = {
+        DRAFT: "Rascunho",
+        FINALIZED: "Finalizado",
+        STOCK_POSTED: "Estoque Lancado",
+        STOCK_REVERSED: "Estoque Devolvido"
+      };
+      doc.fontSize(10).font("Helvetica");
+      doc.text(`Status: ${statusLabels[order.status] || order.status}`);
+      doc.text(`Data: ${new Date(order.createdAt).toLocaleDateString("pt-BR")}`);
+      if (order.postedAt) {
+        doc.text(`Estoque lancado em: ${new Date(order.postedAt).toLocaleDateString("pt-BR")}`);
+      }
+      doc.moveDown(1);
+      
+      // Supplier info
+      if (supplier) {
+        doc.fontSize(12).font("Helvetica-Bold").text("Fornecedor:");
+        doc.fontSize(10).font("Helvetica");
+        doc.text(supplier.name);
+        if (supplier.email) doc.text(`Email: ${supplier.email}`);
+        if (supplier.phone) doc.text(`Telefone: ${supplier.phone}`);
+        if (supplier.cnpj) doc.text(`CNPJ: ${supplier.cnpj}`);
+        doc.moveDown(1);
+      }
+      
+      // Items table header
+      doc.fontSize(12).font("Helvetica-Bold").text("Itens do Pedido:");
+      doc.moveDown(0.5);
+      
+      const tableTop = doc.y;
+      const colWidths = [200, 80, 80, 80, 80];
+      const headers = ["Produto", "SKU", "Qtd", "Custo Unit.", "Subtotal"];
+      
+      doc.fontSize(9).font("Helvetica-Bold");
+      let xPos = 40;
+      headers.forEach((header, i) => {
+        doc.text(header, xPos, tableTop, { width: colWidths[i], align: i >= 2 ? "right" : "left" });
+        xPos += colWidths[i];
+      });
+      
+      doc.moveTo(40, tableTop + 15).lineTo(555, tableTop + 15).stroke();
+      
+      // Items
+      doc.fontSize(9).font("Helvetica");
+      let yPos = tableTop + 20;
+      
+      items.forEach((item) => {
+        if (yPos > 750) {
+          doc.addPage();
+          yPos = 40;
+        }
+        
+        xPos = 40;
+        const unitCost = typeof item.unitCost === "string" ? parseFloat(item.unitCost) : item.unitCost;
+        const lineTotal = typeof item.lineTotal === "string" ? parseFloat(item.lineTotal) : item.lineTotal;
+        
+        doc.text(item.descriptionSnapshot || "-", xPos, yPos, { width: colWidths[0], align: "left" });
+        xPos += colWidths[0];
+        doc.text(item.skuSnapshot || "-", xPos, yPos, { width: colWidths[1], align: "left" });
+        xPos += colWidths[1];
+        doc.text(item.qty.toString(), xPos, yPos, { width: colWidths[2], align: "right" });
+        xPos += colWidths[2];
+        doc.text(`R$ ${unitCost.toFixed(2)}`, xPos, yPos, { width: colWidths[3], align: "right" });
+        xPos += colWidths[3];
+        doc.text(`R$ ${lineTotal.toFixed(2)}`, xPos, yPos, { width: colWidths[4], align: "right" });
+        
+        yPos += 15;
+      });
+      
+      // Total
+      doc.moveTo(40, yPos + 5).lineTo(555, yPos + 5).stroke();
+      yPos += 15;
+      
+      const totalValue = typeof order.totalValue === "string" ? parseFloat(order.totalValue) : order.totalValue;
+      doc.fontSize(12).font("Helvetica-Bold");
+      doc.text(`Total: R$ ${totalValue.toFixed(2)}`, 40, yPos, { align: "right", width: 515 });
+      
+      // Notes
+      if (order.notes) {
+        doc.moveDown(2);
+        doc.fontSize(10).font("Helvetica-Bold").text("Observacoes:");
+        doc.fontSize(9).font("Helvetica").text(order.notes);
+      }
+      
+      doc.end();
+    } catch (error) {
+      console.error("Error generating purchase order PDF:", error);
+      res.status(500).json({ message: "Erro ao gerar PDF" });
+    }
+  });
+
   // ========== PURCHASE ORDER ITEMS ==========
   
   // Add item to purchase order
