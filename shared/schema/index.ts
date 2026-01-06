@@ -70,3 +70,19 @@ export {
   feeTypeEnum,
   integrationStatusEnum
 } from "./payments.schema";
+
+// Export purchase/stock schemas
+export {
+  purchaseOrders,
+  insertPurchaseOrderSchema,
+  type InsertPurchaseOrder,
+  type PurchaseOrder,
+  purchaseOrderItems,
+  insertPurchaseOrderItemSchema,
+  type InsertPurchaseOrderItem,
+  type PurchaseOrderItem,
+  stockMovements,
+  insertStockMovementSchema,
+  type InsertStockMovement,
+  type StockMovement
+} from "./purchases.schema";
