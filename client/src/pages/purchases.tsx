@@ -170,7 +170,7 @@ export default function PurchasesPage() {
                         >
                           <Eye className="h-4 w-4" />
                         </Button>
-                        {order.status === "DRAFT" && (
+                        {(order.status === "DRAFT" || order.status === "STOCK_REVERSED") && (
                           <Button
                             size="icon"
                             variant="ghost"
