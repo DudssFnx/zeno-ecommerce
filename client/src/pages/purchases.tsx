@@ -1,0 +1,215 @@
+import { useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { Link, useLocation } from "wouter";
+import { Plus, Search, Package, Truck, CheckCircle, XCircle, RotateCcw, Eye, Trash2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import type { PurchaseOrder } from "@shared/schema";
+
+const STATUS_LABELS: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
+  DRAFT: { label: "Rascunho", variant: "secondary" },
+  FINALIZED: { label: "Finalizado", variant: "default" },
+  STOCK_POSTED: { label: "Estoque Lancado", variant: "outline" },
+  STOCK_REVERSED: { label: "Estoque Devolvido", variant: "destructive" },
+};
+
+export default function PurchasesPage() {
+  const [, navigate] = useLocation();
+  const { toast } = useToast();
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [deleteId, setDeleteId] = useState<number | null>(null);
+
+  const { data: orders = [], isLoading } = useQuery<PurchaseOrder[]>({
+    queryKey: ["/api/purchases", statusFilter, search],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (statusFilter && statusFilter !== "all") params.append("status", statusFilter);
+      if (search) params.append("search", search);
+      const res = await fetch(`/api/purchases?${params.toString()}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch");
+      return res.json();
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: number) => {
+      await apiRequest("DELETE", `/api/purchases/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/purchases"] });
+      toast({ title: "Pedido excluido com sucesso" });
+      setDeleteId(null);
+    },
+    onError: () => {
+      toast({ title: "Erro ao excluir pedido", variant: "destructive" });
+    },
+  });
+
+  const formatCurrency = (value: string | number) => {
+    const num = typeof value === "string" ? parseFloat(value) : value;
+    return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(num);
+  };
+
+  const formatDate = (date: string | Date | null) => {
+    if (!date) return "-";
+    return new Date(date).toLocaleDateString("pt-BR");
+  };
+
+  return (
+    <div className="p-6 space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold" data-testid="text-page-title">Pedidos de Compra</h1>
+          <p className="text-muted-foreground">Gerencie suas compras e estoque</p>
+        </div>
+        <Button asChild data-testid="button-new-purchase">
+          <Link href="/purchases/new">
+            <Plus className="mr-2 h-4 w-4" />
+            Nova Compra
+          </Link>
+        </Button>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="relative flex-1 min-w-[200px]">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Buscar por numero..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-9"
+                data-testid="input-search"
+              />
+            </div>
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-[180px]" data-testid="select-status-filter">
+                <SelectValue placeholder="Filtrar status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos</SelectItem>
+                <SelectItem value="DRAFT">Rascunho</SelectItem>
+                <SelectItem value="FINALIZED">Finalizado</SelectItem>
+                <SelectItem value="STOCK_POSTED">Estoque Lancado</SelectItem>
+                <SelectItem value="STOCK_REVERSED">Estoque Devolvido</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <div className="text-center py-8 text-muted-foreground">Carregando...</div>
+          ) : orders.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground" data-testid="text-empty-state">
+              <Package className="mx-auto h-12 w-12 mb-4 opacity-50" />
+              <p>Nenhum pedido encontrado</p>
+              <Button variant="outline" className="mt-4" asChild>
+                <Link href="/purchases/new">Criar primeiro pedido</Link>
+              </Button>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Numero</TableHead>
+                  <TableHead>Data</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Valor Total</TableHead>
+                  <TableHead className="text-right">Acoes</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {orders.map((order) => (
+                  <TableRow key={order.id} data-testid={`row-purchase-${order.id}`}>
+                    <TableCell className="font-medium">{order.number}</TableCell>
+                    <TableCell>{formatDate(order.createdAt)}</TableCell>
+                    <TableCell>
+                      <Badge variant={STATUS_LABELS[order.status]?.variant || "secondary"}>
+                        {STATUS_LABELS[order.status]?.label || order.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right">{formatCurrency(order.totalValue)}</TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => navigate(`/purchases/${order.id}`)}
+                          data-testid={`button-view-${order.id}`}
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                        {order.status === "DRAFT" && (
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            onClick={() => setDeleteId(order.id)}
+                            data-testid={`button-delete-${order.id}`}
+                          >
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir pedido?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta acao nao pode ser desfeita. O pedido sera permanentemente removido.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-delete">Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => deleteId && deleteMutation.mutate(deleteId)}
+              className="bg-destructive text-destructive-foreground"
+              data-testid="button-confirm-delete"
+            >
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+}

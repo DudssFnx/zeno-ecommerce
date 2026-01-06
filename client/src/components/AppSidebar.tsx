@@ -35,6 +35,7 @@ import {
   ChevronRight,
   ExternalLink,
   ShoppingCart,
+  ShoppingBag,
   Calendar,
   Palette,
   Banknote,
@@ -85,6 +86,7 @@ const allMenuItems: MenuItem[] = [
   { title: "Clientes", url: "/customers", icon: UserCheck, moduleKey: "customers" },
   { title: "Usuarios", url: "/users", icon: Users, moduleKey: "customers" },
   { title: "Fornecedores", url: "/suppliers", icon: Truck, moduleKey: "products" },
+  { title: "Compras", url: "/purchases", icon: ShoppingBag, moduleKey: "products" },
   { title: "Cupons", url: "/coupons", icon: Ticket, moduleKey: "products" },
   { 
     title: "Financeiro", 
