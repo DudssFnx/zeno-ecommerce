@@ -30,11 +30,11 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { PurchaseOrder, PurchaseOrderItem, Supplier, StockMovement } from "@shared/schema";
 
-const STATUS_CONFIG: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline"; icon: typeof Package }> = {
-  DRAFT: { label: "Rascunho", variant: "secondary", icon: FileText },
-  FINALIZED: { label: "Finalizado", variant: "default", icon: CheckCircle },
-  STOCK_POSTED: { label: "Estoque Lancado", variant: "outline", icon: Package },
-  STOCK_REVERSED: { label: "Estoque Devolvido", variant: "destructive", icon: RotateCcw },
+const STATUS_CONFIG: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline"; icon: typeof Package; className?: string }> = {
+  DRAFT: { label: "Lancamento Pendente", variant: "outline", icon: FileText, className: "bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-900 dark:text-blue-200 dark:border-blue-700" },
+  FINALIZED: { label: "Lancamento Pendente", variant: "outline", icon: FileText, className: "bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-900 dark:text-blue-200 dark:border-blue-700" },
+  STOCK_POSTED: { label: "Estoque Lancado", variant: "outline", icon: Package, className: "bg-green-100 text-green-800 border-green-300 dark:bg-green-900 dark:text-green-200 dark:border-green-700" },
+  STOCK_REVERSED: { label: "Estoque Estornado", variant: "outline", icon: RotateCcw, className: "bg-red-100 text-red-800 border-red-300 dark:bg-red-900 dark:text-red-200 dark:border-red-700" },
 };
 
 interface OrderDetails {
@@ -184,7 +184,7 @@ export default function PurchaseDetailsPage() {
           <div>
             <h1 className="text-2xl font-bold flex items-center gap-2" data-testid="text-order-number">
               {order.number}
-              <Badge variant={statusConfig.variant}>
+              <Badge variant={statusConfig.variant} className={statusConfig.className}>
                 <StatusIcon className="mr-1 h-3 w-3" />
                 {statusConfig.label}
               </Badge>

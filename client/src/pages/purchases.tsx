@@ -42,11 +42,11 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { PurchaseOrder } from "@shared/schema";
 
-const STATUS_LABELS: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
-  DRAFT: { label: "Rascunho", variant: "secondary" },
-  FINALIZED: { label: "Finalizado", variant: "default" },
-  STOCK_POSTED: { label: "Estoque Lancado", variant: "outline" },
-  STOCK_REVERSED: { label: "Estoque Devolvido", variant: "destructive" },
+const STATUS_LABELS: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline"; className?: string }> = {
+  DRAFT: { label: "Lancamento Pendente", variant: "outline", className: "bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-900 dark:text-blue-200 dark:border-blue-700" },
+  FINALIZED: { label: "Lancamento Pendente", variant: "outline", className: "bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-900 dark:text-blue-200 dark:border-blue-700" },
+  STOCK_POSTED: { label: "Estoque Lancado", variant: "outline", className: "bg-green-100 text-green-800 border-green-300 dark:bg-green-900 dark:text-green-200 dark:border-green-700" },
+  STOCK_REVERSED: { label: "Estoque Estornado", variant: "outline", className: "bg-red-100 text-red-800 border-red-300 dark:bg-red-900 dark:text-red-200 dark:border-red-700" },
 };
 
 type ConfirmAction = {
@@ -212,7 +212,10 @@ export default function PurchasesPage() {
                     <TableCell className="font-medium">{order.number}</TableCell>
                     <TableCell>{formatDate(order.createdAt)}</TableCell>
                     <TableCell>
-                      <Badge variant={STATUS_LABELS[order.status]?.variant || "secondary"}>
+                      <Badge 
+                        variant={STATUS_LABELS[order.status]?.variant || "outline"}
+                        className={STATUS_LABELS[order.status]?.className}
+                      >
                         {STATUS_LABELS[order.status]?.label || order.status}
                       </Badge>
                     </TableCell>
