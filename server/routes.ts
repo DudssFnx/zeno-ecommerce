@@ -1705,6 +1705,7 @@ export async function registerRoutes(
       }
       res.json(user);
     } catch (error) {
+      console.error("Error updating user:", error);
       res.status(500).json({ message: "Failed to update user" });
     }
   });
