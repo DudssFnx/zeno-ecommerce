@@ -4900,12 +4900,22 @@ export async function registerRoutes(
     }
   });
 
-  // Delete purchase order (only DRAFT)
+  // Delete purchase order (only DRAFT or STOCK_REVERSED, never STOCK_POSTED)
   app.delete("/api/purchases/:id", isAuthenticated, isAdmin, async (req, res) => {
     try {
+      const order = await storage.getPurchaseOrder(parseInt(req.params.id));
+      if (!order) {
+        return res.status(404).json({ message: "Pedido nao encontrado" });
+      }
+      if (order.status === "STOCK_POSTED") {
+        return res.status(400).json({ message: "Nao e possivel excluir pedidos com estoque lancado. Estorne o estoque primeiro." });
+      }
+      if (order.status !== "DRAFT" && order.status !== "STOCK_REVERSED") {
+        return res.status(400).json({ message: "Apenas rascunhos ou pedidos com estoque estornado podem ser excluidos" });
+      }
       const deleted = await storage.deletePurchaseOrder(parseInt(req.params.id));
       if (!deleted) {
-        return res.status(400).json({ message: "Apenas rascunhos podem ser excluidos" });
+        return res.status(400).json({ message: "Erro ao excluir pedido" });
       }
       res.status(204).send();
     } catch (error) {
