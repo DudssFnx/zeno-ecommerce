@@ -41,6 +41,13 @@ interface OrderItem {
   lineTotal: number;
 }
 
+interface ProductsResponse {
+  products: Product[];
+  total: number;
+  page: number;
+  totalPages: number;
+}
+
 export default function PurchaseNewPage() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
@@ -54,9 +61,11 @@ export default function PurchaseNewPage() {
     queryKey: ["/api/suppliers"],
   });
 
-  const { data: products = [] } = useQuery<Product[]>({
+  const { data: productsData } = useQuery<ProductsResponse>({
     queryKey: ["/api/products"],
   });
+
+  const products = productsData?.products || [];
 
   const filteredProducts = products.filter(
     (p) =>
