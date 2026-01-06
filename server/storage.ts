@@ -217,6 +217,7 @@ export interface IStorage {
   updatePurchaseOrder(id: number, order: Partial<InsertPurchaseOrder>): Promise<PurchaseOrder | undefined>;
   deletePurchaseOrder(id: number): Promise<boolean>;
   finalizePurchaseOrder(id: number): Promise<{ success: boolean; error?: string }>;
+  resetPurchaseOrderToPending(id: number): Promise<{ success: boolean; error?: string }>;
   postPurchaseOrderStock(id: number): Promise<{ success: boolean; error?: string }>;
   reversePurchaseOrderStock(id: number): Promise<{ success: boolean; error?: string }>;
 
@@ -3332,7 +3333,8 @@ export class DatabaseStorage implements IStorage {
 
   async deletePurchaseOrder(id: number): Promise<boolean> {
     const order = await this.getPurchaseOrder(id);
-    if (!order || order.status !== 'DRAFT') return false;
+    if (!order) return false;
+    if (order.status === 'STOCK_POSTED') return false;
     await db.delete(purchaseOrderItems).where(eq(purchaseOrderItems.purchaseOrderId, id));
     await db.delete(purchaseOrders).where(eq(purchaseOrders.id, id));
     return true;
@@ -3351,9 +3353,22 @@ export class DatabaseStorage implements IStorage {
     return { success: true };
   }
 
+  async resetPurchaseOrderToPending(id: number): Promise<{ success: boolean; error?: string }> {
+    const order = await this.getPurchaseOrder(id);
+    if (!order) return { success: false, error: 'Pedido nao encontrado' };
+    if (order.status !== 'STOCK_REVERSED') {
+      return { success: false, error: 'Somente pedidos com estoque estornado podem ser marcados como pendente' };
+    }
+    await this.updatePurchaseOrder(id, { status: 'FINALIZED' } as any);
+    return { success: true };
+  }
+
   async postPurchaseOrderStock(id: number): Promise<{ success: boolean; error?: string }> {
     const order = await this.getPurchaseOrder(id);
     if (!order) return { success: false, error: 'Pedido nao encontrado' };
+    if (order.status === 'STOCK_REVERSED') {
+      return { success: false, error: 'Para lancar o estoque, e obrigatorio que o pedido esteja primeiro em Lancamento Pendente.' };
+    }
     if (order.status !== 'DRAFT' && order.status !== 'FINALIZED') {
       return { success: false, error: 'Estoque ja foi lancado para este pedido' };
     }

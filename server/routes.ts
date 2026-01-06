@@ -4939,6 +4939,21 @@ export async function registerRoutes(
     }
   });
 
+  // Reset to pending (marcar como pendente)
+  app.post("/api/purchases/:id/reset-pending", isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const result = await storage.resetPurchaseOrderToPending(parseInt(req.params.id));
+      if (!result.success) {
+        return res.status(400).json({ message: result.error });
+      }
+      const updated = await storage.getPurchaseOrder(parseInt(req.params.id));
+      res.json(updated);
+    } catch (error) {
+      console.error("Error resetting to pending:", error);
+      res.status(500).json({ message: "Erro ao marcar como pendente" });
+    }
+  });
+
   // Post stock (lancar estoque)
   app.post("/api/purchases/:id/post-stock", isAuthenticated, isAdmin, async (req, res) => {
     try {
@@ -4997,10 +5012,10 @@ export async function registerRoutes(
       
       // Status and date
       const statusLabels: Record<string, string> = {
-        DRAFT: "Rascunho",
-        FINALIZED: "Finalizado",
+        DRAFT: "Lancamento Pendente",
+        FINALIZED: "Lancamento Pendente",
         STOCK_POSTED: "Estoque Lancado",
-        STOCK_REVERSED: "Estoque Devolvido"
+        STOCK_REVERSED: "Estoque Estornado"
       };
       doc.fontSize(10).font("Helvetica");
       doc.text(`Status: ${statusLabels[order.status] || order.status}`);
