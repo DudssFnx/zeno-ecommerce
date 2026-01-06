@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/contexts/AuthContext";
@@ -15,6 +15,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { Check, ChevronsUpDown } from "lucide-react";
+import { cn } from "@/lib/utils";
 import {
   Wallet,
   Users,
@@ -847,10 +851,25 @@ function NewDebtModal({
 }) {
   const { toast } = useToast();
   const [selectedCustomer, setSelectedCustomer] = useState<string>(preselectedCustomerId || "");
+  const [customerSearchOpen, setCustomerSearchOpen] = useState(false);
+  const [customerSearch, setCustomerSearch] = useState("");
   const [type, setType] = useState<string>("DEBITO");
   const [amount, setAmount] = useState<string>("");
   const [description, setDescription] = useState<string>("");
   const [dueDate, setDueDate] = useState<string>("");
+
+  const filteredCustomers = useMemo(() => {
+    if (!customerSearch) return customers;
+    const search = customerSearch.toLowerCase();
+    return customers.filter(c => 
+      c.firstName?.toLowerCase().includes(search) ||
+      c.lastName?.toLowerCase().includes(search) ||
+      c.company?.toLowerCase().includes(search) ||
+      c.email?.toLowerCase().includes(search)
+    );
+  }, [customers, customerSearch]);
+
+  const selectedCustomerData = customers.find(c => c.id === selectedCustomer);
 
   const createMutation = useMutation({
     mutationFn: async (data: { userId: string; type: string; amount: string; description?: string; dueDate?: string }) => {
@@ -870,6 +889,7 @@ function NewDebtModal({
 
   const resetForm = () => {
     setSelectedCustomer("");
+    setCustomerSearch("");
     setType("DEBITO");
     setAmount("");
     setDescription("");
@@ -903,18 +923,66 @@ function NewDebtModal({
         <div className="space-y-4">
           <div>
             <Label>Cliente *</Label>
-            <Select value={selectedCustomer} onValueChange={setSelectedCustomer}>
-              <SelectTrigger data-testid="select-new-debt-customer">
-                <SelectValue placeholder="Selecione um cliente" />
-              </SelectTrigger>
-              <SelectContent>
-                {customers.map((customer) => (
-                  <SelectItem key={customer.id} value={customer.id}>
-                    {customer.firstName} {customer.lastName} {customer.company && `(${customer.company})`}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Popover open={customerSearchOpen} onOpenChange={setCustomerSearchOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  role="combobox"
+                  aria-expanded={customerSearchOpen}
+                  className="w-full justify-between font-normal"
+                  data-testid="select-new-debt-customer"
+                >
+                  {selectedCustomerData ? (
+                    <span className="truncate">
+                      {selectedCustomerData.firstName} {selectedCustomerData.lastName}
+                      {selectedCustomerData.company && ` (${selectedCustomerData.company})`}
+                    </span>
+                  ) : (
+                    <span className="text-muted-foreground">Buscar cliente...</span>
+                  )}
+                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-full p-0" align="start">
+                <Command shouldFilter={false}>
+                  <CommandInput
+                    placeholder="Digite para buscar..."
+                    value={customerSearch}
+                    onValueChange={setCustomerSearch}
+                    data-testid="input-search-customer"
+                  />
+                  <CommandList>
+                    <CommandEmpty>Nenhum cliente encontrado.</CommandEmpty>
+                    <CommandGroup>
+                      {filteredCustomers.slice(0, 50).map((customer) => (
+                        <CommandItem
+                          key={customer.id}
+                          value={customer.id}
+                          onSelect={() => {
+                            setSelectedCustomer(customer.id);
+                            setCustomerSearchOpen(false);
+                          }}
+                          data-testid={`option-customer-${customer.id}`}
+                        >
+                          <Check
+                            className={cn(
+                              "mr-2 h-4 w-4",
+                              selectedCustomer === customer.id ? "opacity-100" : "opacity-0"
+                            )}
+                          />
+                          <div className="flex flex-col">
+                            <span>{customer.firstName} {customer.lastName}</span>
+                            {customer.company && (
+                              <span className="text-xs text-muted-foreground">{customer.company}</span>
+                            )}
+                          </div>
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
           </div>
 
           <div>
@@ -1081,8 +1149,9 @@ function PaymentModal({
                 data-testid="input-payment-amount"
               />
               <Button
-                variant="link"
-                className="h-auto p-0 text-xs"
+                variant="ghost"
+                size="sm"
+                className="h-auto px-0 text-xs text-muted-foreground"
                 onClick={() => setAmount(pendingAmount.toFixed(2))}
               >
                 Preencher valor total ({formatPrice(pendingAmount)})
