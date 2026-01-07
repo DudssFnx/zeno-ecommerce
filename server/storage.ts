@@ -3376,23 +3376,24 @@ export class DatabaseStorage implements IStorage {
     const items = await this.getPurchaseOrderItems(id);
     if (items.length === 0) return { success: false, error: 'Adicione ao menos um item antes de lancar estoque' };
     
-    // Atomic transaction
-    for (const item of items) {
-      // Create stock movement
-      await db.insert(stockMovements).values({
-        type: 'IN',
-        reason: 'PURCHASE_POST',
-        refType: 'PURCHASE_ORDER',
-        refId: id,
-        productId: item.productId,
-        qty: item.qty,
-        unitCost: item.unitCost,
-      });
-      // Update product stock
-      await db.update(products)
+    // Batch insert stock movements
+    const movementValues = items.map(item => ({
+      type: 'IN' as const,
+      reason: 'PURCHASE_POST',
+      refType: 'PURCHASE_ORDER',
+      refId: id,
+      productId: item.productId,
+      qty: item.qty,
+      unitCost: item.unitCost,
+    }));
+    await db.insert(stockMovements).values(movementValues);
+
+    // Update all product stocks in parallel
+    await Promise.all(items.map(item => 
+      db.update(products)
         .set({ stock: sql`${products.stock} + ${parseInt(item.qty)}` })
-        .where(eq(products.id, item.productId));
-    }
+        .where(eq(products.id, item.productId))
+    ));
 
     await this.updatePurchaseOrder(id, { status: 'STOCK_POSTED', postedAt: new Date() } as any);
     return { success: true };
@@ -3405,33 +3406,40 @@ export class DatabaseStorage implements IStorage {
 
     const items = await this.getPurchaseOrderItems(id);
     
-    // Check for negative stock
-    for (const item of items) {
+    // Check for negative stock in parallel
+    const productChecks = await Promise.all(items.map(async item => {
       const product = await this.getProduct(item.productId);
-      if (!product) continue;
+      if (!product) return null;
       const newStock = product.stock - parseInt(item.qty);
       if (newStock < 0) {
-        return { success: false, error: `Estoque insuficiente para ${product.name}. Estoque atual: ${product.stock}` };
+        return { error: true, name: product.name, stock: product.stock };
       }
+      return null;
+    }));
+    
+    const errorCheck = productChecks.find(p => p?.error);
+    if (errorCheck) {
+      return { success: false, error: `Estoque insuficiente para ${errorCheck.name}. Estoque atual: ${errorCheck.stock}` };
     }
 
-    // Atomic transaction
-    for (const item of items) {
-      // Create stock movement (OUT)
-      await db.insert(stockMovements).values({
-        type: 'OUT',
-        reason: 'PURCHASE_REVERSE',
-        refType: 'PURCHASE_ORDER',
-        refId: id,
-        productId: item.productId,
-        qty: item.qty,
-        unitCost: item.unitCost,
-      });
-      // Update product stock
-      await db.update(products)
+    // Batch insert stock movements
+    const movementValues = items.map(item => ({
+      type: 'OUT' as const,
+      reason: 'PURCHASE_REVERSE',
+      refType: 'PURCHASE_ORDER',
+      refId: id,
+      productId: item.productId,
+      qty: item.qty,
+      unitCost: item.unitCost,
+    }));
+    await db.insert(stockMovements).values(movementValues);
+
+    // Update all product stocks in parallel
+    await Promise.all(items.map(item => 
+      db.update(products)
         .set({ stock: sql`${products.stock} - ${parseInt(item.qty)}` })
-        .where(eq(products.id, item.productId));
-    }
+        .where(eq(products.id, item.productId))
+    ));
 
     await this.updatePurchaseOrder(id, { status: 'STOCK_REVERSED', reversedAt: new Date() } as any);
     return { success: true };
