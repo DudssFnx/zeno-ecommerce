@@ -81,7 +81,7 @@ const allMenuItems: MenuItem[] = [
   },
   { title: "Categorias", url: "/categories", icon: Grid3X3, moduleKey: "catalog" },
   { title: "Catalogo", url: "/catalog", icon: Package, moduleKey: "catalog" },
-  { title: "Pedidos", url: "/orders", icon: ClipboardList, moduleKey: "orders" },
+  { title: "Pedido de Vendas", url: "/orders", icon: ClipboardList, moduleKey: "orders" },
   { title: "Produtos", url: "/products", icon: Package, moduleKey: "products" },
   { title: "Clientes", url: "/customers", icon: UserCheck, moduleKey: "customers" },
   { title: "Usuarios", url: "/users", icon: Users, moduleKey: "customers" },
