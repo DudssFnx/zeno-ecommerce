@@ -1182,6 +1182,56 @@ export async function registerRoutes(
     },
   );
 
+  // Unfaturar - Return from FATURADO to PEDIDO_GERADO (restore reserved stock)
+  app.post(
+    "/api/orders/:id/unfaturar",
+    isAuthenticated,
+    isAdminOrSales,
+    async (req: any, res) => {
+      try {
+        const orderId = parseInt(req.params.id);
+        const order = await storage.getOrder(orderId);
+
+        if (!order) {
+          return res.status(404).json({ message: "Pedido não encontrado" });
+        }
+
+        if (order.status !== "FATURADO" && order.status !== "PEDIDO_FATURADO") {
+          return res
+            .status(400)
+            .json({
+              message: "Apenas pedidos faturados podem ser retornados para Pedido Gerado",
+            });
+        }
+
+        // Restore reserved stock (add back to reservedStock and stock)
+        const items = await storage.getOrderItems(orderId);
+        for (const item of items) {
+          await db
+            .update(products)
+            .set({
+              stock: sql`stock + ${item.quantity}`,
+              reservedStock: sql`reserved_stock + ${item.quantity}`,
+            })
+            .where(eq(products.id, item.productId));
+        }
+
+        const updatedOrder = await storage.updateOrder(orderId, {
+          status: "PEDIDO_GERADO",
+          invoicedAt: null,
+          invoicedBy: null,
+        });
+
+        res.json(updatedOrder);
+      } catch (error) {
+        console.error("Error unfaturar order:", error);
+        res
+          .status(500)
+          .json({ message: "Erro ao retornar pedido para Pedido Gerado" });
+      }
+    },
+  );
+
   app.put(
     "/api/orders/:id/items",
     isAuthenticated,
@@ -1218,6 +1268,7 @@ export async function registerRoutes(
         }
 
         if (
+          existingOrder.status !== "ORCAMENTO" &&
           existingOrder.status !== "ORCAMENTO_CONCLUIDO" &&
           existingOrder.status !== "ORCAMENTO_ABERTO"
         ) {

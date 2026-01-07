@@ -63,6 +63,7 @@ const statusLabels: Record<string, string> = {
   ORCAMENTO_ABERTO: "Orçamento Aberto",
   ORCAMENTO_CONCLUIDO: "Orçamento Enviado",
   PEDIDO_GERADO: "Pedido Gerado",
+  FATURADO: "Faturado",
   PEDIDO_FATURADO: "Faturado",
   PEDIDO_CANCELADO: "Cancelado",
   CANCELADO: "Cancelado",
@@ -79,6 +80,7 @@ const statusVariants: Record<string, "default" | "secondary" | "destructive" | "
   ORCAMENTO_CONCLUIDO: "outline",
   CANCELADO: "destructive",
   PEDIDO_GERADO: "default",
+  FATURADO: "default",
   PEDIDO_FATURADO: "default",
   PEDIDO_CANCELADO: "destructive",
   pending: "secondary",
@@ -328,6 +330,31 @@ export default function OrderDetailsPage() {
     },
   });
 
+  const unfaturarMutation = useMutation({
+    mutationFn: async () => {
+      await apiRequest("POST", `/api/orders/${orderId}/unfaturar`, {});
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/orders", orderId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/products"] });
+      toast({
+        title: "Sucesso",
+        description: "Pedido retornado para Pedido Gerado. Estoque restaurado.",
+      });
+    },
+    onError: (err: Error) => {
+      const desc = isAdmin 
+        ? (err.message || "Não foi possível retornar o pedido.")
+        : "Não foi possível retornar o pedido. Contate o administrador.";
+      toast({
+        title: "Erro",
+        description: desc,
+        variant: "destructive",
+      });
+    },
+  });
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-24">
@@ -387,7 +414,7 @@ export default function OrderDetailsPage() {
   };
 
   const canEditItems = orderData?.status === 'ORCAMENTO' || orderData?.status === 'ORCAMENTO_CONCLUIDO' || orderData?.status === 'ORCAMENTO_ABERTO';
-  const isFaturado = orderData?.status === 'PEDIDO_FATURADO';
+  const isFaturado = orderData?.status === 'PEDIDO_FATURADO' || orderData?.status === 'FATURADO';
   const isPedidoGerado = orderData?.status === 'PEDIDO_GERADO';
 
   const startEditMode = () => {
@@ -507,11 +534,24 @@ export default function OrderDetailsPage() {
         <div className="md:col-span-2 space-y-6">
           {isFaturado && (
             <Card className="border-destructive/50 bg-destructive/5">
-              <CardContent className="flex items-center gap-3 py-4">
-                <AlertTriangle className="h-5 w-5 text-destructive flex-shrink-0" />
-                <p className="text-sm text-destructive font-medium" data-testid="alert-faturado">
-                  Pedidos faturados não podem ser modificados.
-                </p>
+              <CardContent className="flex items-center justify-between gap-3 py-4">
+                <div className="flex items-center gap-3">
+                  <AlertTriangle className="h-5 w-5 text-destructive flex-shrink-0" />
+                  <p className="text-sm text-destructive font-medium" data-testid="alert-faturado">
+                    Pedido faturado. Para editar, retorne para Pedido Gerado e depois para Orçamento.
+                  </p>
+                </div>
+                {canEditStatus && (
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => unfaturarMutation.mutate()}
+                    disabled={unfaturarMutation.isPending}
+                    data-testid="button-unfaturar"
+                  >
+                    {unfaturarMutation.isPending ? "Retornando..." : "Retornar para Pedido Gerado"}
+                  </Button>
+                )}
               </CardContent>
             </Card>
           )}
