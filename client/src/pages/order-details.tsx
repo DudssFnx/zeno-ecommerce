@@ -13,7 +13,8 @@ import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft, Loader2, Package, User, Calendar, FileText, DollarSign, Printer, MapPin, Download, Pencil, Plus, Trash2, Search, X, AlertTriangle, ChevronDown, MessageCircle } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import type { Order, OrderItem, Product as SchemaProduct } from "@shared/schema";
+import type { Order, OrderItem, Product as SchemaProduct, PaymentType } from "@shared/schema";
+import { CreditCard } from "lucide-react";
 
 interface ProductInfo {
   id: number;
@@ -111,6 +112,14 @@ export default function OrderDetailsPage() {
     enabled: isEditMode,
   });
 
+  const { data: paymentTypes } = useQuery<PaymentType[]>({
+    queryKey: ["/api/payment-types"],
+  });
+
+  const activePaymentTypes = useMemo(() => {
+    return paymentTypes?.filter(pt => pt.active) || [];
+  }, [paymentTypes]);
+
   const { editSubtotal, editDiscount, editTotal } = useMemo(() => {
     let subtotal = 0;
     let total = 0;
@@ -172,6 +181,27 @@ export default function OrderDetailsPage() {
       toast({
         title: "Erro",
         description: "Não foi possível atualizar o status do pedido.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const updatePaymentTypeMutation = useMutation({
+    mutationFn: async (paymentTypeId: number) => {
+      await apiRequest("PATCH", `/api/orders/${orderId}`, { paymentTypeId });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/orders", orderId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
+      toast({
+        title: "Forma de Pagamento Atualizada",
+        description: "A forma de pagamento foi alterada com sucesso.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Erro",
+        description: "Não foi possível atualizar a forma de pagamento.",
         variant: "destructive",
       });
     },
@@ -687,6 +717,44 @@ export default function OrderDetailsPage() {
                     </div>
                   )}
                   <Separator className="my-4" />
+                  
+                  {canEditStatus && (
+                    <div className="space-y-2 mb-4">
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <CreditCard className="h-4 w-4" />
+                        <span>Forma de Pagamento</span>
+                      </div>
+                      <Select
+                        value={orderData.paymentTypeId?.toString() || ""}
+                        onValueChange={(val) => {
+                          if (val) updatePaymentTypeMutation.mutate(parseInt(val));
+                        }}
+                        disabled={updatePaymentTypeMutation.isPending}
+                      >
+                        <SelectTrigger data-testid="select-payment-type">
+                          <SelectValue placeholder="Selecione a forma de pagamento" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {activePaymentTypes.map((pt) => (
+                            <SelectItem key={pt.id} value={pt.id.toString()} data-testid={`payment-type-${pt.id}`}>
+                              {pt.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+
+                  {!canEditStatus && orderData.paymentTypeId && (
+                    <div className="flex items-center gap-2 mb-4 text-sm">
+                      <CreditCard className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-muted-foreground">Pagamento:</span>
+                      <span className="font-medium">
+                        {activePaymentTypes.find(pt => pt.id === orderData.paymentTypeId)?.name || '-'}
+                      </span>
+                    </div>
+                  )}
+
                   <div className="flex justify-between items-center">
                     <span className="font-medium">Total do Pedido</span>
                     <span className="text-lg font-semibold" data-testid="text-order-total">R$ {parseFloat(orderData.total).toFixed(2)}</span>
