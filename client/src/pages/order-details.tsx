@@ -59,11 +59,13 @@ interface OrderWithDetails extends Order {
 }
 
 const statusLabels: Record<string, string> = {
+  ORCAMENTO: "Orçamento",
   ORCAMENTO_ABERTO: "Orçamento Aberto",
   ORCAMENTO_CONCLUIDO: "Orçamento Enviado",
   PEDIDO_GERADO: "Pedido Gerado",
   PEDIDO_FATURADO: "Faturado",
   PEDIDO_CANCELADO: "Cancelado",
+  CANCELADO: "Cancelado",
   pending: "Pendente",
   approved: "Aprovado",
   processing: "Processando",
@@ -72,8 +74,10 @@ const statusLabels: Record<string, string> = {
 };
 
 const statusVariants: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
+  ORCAMENTO: "secondary",
   ORCAMENTO_ABERTO: "secondary",
   ORCAMENTO_CONCLUIDO: "outline",
+  CANCELADO: "destructive",
   PEDIDO_GERADO: "default",
   PEDIDO_FATURADO: "default",
   PEDIDO_CANCELADO: "destructive",
@@ -382,7 +386,7 @@ export default function OrderDetailsPage() {
     return parts;
   };
 
-  const canEditItems = orderData?.status === 'ORCAMENTO_CONCLUIDO' || orderData?.status === 'ORCAMENTO_ABERTO';
+  const canEditItems = orderData?.status === 'ORCAMENTO' || orderData?.status === 'ORCAMENTO_CONCLUIDO' || orderData?.status === 'ORCAMENTO_ABERTO';
   const isFaturado = orderData?.status === 'PEDIDO_FATURADO';
   const isPedidoGerado = orderData?.status === 'PEDIDO_GERADO';
 
