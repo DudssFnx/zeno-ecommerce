@@ -435,69 +435,73 @@ export default function PDVPage() {
                     return (
                       <div 
                         key={index} 
-                        className="flex items-center gap-3 p-2 rounded-lg bg-muted/30"
+                        className="p-2 rounded-lg bg-muted/30"
                         data-testid={`card-pdv-cart-item-${index}`}
                       >
-                        <div className="w-10 h-10 bg-muted rounded flex items-center justify-center overflow-hidden flex-shrink-0">
-                          {imageUrl ? (
-                            <img 
-                              src={imageUrl} 
-                              alt={item.product.name}
-                              className="w-full h-full object-cover"
+                        <div className="flex items-center gap-2 mb-2">
+                          <div className="w-10 h-10 bg-muted rounded flex items-center justify-center overflow-hidden flex-shrink-0">
+                            {imageUrl ? (
+                              <img 
+                                src={imageUrl} 
+                                alt={item.product.name}
+                                className="w-full h-full object-cover"
+                              />
+                            ) : (
+                              <Package className="h-4 w-4 text-muted-foreground" />
+                            )}
+                          </div>
+                          
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium text-xs truncate">{item.product.name}</p>
+                            <p className="text-xs text-muted-foreground">{formatPrice(parseFloat(item.product.price))}</p>
+                          </div>
+                          
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className="h-6 w-6 text-muted-foreground hover:text-destructive flex-shrink-0"
+                            onClick={() => handleRemoveFromCart(index)}
+                            data-testid={`button-pdv-remove-item-${index}`}
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </div>
+                        
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-1 flex-shrink-0">
+                            <Input
+                              type="number"
+                              min="1"
+                              value={item.quantity}
+                              onChange={(e) => {
+                                const val = parseInt(e.target.value) || 1;
+                                handleUpdateQuantity(index, Math.max(1, val));
+                              }}
+                              className="w-14 h-7 text-center text-sm p-1 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                              data-testid={`input-pdv-cart-qty-${index}`}
                             />
-                          ) : (
-                            <Package className="h-4 w-4 text-muted-foreground" />
-                          )}
+                          </div>
+                          
+                          <div className="flex items-center gap-1 flex-shrink-0">
+                            <span className="text-xs text-muted-foreground">R$</span>
+                            <Input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={item.unitPrice}
+                              onChange={(e) => {
+                                const val = parseFloat(e.target.value) || 0;
+                                handleUpdatePrice(index, Math.max(0, val));
+                              }}
+                              className="w-16 h-7 text-right text-sm p-1 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                              data-testid={`input-pdv-cart-price-${index}`}
+                            />
+                          </div>
+                          
+                          <div className="text-right flex-shrink-0">
+                            <p className="font-semibold text-sm">{formatPrice(item.subtotal)}</p>
+                          </div>
                         </div>
-                        
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium text-xs truncate">{item.product.name}</p>
-                          <p className="text-xs text-muted-foreground">{formatPrice(item.unitPrice)}</p>
-                        </div>
-                        
-                        <div className="flex items-center gap-1">
-                          <Input
-                            type="number"
-                            min="1"
-                            value={item.quantity}
-                            onChange={(e) => {
-                              const val = parseInt(e.target.value) || 1;
-                              handleUpdateQuantity(index, Math.max(1, val));
-                            }}
-                            className="w-12 h-7 text-center text-sm p-1 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                            data-testid={`input-pdv-cart-qty-${index}`}
-                          />
-                        </div>
-                        
-                        <div className="flex items-center gap-1">
-                          <span className="text-xs text-muted-foreground">R$</span>
-                          <Input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            value={item.unitPrice}
-                            onChange={(e) => {
-                              const val = parseFloat(e.target.value) || 0;
-                              handleUpdatePrice(index, Math.max(0, val));
-                            }}
-                            className="w-16 h-7 text-right text-sm p-1 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                            data-testid={`input-pdv-cart-price-${index}`}
-                          />
-                        </div>
-                        
-                        <div className="text-right min-w-[70px]">
-                          <p className="font-semibold text-sm">{formatPrice(item.subtotal)}</p>
-                        </div>
-                        
-                        <Button 
-                          variant="ghost" 
-                          size="icon" 
-                          className="h-6 w-6 text-muted-foreground hover:text-destructive"
-                          onClick={() => handleRemoveFromCart(index)}
-                          data-testid={`button-pdv-remove-item-${index}`}
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </Button>
                       </div>
                     );
                   })}

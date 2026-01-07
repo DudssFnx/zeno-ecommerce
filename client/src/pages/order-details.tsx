@@ -755,10 +755,35 @@ export default function OrderDetailsPage() {
                     </div>
                   )}
 
-                  <div className="flex justify-between items-center">
-                    <span className="font-medium">Total do Pedido</span>
-                    <span className="text-lg font-semibold" data-testid="text-order-total">R$ {parseFloat(orderData.total).toFixed(2)}</span>
-                  </div>
+                  {(() => {
+                    const subtotal = itemsWithProducts.reduce((acc, item) => {
+                      const originalPrice = item.product?.price ? parseFloat(item.product.price) : parseFloat(item.price);
+                      return acc + (originalPrice * item.quantity);
+                    }, 0);
+                    const total = parseFloat(orderData.total);
+                    const discount = subtotal - total;
+                    
+                    return (
+                      <div className="space-y-2">
+                        {discount > 0.01 && (
+                          <>
+                            <div className="flex justify-between text-sm">
+                              <span className="text-muted-foreground">Subtotal</span>
+                              <span data-testid="text-order-subtotal">R$ {subtotal.toFixed(2)}</span>
+                            </div>
+                            <div className="flex justify-between text-sm text-green-600">
+                              <span>Desconto</span>
+                              <span data-testid="text-order-discount">- R$ {discount.toFixed(2)}</span>
+                            </div>
+                          </>
+                        )}
+                        <div className="flex justify-between items-center pt-1">
+                          <span className="font-medium">Total do Pedido</span>
+                          <span className="text-lg font-semibold" data-testid="text-order-total">R$ {total.toFixed(2)}</span>
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </>
               )}
             </CardContent>
