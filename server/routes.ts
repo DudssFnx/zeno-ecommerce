@@ -1092,6 +1092,27 @@ export async function registerRoutes(
           return res.status(400).json({ message: result.error });
         }
         const order = await storage.getOrder(orderId);
+        
+        // Check if payment type is "store credit" (fiado) and create automatic debit entry
+        if (order && order.paymentTypeId) {
+          const paymentType = await storage.getPaymentType(parseInt(order.paymentTypeId));
+          if (paymentType && paymentType.isStoreCredit && order.userId) {
+            // Create debit entry in customer credits (Contas a Receber)
+            await storage.createCustomerCredit({
+              userId: order.userId,
+              orderId: order.id,
+              type: "DEBITO",
+              amount: order.total,
+              paidAmount: "0",
+              description: `Pedido #${order.orderNumber} - ${paymentType.name}`,
+              status: "PENDENTE",
+              dueDate: null,
+              createdBy: userId,
+            });
+            console.log(`Created automatic debit entry for order ${order.orderNumber} (store credit payment)`);
+          }
+        }
+        
         res.json(order);
       } catch (error) {
         res.status(500).json({ message: "Erro ao reservar estoque" });

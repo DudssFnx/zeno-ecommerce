@@ -15,6 +15,7 @@ export const paymentTypes = pgTable("payment_types", {
   compensationDays: decimal("compensation_days", { precision: 5, scale: 0 }),
   isIntegration: boolean("is_integration").notNull().default(false),
   integrationId: text("integration_id"),
+  isStoreCredit: boolean("is_store_credit").notNull().default(false),
   sortOrder: decimal("sort_order", { precision: 5, scale: 0 }).default("0"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),

@@ -23,13 +23,22 @@ export default function PaymentsPage() {
   const [editingType, setEditingType] = useState<PaymentType | null>(null);
   const [editingIntegration, setEditingIntegration] = useState<PaymentIntegration | null>(null);
 
-  const [typeForm, setTypeForm] = useState({
+  const [typeForm, setTypeForm] = useState<{
+    name: string;
+    description: string;
+    active: boolean;
+    feeType: string;
+    feeValue: string;
+    compensationDays: string;
+    isStoreCredit: boolean;
+  }>({
     name: "",
     description: "",
     active: true,
     feeType: "" as "PERCENTUAL" | "FIXO" | "",
     feeValue: "",
     compensationDays: "",
+    isStoreCredit: false,
   });
 
   const [integrationForm, setIntegrationForm] = useState({
@@ -125,7 +134,7 @@ export default function PaymentsPage() {
   });
 
   function resetTypeForm() {
-    setTypeForm({ name: "", description: "", active: true, feeType: "", feeValue: "", compensationDays: "" });
+    setTypeForm({ name: "", description: "", active: true, feeType: "", feeValue: "", compensationDays: "", isStoreCredit: false });
     setEditingType(null);
   }
 
@@ -143,6 +152,7 @@ export default function PaymentsPage() {
       feeType: (pt.feeType as "PERCENTUAL" | "FIXO" | "") || "",
       feeValue: pt.feeValue || "",
       compensationDays: pt.compensationDays || "",
+      isStoreCredit: pt.isStoreCredit ?? false,
     });
     setIsTypeDialogOpen(true);
   }
@@ -168,6 +178,7 @@ export default function PaymentsPage() {
       feeType: typeForm.feeType || null,
       feeValue: typeForm.feeValue || null,
       compensationDays: typeForm.compensationDays || null,
+      isStoreCredit: typeForm.isStoreCredit,
     };
     if (editingType) {
       updateTypeMutation.mutate({ id: editingType.id, data });
@@ -310,6 +321,18 @@ export default function PaymentsPage() {
                         data-testid="input-compensation-days"
                       />
                     </div>
+                    <div className="flex items-center gap-2 p-3 bg-muted rounded-md">
+                      <Switch
+                        id="isStoreCredit"
+                        checked={typeForm.isStoreCredit}
+                        onCheckedChange={(checked) => setTypeForm({ ...typeForm, isStoreCredit: checked })}
+                        data-testid="switch-is-store-credit"
+                      />
+                      <div>
+                        <Label htmlFor="isStoreCredit" className="font-medium">Crédito em Loja (Fiado)</Label>
+                        <p className="text-xs text-muted-foreground">Gera débito automaticamente no financeiro do cliente</p>
+                      </div>
+                    </div>
                     <DialogFooter>
                       <Button type="button" variant="outline" onClick={() => setIsTypeDialogOpen(false)}>Cancelar</Button>
                       <Button type="submit" disabled={createTypeMutation.isPending || updateTypeMutation.isPending} data-testid="button-save-payment-type">
@@ -349,6 +372,9 @@ export default function PaymentsPage() {
                               <Badge variant="secondary" className="text-xs"><CheckCircle2 className="w-3 h-3 mr-1" />Ativo</Badge>
                             ) : (
                               <Badge variant="outline" className="text-xs"><XCircle className="w-3 h-3 mr-1" />Inativo</Badge>
+                            )}
+                            {pt.isStoreCredit && (
+                              <Badge variant="default" className="text-xs">Fiado</Badge>
                             )}
                           </div>
                           {pt.description && <p className="text-sm text-muted-foreground truncate">{pt.description}</p>}
