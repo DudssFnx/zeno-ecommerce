@@ -18,7 +18,7 @@ import { Switch } from "@/components/ui/switch";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Plus, Search, Pencil, Trash2, Loader2, Building2, Phone, Mail, MapPin } from "lucide-react";
+import { Plus, Search, Pencil, Trash2, Loader2, Building2, Phone, Mail, MapPin, RefreshCw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -49,6 +49,7 @@ export default function SuppliersPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
+  const [cnpjLoading, setCnpjLoading] = useState(false);
 
   const form = useForm<SupplierFormValues>({
     resolver: zodResolver(supplierSchema),
@@ -74,6 +75,39 @@ export default function SuppliersPage() {
   const { data: suppliers = [], isLoading } = useQuery<Supplier[]>({
     queryKey: ['/api/suppliers'],
   });
+
+  const fetchCNPJData = async (cnpj: string) => {
+    const cleanCnpj = cnpj.replace(/\D/g, '');
+    if (cleanCnpj.length !== 14) {
+      toast({ title: "CNPJ invalido", description: "Digite um CNPJ com 14 digitos", variant: "destructive" });
+      return;
+    }
+    setCnpjLoading(true);
+    try {
+      const response = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cleanCnpj}`);
+      if (response.ok) {
+        const data = await response.json();
+        form.setValue("name", data.razao_social || "");
+        form.setValue("tradingName", data.nome_fantasia || "");
+        form.setValue("email", data.email || "");
+        form.setValue("phone", data.ddd_telefone_1 || "");
+        form.setValue("cep", data.cep || "");
+        form.setValue("address", data.logradouro || "");
+        form.setValue("addressNumber", data.numero || "");
+        form.setValue("complement", data.complemento || "");
+        form.setValue("neighborhood", data.bairro || "");
+        form.setValue("city", data.municipio || "");
+        form.setValue("state", data.uf || "");
+        toast({ title: "Dados carregados", description: "Informacoes da empresa preenchidas automaticamente" });
+      } else {
+        toast({ title: "CNPJ nao encontrado", description: "Nao foi possivel buscar os dados do CNPJ", variant: "destructive" });
+      }
+    } catch (error) {
+      toast({ title: "Erro ao buscar CNPJ", description: "Verifique sua conexao e tente novamente", variant: "destructive" });
+    } finally {
+      setCnpjLoading(false);
+    }
+  };
 
   const createMutation = useMutation({
     mutationFn: async (data: SupplierFormValues) => {
@@ -280,13 +314,34 @@ export default function SuppliersPage() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>CNPJ</FormLabel>
-                        <FormControl>
-                          <Input 
-                            {...field} 
-                            placeholder="00.000.000/0000-00"
-                            data-testid="input-supplier-cnpj" 
-                          />
-                        </FormControl>
+                        <div className="flex gap-2">
+                          <FormControl>
+                            <Input 
+                              {...field} 
+                              placeholder="00.000.000/0000-00"
+                              onBlur={() => {
+                                if (field.value && field.value.replace(/\D/g, '').length === 14) {
+                                  fetchCNPJData(field.value);
+                                }
+                              }}
+                              data-testid="input-supplier-cnpj" 
+                            />
+                          </FormControl>
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="outline"
+                            onClick={() => fetchCNPJData(field.value || "")}
+                            disabled={cnpjLoading}
+                            data-testid="button-fetch-cnpj"
+                          >
+                            {cnpjLoading ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <RefreshCw className="h-4 w-4" />
+                            )}
+                          </Button>
+                        </div>
                         <FormMessage />
                       </FormItem>
                     )}
