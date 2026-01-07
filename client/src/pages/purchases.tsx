@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
-import { Plus, Search, MoreVertical, Eye, Printer, Package } from "lucide-react";
+import { Plus, Search, MoreVertical, Eye, Printer, Package, PackagePlus, PackageMinus, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -27,6 +27,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import type { PurchaseOrder } from "@shared/schema";
 
 const STATUS_LABELS: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline"; className?: string }> = {
@@ -37,9 +39,11 @@ const STATUS_LABELS: Record<string, { label: string; variant: "default" | "secon
 };
 
 export default function PurchasesPage() {
+  const { toast } = useToast();
   const [, navigate] = useLocation();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [processingId, setProcessingId] = useState<number | null>(null);
 
   const { data: orders = [], isLoading } = useQuery<PurchaseOrder[]>({
     queryKey: ["/api/purchases", statusFilter, search],
@@ -50,6 +54,38 @@ export default function PurchasesPage() {
       const res = await fetch(`/api/purchases?${params.toString()}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch");
       return res.json();
+    },
+  });
+
+  const postStockMutation = useMutation({
+    mutationFn: async (id: number) => {
+      setProcessingId(id);
+      await apiRequest("POST", `/api/purchases/${id}/post-stock`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/purchases"] });
+      toast({ title: "Sucesso", description: "Estoque lancado com sucesso" });
+      setProcessingId(null);
+    },
+    onError: (error: any) => {
+      toast({ title: "Erro", description: error.message || "Falha ao lancar estoque", variant: "destructive" });
+      setProcessingId(null);
+    },
+  });
+
+  const reverseStockMutation = useMutation({
+    mutationFn: async (id: number) => {
+      setProcessingId(id);
+      await apiRequest("POST", `/api/purchases/${id}/reverse-stock`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/purchases"] });
+      toast({ title: "Sucesso", description: "Estoque estornado com sucesso" });
+      setProcessingId(null);
+    },
+    onError: (error: any) => {
+      toast({ title: "Erro", description: error.message || "Falha ao estornar estoque", variant: "destructive" });
+      setProcessingId(null);
     },
   });
 
@@ -145,7 +181,11 @@ export default function PurchasesPage() {
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button size="icon" variant="ghost" data-testid={`button-actions-${order.id}`}>
-                            <MoreVertical className="h-4 w-4" />
+                            {processingId === order.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <MoreVertical className="h-4 w-4" />
+                            )}
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
@@ -163,6 +203,34 @@ export default function PurchasesPage() {
                             <Printer className="mr-2 h-4 w-4" />
                             Imprimir
                           </DropdownMenuItem>
+                          {(order.status === "DRAFT" || order.status === "FINALIZED" || order.status === "STOCK_REVERSED") && (
+                            <DropdownMenuItem
+                              onClick={() => {
+                                if (confirm("Deseja lancar o estoque deste pedido?")) {
+                                  postStockMutation.mutate(order.id);
+                                }
+                              }}
+                              disabled={postStockMutation.isPending}
+                              data-testid={`menu-post-stock-${order.id}`}
+                            >
+                              <PackagePlus className="mr-2 h-4 w-4" />
+                              Lancar Estoque
+                            </DropdownMenuItem>
+                          )}
+                          {order.status === "STOCK_POSTED" && (
+                            <DropdownMenuItem
+                              onClick={() => {
+                                if (confirm("Deseja estornar o estoque deste pedido?")) {
+                                  reverseStockMutation.mutate(order.id);
+                                }
+                              }}
+                              disabled={reverseStockMutation.isPending}
+                              data-testid={`menu-reverse-stock-${order.id}`}
+                            >
+                              <PackageMinus className="mr-2 h-4 w-4" />
+                              Estornar Estoque
+                            </DropdownMenuItem>
+                          )}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </TableCell>
