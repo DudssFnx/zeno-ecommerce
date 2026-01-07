@@ -194,6 +194,9 @@ export const orders = pgTable("orders", {
   paymentMethod: text("payment_method"),
   paymentTypeId: integer("payment_type_id"),
   paymentNotes: text("payment_notes"),
+  // Fiado (store credit) installment configuration
+  // Format: [{ installment: 1, dueDate: "2024-01-15", amount: 100.00 }, ...]
+  fiadoInstallments: jsonb("fiado_installments"),
   notes: text("notes"),
   printed: boolean("printed").notNull().default(false),
   printedAt: timestamp("printed_at"),
