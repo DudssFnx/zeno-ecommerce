@@ -17,8 +17,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { 
   Search, 
-  Plus, 
-  Minus, 
   Trash2, 
   X, 
   User as UserIcon,
@@ -202,6 +200,14 @@ export default function PDVPage() {
     const unitPrice = newItems[index].unitPrice;
     const discountAmount = (unitPrice * newItems[index].discount) / 100;
     newItems[index].subtotal = (unitPrice - discountAmount) * newQuantity;
+    setCartItems(newItems);
+  };
+
+  const handleUpdatePrice = (index: number, newPrice: number) => {
+    const newItems = [...cartItems];
+    newItems[index].unitPrice = newPrice;
+    const discountAmount = (newPrice * newItems[index].discount) / 100;
+    newItems[index].subtotal = (newPrice - discountAmount) * newItems[index].quantity;
     setCartItems(newItems);
   };
 
@@ -450,25 +456,33 @@ export default function PDVPage() {
                         </div>
                         
                         <div className="flex items-center gap-1">
-                          <Button 
-                            variant="outline" 
-                            size="icon" 
-                            className="h-6 w-6"
-                            onClick={() => handleUpdateQuantity(index, item.quantity - 1)}
-                            data-testid={`button-pdv-cart-minus-${index}`}
-                          >
-                            <Minus className="h-3 w-3" />
-                          </Button>
-                          <span className="w-6 text-center text-sm font-medium">{item.quantity}</span>
-                          <Button 
-                            variant="outline" 
-                            size="icon" 
-                            className="h-6 w-6"
-                            onClick={() => handleUpdateQuantity(index, item.quantity + 1)}
-                            data-testid={`button-pdv-cart-plus-${index}`}
-                          >
-                            <Plus className="h-3 w-3" />
-                          </Button>
+                          <Input
+                            type="number"
+                            min="1"
+                            value={item.quantity}
+                            onChange={(e) => {
+                              const val = parseInt(e.target.value) || 1;
+                              handleUpdateQuantity(index, Math.max(1, val));
+                            }}
+                            className="w-12 h-7 text-center text-sm p-1 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                            data-testid={`input-pdv-cart-qty-${index}`}
+                          />
+                        </div>
+                        
+                        <div className="flex items-center gap-1">
+                          <span className="text-xs text-muted-foreground">R$</span>
+                          <Input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={item.unitPrice}
+                            onChange={(e) => {
+                              const val = parseFloat(e.target.value) || 0;
+                              handleUpdatePrice(index, Math.max(0, val));
+                            }}
+                            className="w-16 h-7 text-right text-sm p-1 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                            data-testid={`input-pdv-cart-price-${index}`}
+                          />
                         </div>
                         
                         <div className="text-right min-w-[70px]">
@@ -517,11 +531,11 @@ export default function PDVPage() {
                     {activePaymentTypes.map((pt) => (
                       <SelectItem key={pt.id} value={pt.id.toString()} data-testid={`select-item-payment-${pt.id}`}>
                         <span>{pt.name}</span>
-                        {pt.feePercentage && parseFloat(pt.feePercentage) > 0 && (
-                          <span className="text-muted-foreground ml-2">({pt.feePercentage}%)</span>
+                        {pt.feeType === "PERCENTUAL" && pt.feeValue && parseFloat(pt.feeValue) > 0 && (
+                          <span className="text-muted-foreground ml-2">({pt.feeValue}%)</span>
                         )}
-                        {pt.feeFixed && parseFloat(pt.feeFixed) > 0 && (
-                          <span className="text-muted-foreground ml-2">(+R${pt.feeFixed})</span>
+                        {pt.feeType === "FIXO" && pt.feeValue && parseFloat(pt.feeValue) > 0 && (
+                          <span className="text-muted-foreground ml-2">(+R${pt.feeValue})</span>
                         )}
                       </SelectItem>
                     ))}
