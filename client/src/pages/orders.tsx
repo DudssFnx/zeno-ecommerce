@@ -428,6 +428,9 @@ export default function OrdersPage() {
           await apiRequest("POST", `/api/orders/${orderId}/reserve`, {});
         } else if (newStatus === "FATURADO") {
           await apiRequest("POST", `/api/orders/${orderId}/invoice`, {});
+        } else if (newStatus === "ORCAMENTO") {
+          // Retornar para Orçamento - libera estoque reservado
+          await apiRequest("POST", `/api/orders/${orderId}/unreserve`, {});
         } else {
           await apiRequest("PATCH", `/api/orders/${orderId}`, { status: newStatus });
         }
@@ -847,6 +850,12 @@ export default function OrdersPage() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
+              <DropdownMenuItem 
+                onClick={() => handleBatchStatusChange('ORCAMENTO')}
+                data-testid="batch-status-orcamento"
+              >
+                Retornar para Orçamento
+              </DropdownMenuItem>
               <DropdownMenuItem 
                 onClick={() => handleBatchStatusChange('PEDIDO_GERADO')}
                 data-testid="batch-status-pedido-gerado"
