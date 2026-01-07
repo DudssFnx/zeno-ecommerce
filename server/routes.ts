@@ -786,17 +786,18 @@ export async function registerRoutes(
         const blingItems: blingService.BlingOrderItem[] = [];
         for (const item of items) {
           const product = await storage.getProduct(item.productId);
+          const itemPrice = item.unitPrice !== undefined ? item.unitPrice.toString() : product!.price;
           await storage.createOrderItem({
             orderId: order.id,
             productId: item.productId,
             quantity: item.quantity,
-            price: product!.price,
+            price: itemPrice,
           });
           blingItems.push({
             codigo: product!.sku,
             descricao: product!.name,
             quantidade: item.quantity,
-            valorUnidade: parseFloat(product!.price),
+            valorUnidade: parseFloat(itemPrice),
           });
         }
 
@@ -922,17 +923,18 @@ export async function registerRoutes(
       const blingItems: blingService.BlingOrderItem[] = [];
       for (const item of items) {
         const product = await storage.getProduct(item.productId);
+        const itemPrice = item.unitPrice !== undefined ? item.unitPrice.toString() : product!.price;
         await storage.createOrderItem({
           orderId: order.id,
           productId: item.productId,
           quantity: item.quantity,
-          price: product!.price,
+          price: itemPrice,
         });
         blingItems.push({
           codigo: product!.sku,
           descricao: product!.name,
           quantidade: item.quantity,
-          valorUnidade: parseFloat(product!.price),
+          valorUnidade: parseFloat(itemPrice),
         });
       }
 
