@@ -1092,27 +1092,6 @@ export async function registerRoutes(
           return res.status(400).json({ message: result.error });
         }
         const order = await storage.getOrder(orderId);
-        
-        // Check if payment type is "store credit" (fiado) and create automatic debit entry
-        if (order && order.paymentTypeId) {
-          const paymentType = await storage.getPaymentType(parseInt(order.paymentTypeId));
-          if (paymentType && paymentType.isStoreCredit && order.userId) {
-            // Create debit entry in customer credits (Contas a Receber)
-            await storage.createCustomerCredit({
-              userId: order.userId,
-              orderId: order.id,
-              type: "DEBITO",
-              amount: order.total,
-              paidAmount: "0",
-              description: `Pedido #${order.orderNumber} - ${paymentType.name}`,
-              status: "PENDENTE",
-              dueDate: null,
-              createdBy: userId,
-            });
-            console.log(`Created automatic debit entry for order ${order.orderNumber} (store credit payment)`);
-          }
-        }
-        
         res.json(order);
       } catch (error) {
         res.status(500).json({ message: "Erro ao reservar estoque" });
@@ -1353,8 +1332,55 @@ export async function registerRoutes(
           return res.status(400).json({ message: result.error });
         }
         const order = await storage.getOrder(orderId);
+        
+        // Check if payment type is Fiado (store credit) and create Contas a Receber entries
+        if (order?.paymentTypeId) {
+          const paymentType = await storage.getPaymentType(order.paymentTypeId);
+          if (paymentType?.isStoreCredit && order.userId) {
+            // Check if credits already exist for this order to avoid duplicates
+            const existingCredits = await storage.getCustomerCredits(order.userId);
+            const hasExistingCreditsForOrder = existingCredits.some(c => c.orderId === order.id);
+            
+            if (!hasExistingCreditsForOrder) {
+              // Get fiado installments from order
+              const installments = order.fiadoInstallments as Array<{ installment: number; dueDate: string; amount: number }> | null;
+              
+              if (installments && installments.length > 0) {
+                // Create a customer credit entry for each installment
+                for (const inst of installments) {
+                  await storage.createCustomerCredit({
+                    userId: order.userId,
+                    orderId: order.id,
+                    type: "DEBITO",
+                    amount: inst.amount.toFixed(2),
+                    paidAmount: "0",
+                    description: `Pedido #${order.orderNumber} - Parcela ${inst.installment}/${installments.length}`,
+                    status: "PENDENTE",
+                    dueDate: new Date(inst.dueDate + 'T12:00:00'),
+                    createdBy: userId,
+                  });
+                }
+              } else {
+                // No installments configured - create single entry with full amount
+                await storage.createCustomerCredit({
+                  userId: order.userId,
+                  orderId: order.id,
+                  type: "DEBITO",
+                  amount: order.total,
+                  paidAmount: "0",
+                  description: `Pedido #${order.orderNumber} - Fiado`,
+                  status: "PENDENTE",
+                  dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days from now
+                  createdBy: userId,
+                });
+              }
+            }
+          }
+        }
+        
         res.json(order);
       } catch (error) {
+        console.error("Error invoicing order:", error);
         res.status(500).json({ message: "Erro ao faturar pedido" });
       }
     },
