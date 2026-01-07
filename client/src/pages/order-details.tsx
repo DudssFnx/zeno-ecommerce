@@ -10,7 +10,7 @@ import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, Loader2, Package, User, Calendar, FileText, DollarSign, Printer, MapPin, Download, Pencil, Plus, Trash2, Search, X, AlertTriangle, ChevronDown, MessageCircle } from "lucide-react";
+import { ArrowLeft, Loader2, Package, User, Calendar, FileText, DollarSign, Printer, MapPin, Download, Pencil, Plus, Trash2, Search, X, AlertTriangle, ChevronDown, MessageCircle, Settings, CalendarDays } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import type { Order, OrderItem, Product as SchemaProduct, PaymentType } from "@shared/schema";
@@ -50,6 +50,12 @@ interface PrintedByUser {
   firstName: string | null;
   lastName: string | null;
   email: string | null;
+}
+
+interface FiadoInstallment {
+  installment: number;
+  dueDate: string;
+  amount: number;
 }
 
 interface OrderWithDetails extends Order {
@@ -102,6 +108,11 @@ export default function OrderDetailsPage() {
   const [productSearch, setProductSearch] = useState("");
   const [visibleItems, setVisibleItems] = useState(10);
   const ITEMS_PER_LOAD = 30;
+  
+  // Fiado installments configuration
+  const [showFiadoConfig, setShowFiadoConfig] = useState(false);
+  const [fiadoInstallmentCount, setFiadoInstallmentCount] = useState(1);
+  const [fiadoInstallments, setFiadoInstallments] = useState<FiadoInstallment[]>([]);
 
   const { data: orderData, isLoading } = useQuery<OrderWithDetails>({
     queryKey: ["/api/orders", orderId],
@@ -125,6 +136,23 @@ export default function OrderDetailsPage() {
   const activePaymentTypes = useMemo(() => {
     return paymentTypes?.filter(pt => pt.active) || [];
   }, [paymentTypes]);
+
+  // Check if selected payment type is Fiado (store credit)
+  const selectedPaymentType = useMemo(() => {
+    if (!orderData?.paymentTypeId || !paymentTypes) return null;
+    return paymentTypes.find(pt => pt.id === orderData.paymentTypeId);
+  }, [orderData?.paymentTypeId, paymentTypes]);
+
+  const isFiadoPayment = selectedPaymentType?.isStoreCredit === true;
+
+  // Initialize fiado installments from order data
+  useMemo(() => {
+    if (orderData?.fiadoInstallments && Array.isArray(orderData.fiadoInstallments)) {
+      const installments = orderData.fiadoInstallments as FiadoInstallment[];
+      setFiadoInstallments(installments);
+      setFiadoInstallmentCount(installments.length);
+    }
+  }, [orderData?.fiadoInstallments]);
 
   const { editSubtotal, editDiscount, editTotal } = useMemo(() => {
     let subtotal = 0;
@@ -212,6 +240,52 @@ export default function OrderDetailsPage() {
       });
     },
   });
+
+  const updateFiadoInstallmentsMutation = useMutation({
+    mutationFn: async (installments: FiadoInstallment[]) => {
+      await apiRequest("PATCH", `/api/orders/${orderId}`, { fiadoInstallments: installments });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/orders", orderId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
+      setShowFiadoConfig(false);
+      toast({
+        title: "Parcelas Configuradas",
+        description: "As parcelas do fiado foram salvas com sucesso.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Erro",
+        description: "Não foi possível salvar as parcelas.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Generate installments with equal amounts and monthly dates
+  const generateFiadoInstallments = (count: number) => {
+    if (!orderData) return;
+    const total = parseFloat(orderData.total);
+    const installmentAmount = Math.floor((total / count) * 100) / 100;
+    const remainder = Math.round((total - installmentAmount * count) * 100) / 100;
+    
+    const newInstallments: FiadoInstallment[] = [];
+    const today = new Date();
+    
+    for (let i = 0; i < count; i++) {
+      const dueDate = new Date(today);
+      dueDate.setMonth(dueDate.getMonth() + i + 1);
+      
+      newInstallments.push({
+        installment: i + 1,
+        dueDate: format(dueDate, 'yyyy-MM-dd'),
+        amount: i === count - 1 ? installmentAmount + remainder : installmentAmount,
+      });
+    }
+    
+    setFiadoInstallments(newInstallments);
+  };
 
   const reserveStockMutation = useMutation({
     mutationFn: async () => {
@@ -805,6 +879,130 @@ export default function OrderDetailsPage() {
                           ))}
                         </SelectContent>
                       </Select>
+                    </div>
+                  )}
+
+                  {/* Fiado (Store Credit) Installments Configuration */}
+                  {canEditStatus && isFiadoPayment && (
+                    <div className="space-y-3 mb-4 p-4 bg-muted/50 rounded-md">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 text-sm font-medium">
+                          <CalendarDays className="h-4 w-4" />
+                          <span>Configurar Parcelas do Fiado</span>
+                        </div>
+                        {!showFiadoConfig && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setShowFiadoConfig(true);
+                              if (fiadoInstallments.length === 0) {
+                                generateFiadoInstallments(1);
+                              }
+                            }}
+                            data-testid="button-configure-fiado"
+                          >
+                            <Settings className="h-4 w-4 mr-2" />
+                            Configurar
+                          </Button>
+                        )}
+                      </div>
+
+                      {/* Show existing installments */}
+                      {!showFiadoConfig && fiadoInstallments.length > 0 && (
+                        <div className="space-y-2">
+                          <p className="text-sm text-muted-foreground">
+                            {fiadoInstallments.length}x parcela(s) configurada(s)
+                          </p>
+                          <div className="space-y-1">
+                            {fiadoInstallments.map((inst) => (
+                              <div key={inst.installment} className="flex justify-between text-sm">
+                                <span>Parcela {inst.installment} - {format(new Date(inst.dueDate + 'T12:00:00'), 'dd/MM/yyyy')}</span>
+                                <span className="font-medium">R$ {inst.amount.toFixed(2)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {showFiadoConfig && (
+                        <div className="space-y-4">
+                          <div className="flex items-center gap-4">
+                            <div className="flex-1">
+                              <label className="text-sm text-muted-foreground mb-1 block">Número de Parcelas</label>
+                              <Select
+                                value={fiadoInstallmentCount.toString()}
+                                onValueChange={(val) => {
+                                  const count = parseInt(val);
+                                  setFiadoInstallmentCount(count);
+                                  generateFiadoInstallments(count);
+                                }}
+                              >
+                                <SelectTrigger data-testid="select-fiado-installment-count">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((n) => (
+                                    <SelectItem key={n} value={n.toString()}>{n}x</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
+
+                          <div className="space-y-2">
+                            {fiadoInstallments.map((inst, index) => (
+                              <div key={inst.installment} className="flex items-center gap-3">
+                                <span className="text-sm text-muted-foreground w-20">Parcela {inst.installment}</span>
+                                <Input
+                                  type="date"
+                                  value={inst.dueDate}
+                                  onChange={(e) => {
+                                    const updated = [...fiadoInstallments];
+                                    updated[index] = { ...updated[index], dueDate: e.target.value };
+                                    setFiadoInstallments(updated);
+                                  }}
+                                  className="flex-1"
+                                  data-testid={`input-fiado-date-${inst.installment}`}
+                                />
+                                <Input
+                                  type="number"
+                                  step="0.01"
+                                  value={inst.amount}
+                                  onChange={(e) => {
+                                    const updated = [...fiadoInstallments];
+                                    updated[index] = { ...updated[index], amount: parseFloat(e.target.value) || 0 };
+                                    setFiadoInstallments(updated);
+                                  }}
+                                  className="w-28"
+                                  data-testid={`input-fiado-amount-${inst.installment}`}
+                                />
+                              </div>
+                            ))}
+                          </div>
+
+                          <div className="flex justify-end gap-2 pt-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setShowFiadoConfig(false)}
+                            >
+                              Cancelar
+                            </Button>
+                            <Button
+                              size="sm"
+                              onClick={() => updateFiadoInstallmentsMutation.mutate(fiadoInstallments)}
+                              disabled={updateFiadoInstallmentsMutation.isPending}
+                              data-testid="button-save-fiado"
+                            >
+                              {updateFiadoInstallmentsMutation.isPending ? (
+                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                              ) : null}
+                              Salvar Parcelas
+                            </Button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
 
