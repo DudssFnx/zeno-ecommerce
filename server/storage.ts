@@ -3366,11 +3366,11 @@ export class DatabaseStorage implements IStorage {
   async postPurchaseOrderStock(id: number): Promise<{ success: boolean; error?: string }> {
     const order = await this.getPurchaseOrder(id);
     if (!order) return { success: false, error: 'Pedido nao encontrado' };
-    if (order.status === 'STOCK_REVERSED') {
-      return { success: false, error: 'Para lancar o estoque, e obrigatorio que o pedido esteja primeiro em Lancamento Pendente.' };
-    }
-    if (order.status !== 'DRAFT' && order.status !== 'FINALIZED') {
+    if (order.status === 'STOCK_POSTED') {
       return { success: false, error: 'Estoque ja foi lancado para este pedido' };
+    }
+    if (order.status !== 'DRAFT' && order.status !== 'FINALIZED' && order.status !== 'STOCK_REVERSED') {
+      return { success: false, error: 'Status invalido para lancar estoque' };
     }
 
     const items = await this.getPurchaseOrderItems(id);
