@@ -10,7 +10,7 @@ import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, Loader2, Package, User, Calendar, FileText, DollarSign, Printer, MapPin, Download, Pencil, Plus, Minus, Trash2, Search, X, AlertTriangle, ChevronDown, MessageCircle } from "lucide-react";
+import { ArrowLeft, Loader2, Package, User, Calendar, FileText, DollarSign, Printer, MapPin, Download, Pencil, Plus, Trash2, Search, X, AlertTriangle, ChevronDown, MessageCircle } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import type { Order, OrderItem, Product as SchemaProduct } from "@shared/schema";
@@ -91,7 +91,7 @@ export default function OrderDetailsPage() {
   const canEditStatus = isAdmin || isSales;
   
   const [isEditMode, setIsEditMode] = useState(false);
-  const [editItems, setEditItems] = useState<Map<number, { productId: number; quantity: number; price: string; product: ProductInfo }>>(new Map());
+  const [editItems, setEditItems] = useState<Map<number, { productId: number; quantity: number; price: string; originalPrice: string; product: ProductInfo }>>(new Map());
   const [productSearch, setProductSearch] = useState("");
   const [visibleItems, setVisibleItems] = useState(10);
   const ITEMS_PER_LOAD = 30;
@@ -111,12 +111,14 @@ export default function OrderDetailsPage() {
     enabled: isEditMode,
   });
 
-  const editTotal = useMemo(() => {
+  const { editSubtotal, editDiscount, editTotal } = useMemo(() => {
+    let subtotal = 0;
     let total = 0;
     editItems.forEach(item => {
+      subtotal += parseFloat(item.originalPrice) * item.quantity;
       total += parseFloat(item.price) * item.quantity;
     });
-    return total;
+    return { editSubtotal: subtotal, editDiscount: subtotal - total, editTotal: total };
   }, [editItems]);
 
   const filteredProducts = useMemo(() => {
@@ -355,12 +357,13 @@ export default function OrderDetailsPage() {
   const isPedidoGerado = orderData?.status === 'PEDIDO_GERADO';
 
   const startEditMode = () => {
-    const initialItems = new Map<number, { productId: number; quantity: number; price: string; product: ProductInfo }>();
+    const initialItems = new Map<number, { productId: number; quantity: number; price: string; originalPrice: string; product: ProductInfo }>();
     itemsWithProducts.forEach(item => {
       initialItems.set(item.productId, {
         productId: item.productId,
         quantity: item.quantity,
         price: item.price,
+        originalPrice: item.product?.price || item.price,
         product: item.product,
       });
     });
@@ -374,13 +377,23 @@ export default function OrderDetailsPage() {
     setProductSearch("");
   };
 
-  const updateEditItemQuantity = (productId: number, delta: number) => {
+  const updateEditItemQuantity = (productId: number, newQty: number) => {
     setEditItems(prev => {
       const newMap = new Map(prev);
       const item = newMap.get(productId);
       if (item) {
-        const newQty = Math.max(1, item.quantity + delta);
-        newMap.set(productId, { ...item, quantity: newQty });
+        newMap.set(productId, { ...item, quantity: Math.max(1, newQty) });
+      }
+      return newMap;
+    });
+  };
+
+  const updateEditItemPrice = (productId: number, newPrice: string) => {
+    setEditItems(prev => {
+      const newMap = new Map(prev);
+      const item = newMap.get(productId);
+      if (item) {
+        newMap.set(productId, { ...item, price: newPrice });
       }
       return newMap;
     });
@@ -405,6 +418,7 @@ export default function OrderDetailsPage() {
           productId: product.id,
           quantity: 1,
           price: product.price,
+          originalPrice: product.price,
           product: { id: product.id, name: product.name, sku: product.sku, price: product.price, image: product.image },
         });
       }
@@ -553,30 +567,45 @@ export default function OrderDetailsPage() {
                   <Separator />
 
                   {Array.from(editItems.values()).map((item) => (
-                    <div key={item.productId} className="flex items-center gap-4" data-testid={`edit-item-${item.productId}`}>
-                      <div className="h-16 w-16 rounded-md bg-muted flex items-center justify-center overflow-hidden flex-shrink-0">
+                    <div key={item.productId} className="flex items-center gap-3" data-testid={`edit-item-${item.productId}`}>
+                      <div className="h-12 w-12 rounded-md bg-muted flex items-center justify-center overflow-hidden flex-shrink-0">
                         {item.product?.image ? (
                           <img src={item.product.image} alt={item.product.name} className="h-full w-full object-cover" />
                         ) : (
-                          <Package className="h-6 w-6 text-muted-foreground" />
+                          <Package className="h-5 w-5 text-muted-foreground" />
                         )}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="font-medium truncate">{item.product?.name}</p>
-                        <p className="text-sm text-muted-foreground">SKU: {item.product?.sku}</p>
+                        <p className="font-medium truncate text-sm">{item.product?.name}</p>
+                        <p className="text-xs text-muted-foreground">SKU: {item.product?.sku}</p>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <Button variant="outline" size="icon" onClick={() => updateEditItemQuantity(item.productId, -1)} data-testid={`btn-decrease-${item.productId}`}>
-                          <Minus className="h-4 w-4" />
-                        </Button>
-                        <span className="w-10 text-center font-medium">{item.quantity}</span>
-                        <Button variant="outline" size="icon" onClick={() => updateEditItemQuantity(item.productId, 1)} data-testid={`btn-increase-${item.productId}`}>
-                          <Plus className="h-4 w-4" />
-                        </Button>
+                      <div className="flex items-center gap-1">
+                        <Input
+                          type="number"
+                          min="1"
+                          value={item.quantity}
+                          onChange={(e) => updateEditItemQuantity(item.productId, parseInt(e.target.value) || 1)}
+                          className="w-14 h-8 text-center text-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                          data-testid={`input-qty-${item.productId}`}
+                        />
                       </div>
-                      <div className="text-right w-24">
-                        <p className="font-medium">R$ {(parseFloat(item.price) * item.quantity).toFixed(2)}</p>
-                        <p className="text-xs text-muted-foreground">R$ {parseFloat(item.price).toFixed(2)}/un</p>
+                      <div className="flex items-center gap-1">
+                        <span className="text-xs text-muted-foreground">R$</span>
+                        <Input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={item.price}
+                          onChange={(e) => updateEditItemPrice(item.productId, e.target.value || "0")}
+                          className="w-20 h-8 text-right text-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                          data-testid={`input-price-${item.productId}`}
+                        />
+                      </div>
+                      <div className="text-right w-20">
+                        <p className="font-medium text-sm">R$ {(parseFloat(item.price) * item.quantity).toFixed(2)}</p>
+                        {parseFloat(item.price) < parseFloat(item.originalPrice) && (
+                          <p className="text-xs text-green-600">-{(((parseFloat(item.originalPrice) - parseFloat(item.price)) / parseFloat(item.originalPrice)) * 100).toFixed(0)}%</p>
+                        )}
                       </div>
                       <Button variant="ghost" size="icon" onClick={() => removeEditItem(item.productId)} data-testid={`btn-remove-${item.productId}`}>
                         <Trash2 className="h-4 w-4 text-destructive" />
@@ -590,9 +619,21 @@ export default function OrderDetailsPage() {
 
                   <Separator />
 
-                  <div className="flex justify-between items-center">
-                    <span className="font-medium">Novo Total</span>
-                    <span className="text-lg font-semibold">R$ {editTotal.toFixed(2)}</span>
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Subtotal</span>
+                      <span>R$ {editSubtotal.toFixed(2)}</span>
+                    </div>
+                    {editDiscount > 0 && (
+                      <div className="flex justify-between text-sm text-green-600">
+                        <span>Desconto</span>
+                        <span>- R$ {editDiscount.toFixed(2)}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between items-center pt-1">
+                      <span className="font-medium">Total</span>
+                      <span className="text-lg font-semibold">R$ {editTotal.toFixed(2)}</span>
+                    </div>
                   </div>
 
                   <div className="flex gap-2 pt-2">
