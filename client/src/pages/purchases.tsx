@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
-import { Plus, Search, MoreVertical, Eye, Printer, Package, PackagePlus, PackageMinus, Loader2 } from "lucide-react";
+import { Plus, Search, MoreVertical, Eye, Printer, Package, PackagePlus, PackageMinus, Loader2, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -85,6 +85,22 @@ export default function PurchasesPage() {
     },
     onError: (error: any) => {
       toast({ title: "Erro", description: error.message || "Falha ao estornar estoque", variant: "destructive" });
+      setProcessingId(null);
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: number) => {
+      setProcessingId(id);
+      await apiRequest("DELETE", `/api/purchases/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/purchases"] });
+      toast({ title: "Sucesso", description: "Pedido excluido com sucesso" });
+      setProcessingId(null);
+    },
+    onError: (error: any) => {
+      toast({ title: "Erro", description: error.message || "Falha ao excluir pedido", variant: "destructive" });
       setProcessingId(null);
     },
   });
@@ -229,6 +245,21 @@ export default function PurchasesPage() {
                             >
                               <PackageMinus className="mr-2 h-4 w-4" />
                               Estornar Estoque
+                            </DropdownMenuItem>
+                          )}
+                          {order.status !== "STOCK_POSTED" && (
+                            <DropdownMenuItem
+                              onClick={() => {
+                                if (confirm("Deseja excluir este pedido de compra? Esta acao nao pode ser desfeita.")) {
+                                  deleteMutation.mutate(order.id);
+                                }
+                              }}
+                              disabled={deleteMutation.isPending}
+                              className="text-red-600 focus:text-red-600"
+                              data-testid={`menu-delete-${order.id}`}
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              Excluir Pedido
                             </DropdownMenuItem>
                           )}
                         </DropdownMenuContent>
