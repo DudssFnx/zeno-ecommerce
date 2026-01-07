@@ -699,7 +699,14 @@ export default function OrderDetailsPage() {
                           <p className="font-medium" data-testid={`text-item-total-${item.id}`}>
                             R$ {(parseFloat(item.price) * item.quantity).toFixed(2)}
                           </p>
-                          <p className="text-sm text-muted-foreground">{item.quantity}x R$ {parseFloat(item.price).toFixed(2)}</p>
+                          <div className="text-sm text-muted-foreground">
+                            {item.quantity}x R$ {parseFloat(item.price).toFixed(2)}
+                            {item.product?.price && parseFloat(item.product.price) > parseFloat(item.price) && (
+                              <span className="ml-1 line-through text-xs">
+                                R$ {parseFloat(item.product.price).toFixed(2)}
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
                     ))}
