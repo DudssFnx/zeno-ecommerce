@@ -274,10 +274,22 @@ export default function OrderDetailsPage() {
   });
 
   const handleStatusChange = (newStatus: string) => {
+    const currentStatus = orderData?.status;
+    
     if (newStatus === "PEDIDO_GERADO") {
       reserveStockMutation.mutate();
     } else if (newStatus === "FATURADO" || newStatus === "PEDIDO_FATURADO") {
       invoiceMutation.mutate();
+    } else if (newStatus === "ORCAMENTO" && currentStatus === "PEDIDO_GERADO") {
+      // Retornar de PEDIDO_GERADO para ORCAMENTO (libera estoque reservado)
+      unreserveMutation.mutate();
+    } else if (newStatus === "ORCAMENTO" && (currentStatus === "FATURADO" || currentStatus === "PEDIDO_FATURADO")) {
+      // De FATURADO precisa primeiro ir para PEDIDO_GERADO
+      toast({
+        title: "Atenção",
+        description: "Para retornar para Orçamento, primeiro retorne para Pedido Gerado.",
+        variant: "destructive",
+      });
     } else {
       updateStatusMutation.mutate(newStatus);
     }
@@ -873,6 +885,7 @@ export default function OrderDetailsPage() {
                     <SelectValue placeholder="Selecionar status" />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="ORCAMENTO">Orçamento (Editável)</SelectItem>
                     <SelectItem value="ORCAMENTO_ABERTO">Orçamento Aberto</SelectItem>
                     <SelectItem value="ORCAMENTO_CONCLUIDO">Orçamento Enviado</SelectItem>
                     <SelectItem value="PEDIDO_GERADO">Gerar Pedido (Reservar Estoque)</SelectItem>
