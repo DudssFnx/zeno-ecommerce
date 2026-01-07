@@ -3720,6 +3720,18 @@ export async function registerRoutes(
             doc.moveTo(40, doc.y).lineTo(555, doc.y).stroke();
             doc.moveDown();
 
+            // Calcular subtotal original (baseado no preço do produto) e desconto
+            let subtotalOriginal = 0;
+            let subtotalVenda = 0;
+            for (const item of items) {
+              const precoOriginal = item.product?.price ? parseFloat(item.product.price) : parseFloat(item.price);
+              const precoVenda = parseFloat(item.price);
+              subtotalOriginal += precoOriginal * item.quantity;
+              subtotalVenda += precoVenda * item.quantity;
+            }
+            const desconto = subtotalOriginal - subtotalVenda;
+            const hasDesconto = desconto > 0.01;
+
             // Box de totais destacado
             doc.font("Helvetica").fontSize(10);
             doc.text(`Quantidade Total: ${totalQty} itens`, 40);
@@ -3728,35 +3740,49 @@ export async function registerRoutes(
             const boxX = 350;
             const boxY = doc.y;
             const boxWidth = 205;
-            const boxHeight = 70;
+            const boxHeight = hasDesconto ? 85 : 70;
 
             doc.rect(boxX, boxY, boxWidth, boxHeight).stroke();
 
-            doc.text(`Subtotal:`, boxX + 10, boxY + 8);
+            let lineY = boxY + 8;
+            doc.text(`Subtotal:`, boxX + 10, lineY);
             doc.text(
-              `R$ ${parseFloat(order.subtotal || "0").toFixed(2)}`,
+              `R$ ${subtotalOriginal.toFixed(2)}`,
               boxX + 120,
-              boxY + 8,
+              lineY,
             );
 
-            doc.text(`Frete:`, boxX + 10, boxY + 23);
+            if (hasDesconto) {
+              lineY += 15;
+              doc.fillColor("green");
+              doc.text(`Desconto:`, boxX + 10, lineY);
+              doc.text(
+                `- R$ ${desconto.toFixed(2)}`,
+                boxX + 120,
+                lineY,
+              );
+              doc.fillColor("black");
+            }
+
+            lineY += 15;
+            doc.text(`Frete:`, boxX + 10, lineY);
             doc.text(
               `R$ ${parseFloat(order.shippingCost || "0").toFixed(2)}`,
               boxX + 120,
-              boxY + 23,
+              lineY,
             );
 
             doc
-              .moveTo(boxX + 5, boxY + 40)
-              .lineTo(boxX + boxWidth - 5, boxY + 40)
+              .moveTo(boxX + 5, lineY + 17)
+              .lineTo(boxX + boxWidth - 5, lineY + 17)
               .stroke();
 
             doc.font("Helvetica-Bold").fontSize(12);
-            doc.text(`TOTAL:`, boxX + 10, boxY + 48);
+            doc.text(`TOTAL:`, boxX + 10, lineY + 25);
             doc.text(
               `R$ ${parseFloat(order.total).toFixed(2)}`,
               boxX + 100,
-              boxY + 48,
+              lineY + 25,
             );
 
             doc.y = boxY + boxHeight + 15;
