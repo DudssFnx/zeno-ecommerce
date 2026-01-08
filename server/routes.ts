@@ -1482,7 +1482,10 @@ export async function registerRoutes(
           }
         }
 
-        // Delete order items first
+        // Delete customer credits associated with this order first
+        await db.delete(customerCredits).where(eq(customerCredits.orderId, orderId));
+
+        // Delete order items
         await db.delete(orderItems).where(eq(orderItems.orderId, orderId));
 
         // Delete the order
