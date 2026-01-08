@@ -100,12 +100,20 @@ interface ProblematicProduct {
   description: string;
 }
 
+interface OverviewStats {
+  totalRevenue: number;
+  totalQuantitySold: number;
+  avgTicketPerProduct: number;
+  uniqueProductsSold: number;
+}
+
 interface ProductAnalyticsData {
-  overview: {
-    totalRevenue: number;
-    totalQuantitySold: number;
-    avgTicketPerProduct: number;
-    uniqueProductsSold: number;
+  overview: OverviewStats;
+  overviewByPeriod: {
+    days7: OverviewStats;
+    days30: OverviewStats;
+    days60: OverviewStats;
+    days90: OverviewStats;
   };
   rankingByRevenue: {
     days7: ProductRanking[];
@@ -519,6 +527,8 @@ export default function ProductAnalyticsPage() {
     ? analytics?.rankingByRevenue[rankingPeriod] || []
     : analytics?.rankingByVolume[rankingPeriod] || [];
 
+  const currentOverview = analytics?.overviewByPeriod?.[rankingPeriod] || analytics?.overview;
+
   return (
     <div className="p-4 lg:p-6 space-y-6">
       <div className="flex items-center justify-between gap-4 flex-wrap">
@@ -540,70 +550,90 @@ export default function ProductAnalyticsPage() {
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-green-500/10">
-                    <DollarSign className="h-5 w-5 text-green-500" />
+          <div className="space-y-4">
+            <div className="flex items-center justify-between gap-4 flex-wrap">
+              <p className="text-sm text-muted-foreground">
+                Dados dos últimos <span className="font-medium text-foreground">{periodLabels[rankingPeriod]}</span>
+              </p>
+              <div className="flex gap-1 flex-wrap">
+                {(['days7', 'days30', 'days60', 'days90'] as const).map((period) => (
+                  <Button
+                    key={period}
+                    size="sm"
+                    variant={rankingPeriod === period ? 'default' : 'outline'}
+                    onClick={() => setRankingPeriod(period)}
+                    data-testid={`button-period-${period}`}
+                  >
+                    {periodLabels[period]}
+                  </Button>
+                ))}
+              </div>
+            </div>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              <Card>
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-green-500/10">
+                      <DollarSign className="h-5 w-5 text-green-500" />
+                    </div>
+                    <div>
+                      <p className="text-2xl font-bold" data-testid="stat-total-revenue">
+                        {formatCurrency(currentOverview?.totalRevenue || 0)}
+                      </p>
+                      <p className="text-xs text-muted-foreground">Faturamento Total</p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-2xl font-bold" data-testid="stat-total-revenue">
-                      {formatCurrency(analytics?.overview.totalRevenue || 0)}
-                    </p>
-                    <p className="text-xs text-muted-foreground">Faturamento Total</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
 
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-blue-500/10">
-                    <ShoppingCart className="h-5 w-5 text-blue-500" />
+              <Card>
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-blue-500/10">
+                      <ShoppingCart className="h-5 w-5 text-blue-500" />
+                    </div>
+                    <div>
+                      <p className="text-2xl font-bold" data-testid="stat-total-quantity">
+                        {currentOverview?.totalQuantitySold || 0}
+                      </p>
+                      <p className="text-xs text-muted-foreground">Qtd Vendida</p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-2xl font-bold" data-testid="stat-total-quantity">
-                      {analytics?.overview.totalQuantitySold || 0}
-                    </p>
-                    <p className="text-xs text-muted-foreground">Qtd Vendida</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
 
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-purple-500/10">
-                    <DollarSign className="h-5 w-5 text-purple-500" />
+              <Card>
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-purple-500/10">
+                      <DollarSign className="h-5 w-5 text-purple-500" />
+                    </div>
+                    <div>
+                      <p className="text-2xl font-bold" data-testid="stat-avg-ticket">
+                        {formatCurrency(currentOverview?.avgTicketPerProduct || 0)}
+                      </p>
+                      <p className="text-xs text-muted-foreground">Ticket Médio</p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-2xl font-bold" data-testid="stat-avg-ticket">
-                      {formatCurrency(analytics?.overview.avgTicketPerProduct || 0)}
-                    </p>
-                    <p className="text-xs text-muted-foreground">Ticket Médio</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
 
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-cyan-500/10">
-                    <Package className="h-5 w-5 text-cyan-500" />
+              <Card>
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-cyan-500/10">
+                      <Package className="h-5 w-5 text-cyan-500" />
+                    </div>
+                    <div>
+                      <p className="text-2xl font-bold" data-testid="stat-unique-products">
+                        {currentOverview?.uniqueProductsSold || 0}
+                      </p>
+                      <p className="text-xs text-muted-foreground">Produtos Vendidos</p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-2xl font-bold" data-testid="stat-unique-products">
-                      {analytics?.overview.uniqueProductsSold || 0}
-                    </p>
-                    <p className="text-xs text-muted-foreground">Produtos Vendidos</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+            </div>
           </div>
 
           <Tabs defaultValue="ranking" className="space-y-4">

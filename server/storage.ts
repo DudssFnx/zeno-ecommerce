@@ -393,12 +393,20 @@ export interface ProblematicProduct {
   description: string;
 }
 
+interface OverviewStats {
+  totalRevenue: number;
+  totalQuantitySold: number;
+  avgTicketPerProduct: number;
+  uniqueProductsSold: number;
+}
+
 export interface ProductAnalyticsData {
-  overview: {
-    totalRevenue: number;
-    totalQuantitySold: number;
-    avgTicketPerProduct: number;
-    uniqueProductsSold: number;
+  overview: OverviewStats;
+  overviewByPeriod: {
+    days7: OverviewStats;
+    days30: OverviewStats;
+    days60: OverviewStats;
+    days90: OverviewStats;
   };
   rankingByRevenue: {
     days7: ProductRanking[];
@@ -1714,6 +1722,21 @@ export class DatabaseStorage implements IStorage {
 
     const overview = { totalRevenue, totalQuantitySold, avgTicketPerProduct, uniqueProductsSold };
 
+    const buildOverviewFromStats = (stats: Map<number, ProductStats>): OverviewStats => {
+      const rev = Array.from(stats.values()).reduce((sum, s) => sum + s.totalRevenue, 0);
+      const qty = Array.from(stats.values()).reduce((sum, s) => sum + s.totalQuantity, 0);
+      const unique = stats.size;
+      const avg = unique > 0 ? rev / unique : 0;
+      return { totalRevenue: rev, totalQuantitySold: qty, avgTicketPerProduct: avg, uniqueProductsSold: unique };
+    };
+
+    const overviewByPeriod = {
+      days7: buildOverviewFromStats(stats7d),
+      days30: buildOverviewFromStats(stats30d),
+      days60: buildOverviewFromStats(stats60d),
+      days90: buildOverviewFromStats(stats90d),
+    };
+
     const toRanking = (stats: Map<number, ProductStats>, totalRev: number): ProductRanking[] => {
       return Array.from(stats.values()).map(s => ({
         productId: s.productId,
@@ -2003,6 +2026,7 @@ export class DatabaseStorage implements IStorage {
 
     return {
       overview,
+      overviewByPeriod,
       rankingByRevenue,
       rankingByVolume,
       topGrowing,
