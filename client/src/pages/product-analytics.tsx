@@ -570,65 +570,65 @@ export default function ProductAnalyticsPage() {
               </div>
             </div>
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              <Card>
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 rounded-lg bg-green-500/10">
-                      <DollarSign className="h-5 w-5 text-green-500" />
+              <Card className="overflow-hidden">
+                <CardContent className="p-3 lg:p-4">
+                  <div className="flex items-center gap-2 lg:gap-3">
+                    <div className="flex-shrink-0 p-2 rounded-lg bg-green-500/10">
+                      <DollarSign className="h-4 w-4 lg:h-5 lg:w-5 text-green-500" />
                     </div>
-                    <div>
-                      <p className="text-2xl font-bold" data-testid="stat-total-revenue">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-base sm:text-lg lg:text-xl font-bold truncate" data-testid="stat-total-revenue">
                         {formatCurrency(currentOverview?.totalRevenue || 0)}
                       </p>
-                      <p className="text-xs text-muted-foreground">Faturamento Total</p>
+                      <p className="text-xs text-muted-foreground truncate">Faturamento Total</p>
                     </div>
                   </div>
                 </CardContent>
               </Card>
 
-              <Card>
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 rounded-lg bg-blue-500/10">
-                      <ShoppingCart className="h-5 w-5 text-blue-500" />
+              <Card className="overflow-hidden">
+                <CardContent className="p-3 lg:p-4">
+                  <div className="flex items-center gap-2 lg:gap-3">
+                    <div className="flex-shrink-0 p-2 rounded-lg bg-blue-500/10">
+                      <ShoppingCart className="h-4 w-4 lg:h-5 lg:w-5 text-blue-500" />
                     </div>
-                    <div>
-                      <p className="text-2xl font-bold" data-testid="stat-total-quantity">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-base sm:text-lg lg:text-xl font-bold truncate" data-testid="stat-total-quantity">
                         {currentOverview?.totalQuantitySold || 0}
                       </p>
-                      <p className="text-xs text-muted-foreground">Qtd Vendida</p>
+                      <p className="text-xs text-muted-foreground truncate">Qtd Vendida</p>
                     </div>
                   </div>
                 </CardContent>
               </Card>
 
-              <Card>
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 rounded-lg bg-purple-500/10">
-                      <DollarSign className="h-5 w-5 text-purple-500" />
+              <Card className="overflow-hidden">
+                <CardContent className="p-3 lg:p-4">
+                  <div className="flex items-center gap-2 lg:gap-3">
+                    <div className="flex-shrink-0 p-2 rounded-lg bg-purple-500/10">
+                      <DollarSign className="h-4 w-4 lg:h-5 lg:w-5 text-purple-500" />
                     </div>
-                    <div>
-                      <p className="text-2xl font-bold" data-testid="stat-avg-ticket">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-base sm:text-lg lg:text-xl font-bold truncate" data-testid="stat-avg-ticket">
                         {formatCurrency(currentOverview?.avgTicketPerProduct || 0)}
                       </p>
-                      <p className="text-xs text-muted-foreground">Ticket Médio</p>
+                      <p className="text-xs text-muted-foreground truncate">Ticket Médio</p>
                     </div>
                   </div>
                 </CardContent>
               </Card>
 
-              <Card>
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 rounded-lg bg-cyan-500/10">
-                      <Package className="h-5 w-5 text-cyan-500" />
+              <Card className="overflow-hidden">
+                <CardContent className="p-3 lg:p-4">
+                  <div className="flex items-center gap-2 lg:gap-3">
+                    <div className="flex-shrink-0 p-2 rounded-lg bg-cyan-500/10">
+                      <Package className="h-4 w-4 lg:h-5 lg:w-5 text-cyan-500" />
                     </div>
-                    <div>
-                      <p className="text-2xl font-bold" data-testid="stat-unique-products">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-base sm:text-lg lg:text-xl font-bold truncate" data-testid="stat-unique-products">
                         {currentOverview?.uniqueProductsSold || 0}
                       </p>
-                      <p className="text-xs text-muted-foreground">Produtos Vendidos</p>
+                      <p className="text-xs text-muted-foreground truncate">Produtos Vendidos</p>
                     </div>
                   </div>
                 </CardContent>

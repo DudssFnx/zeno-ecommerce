@@ -15,12 +15,12 @@ interface StatCardProps {
 
 export function StatCard({ title, value, icon: Icon, trend, className }: StatCardProps) {
   return (
-    <Card className={cn("", className)} data-testid={`card-stat-${title.toLowerCase().replace(/\s+/g, "-")}`}>
-      <CardContent className="p-6">
-        <div className="flex items-center justify-between gap-4">
+    <Card className={cn("overflow-hidden", className)} data-testid={`card-stat-${title.toLowerCase().replace(/\s+/g, "-")}`}>
+      <CardContent className="p-4 lg:p-6">
+        <div className="flex items-center justify-between gap-2">
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-muted-foreground truncate">{title}</p>
-            <p className="text-3xl font-bold mt-1">{value}</p>
+            <p className="text-xs lg:text-sm font-medium text-muted-foreground truncate">{title}</p>
+            <p className="text-lg sm:text-xl lg:text-2xl font-bold mt-1 truncate">{value}</p>
             {trend && (
               <div className={cn(
                 "flex items-center gap-1 mt-2 text-xs font-medium",
@@ -35,8 +35,8 @@ export function StatCard({ title, value, icon: Icon, trend, className }: StatCar
               </div>
             )}
           </div>
-          <div className="flex-shrink-0 p-3 bg-emerald-100 dark:bg-emerald-900/30 rounded-lg">
-            <Icon className="h-6 w-6 text-emerald-600 dark:text-emerald-400" />
+          <div className="flex-shrink-0 p-2 lg:p-3 bg-emerald-100 dark:bg-emerald-900/30 rounded-lg">
+            <Icon className="h-5 w-5 lg:h-6 lg:w-6 text-emerald-600 dark:text-emerald-400" />
           </div>
         </div>
       </CardContent>
