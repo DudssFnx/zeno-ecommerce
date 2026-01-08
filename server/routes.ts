@@ -2,7 +2,7 @@ import { type Express } from "express";
 import { type Server } from "http";
 import { storage } from "./storage";
 import { db } from "./db";
-import { products, orderItems, orders, b2bUsers } from "@shared/schema";
+import { products, orderItems, orders, b2bUsers, customerCredits } from "@shared/schema";
 import { eq, sql } from "drizzle-orm";
 import { setupAuth, isAuthenticated } from "./replitAuth";
 import {
@@ -1009,6 +1009,12 @@ export async function registerRoutes(
             }
           }
 
+          // Cancel any associated customer credits (Contas a Receber)
+          await db
+            .update(customerCredits)
+            .set({ status: "CANCELADO" })
+            .where(eq(customerCredits.orderId, orderId));
+
           // Update order to cancelled
           const order = await storage.updateOrder(orderId, {
             status: "CANCELADO",
@@ -1194,6 +1200,12 @@ export async function registerRoutes(
             })
             .where(eq(products.id, item.productId));
         }
+
+        // Cancel any associated customer credits (Contas a Receber) when unfaturar
+        await db
+          .update(customerCredits)
+          .set({ status: "CANCELADO" })
+          .where(eq(customerCredits.orderId, orderId));
 
         const updatedOrder = await storage.updateOrder(orderId, {
           status: "PEDIDO_GERADO",
