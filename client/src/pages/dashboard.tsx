@@ -151,6 +151,8 @@ export default function DashboardPage() {
       return res.json();
     },
     enabled: isAdmin || isSales,
+    staleTime: 0,
+    refetchOnMount: "always",
   });
 
   const { data: customerAnalytics, isLoading: customerAnalyticsLoading } = useQuery<CustomerAnalyticsData>({
