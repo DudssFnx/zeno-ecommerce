@@ -10,7 +10,7 @@ import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, Loader2, Package, User, Calendar, FileText, DollarSign, Printer, MapPin, Download, Pencil, Plus, Trash2, Search, X, AlertTriangle, ChevronDown, MessageCircle, Settings, CalendarDays } from "lucide-react";
+import { ArrowLeft, Loader2, Package, User, Calendar, FileText, DollarSign, Printer, MapPin, Download, Pencil, Plus, Trash2, Search, X, AlertTriangle, AlertCircle, ChevronDown, MessageCircle, Settings, CalendarDays } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import type { Order, OrderItem, Product as SchemaProduct, PaymentType } from "@shared/schema";
@@ -882,17 +882,20 @@ export default function OrderDetailsPage() {
                     </div>
                   )}
 
-                  {/* Fiado (Store Credit) Installments Configuration */}
+                  {/* Fiado (Store Credit) Installments Configuration - REQUIRED */}
                   {canEditStatus && isFiadoPayment && (
-                    <div className="space-y-3 mb-4 p-4 bg-muted/50 rounded-md">
+                    <div className={`space-y-3 mb-4 p-4 rounded-md border-2 ${fiadoInstallments.length === 0 ? 'border-red-500 bg-red-50 dark:bg-red-950/20' : 'border-green-500 bg-green-50 dark:bg-green-950/20'}`}>
                       <div className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-2 text-sm font-medium">
                           <CalendarDays className="h-4 w-4" />
-                          <span>Configurar Parcelas do Fiado</span>
+                          <span>Cronograma de Pagamento</span>
+                          <Badge variant={fiadoInstallments.length === 0 ? "destructive" : "default"} className="text-xs">
+                            {fiadoInstallments.length === 0 ? "OBRIGATÓRIO" : "Configurado"}
+                          </Badge>
                         </div>
                         {!showFiadoConfig && (
                           <Button
-                            variant="outline"
+                            variant={fiadoInstallments.length === 0 ? "default" : "outline"}
                             size="sm"
                             onClick={() => {
                               setShowFiadoConfig(true);
@@ -903,10 +906,18 @@ export default function OrderDetailsPage() {
                             data-testid="button-configure-fiado"
                           >
                             <Settings className="h-4 w-4 mr-2" />
-                            Configurar
+                            {fiadoInstallments.length === 0 ? "Definir Parcelas" : "Editar"}
                           </Button>
                         )}
                       </div>
+
+                      {/* Warning message when no installments */}
+                      {!showFiadoConfig && fiadoInstallments.length === 0 && (
+                        <div className="flex items-center gap-2 text-sm text-red-600 dark:text-red-400">
+                          <AlertCircle className="h-4 w-4" />
+                          <span>Configure as parcelas antes de faturar este pedido</span>
+                        </div>
+                      )}
 
                       {/* Show existing installments */}
                       {!showFiadoConfig && fiadoInstallments.length > 0 && (
@@ -921,6 +932,10 @@ export default function OrderDetailsPage() {
                                 <span className="font-medium">R$ {inst.amount.toFixed(2)}</span>
                               </div>
                             ))}
+                          </div>
+                          <div className="flex justify-between text-sm font-medium pt-1 border-t">
+                            <span>Total das Parcelas</span>
+                            <span>R$ {fiadoInstallments.reduce((sum, inst) => sum + inst.amount, 0).toFixed(2)}</span>
                           </div>
                         </div>
                       )}
@@ -980,6 +995,38 @@ export default function OrderDetailsPage() {
                               </div>
                             ))}
                           </div>
+
+                          {/* Summary with validation using integer cents for precision */}
+                          {(() => {
+                            const installmentsSumCents = fiadoInstallments.reduce((sum, inst) => sum + Math.round(inst.amount * 100), 0);
+                            const orderTotalCents = Math.round(parseFloat(orderData.total) * 100);
+                            const differenceCents = Math.abs(installmentsSumCents - orderTotalCents);
+                            const isValid = differenceCents <= 2; // 2 cents tolerance
+                            const installmentsSum = installmentsSumCents / 100;
+                            const orderTotal = orderTotalCents / 100;
+                            const difference = differenceCents / 100;
+                            
+                            return (
+                              <div className={`p-3 rounded-md ${isValid ? 'bg-green-50 dark:bg-green-950/20' : 'bg-red-50 dark:bg-red-950/20'}`}>
+                                <div className="flex justify-between text-sm">
+                                  <span>Total do Pedido:</span>
+                                  <span className="font-medium">R$ {orderTotal.toFixed(2)}</span>
+                                </div>
+                                <div className="flex justify-between text-sm">
+                                  <span>Soma das Parcelas:</span>
+                                  <span className={`font-medium ${isValid ? 'text-green-600' : 'text-red-600'}`}>
+                                    R$ {installmentsSum.toFixed(2)}
+                                  </span>
+                                </div>
+                                {!isValid && (
+                                  <div className="flex items-center gap-1 text-xs text-red-600 mt-1">
+                                    <AlertCircle className="h-3 w-3" />
+                                    <span>Diferença de R$ {difference.toFixed(2)} - ajuste os valores</span>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })()}
 
                           <div className="flex justify-end gap-2 pt-2">
                             <Button

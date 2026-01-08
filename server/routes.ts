@@ -1342,6 +1342,52 @@ export async function registerRoutes(
       try {
         const userId = req.user?.claims?.sub;
         const orderId = parseInt(req.params.id);
+        
+        // Get order to check payment type before processing
+        const orderToCheck = await storage.getOrder(orderId);
+        if (!orderToCheck) {
+          return res.status(404).json({ message: "Pedido não encontrado" });
+        }
+        
+        // Check if payment type is Fiado (store credit) - if so, installments are REQUIRED
+        if (orderToCheck.paymentTypeId) {
+          const paymentType = await storage.getPaymentType(orderToCheck.paymentTypeId);
+          if (paymentType?.isStoreCredit) {
+            const installments = orderToCheck.fiadoInstallments as Array<{ installment: number; dueDate: string; amount: number }> | null;
+            
+            if (!installments || installments.length === 0) {
+              return res.status(400).json({ 
+                message: "Cronograma de pagamento obrigatório",
+                details: "Para formas de pagamento que geram contas a receber, é necessário configurar as parcelas antes de faturar."
+              });
+            }
+            
+            // Validate that installments have required fields
+            for (const inst of installments) {
+              if (!inst.dueDate || !inst.amount || inst.amount <= 0) {
+                return res.status(400).json({ 
+                  message: "Parcelas incompletas",
+                  details: "Todas as parcelas devem ter valor e data de vencimento definidos."
+                });
+              }
+            }
+            
+            // Validate that installments sum equals order total using integer cents to avoid float precision issues
+            const installmentsSumCents = installments.reduce((sum, inst) => sum + Math.round(Number(inst.amount) * 100), 0);
+            const orderTotalCents = Math.round(parseFloat(orderToCheck.total) * 100);
+            const toleranceCents = 2; // Allow 2 cents tolerance for rounding
+            
+            if (Math.abs(installmentsSumCents - orderTotalCents) > toleranceCents) {
+              const installmentsSum = installmentsSumCents / 100;
+              const orderTotal = orderTotalCents / 100;
+              return res.status(400).json({ 
+                message: "Soma das parcelas incorreta",
+                details: `A soma das parcelas (R$ ${installmentsSum.toFixed(2)}) deve ser igual ao total do pedido (R$ ${orderTotal.toFixed(2)}).`
+              });
+            }
+          }
+        }
+        
         const result = await storage.deductStockForOrder(orderId, userId);
         if (!result.success) {
           return res.status(400).json({ message: result.error });
