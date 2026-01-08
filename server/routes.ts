@@ -1287,7 +1287,10 @@ export async function registerRoutes(
               .json({ message: `Produto ${item.productId} não encontrado` });
           }
 
-          const price = product.price;
+          // Use the price from request if provided (admin can override), otherwise use catalog price
+          const price = item.price && typeof item.price === 'string' && parseFloat(item.price) > 0
+            ? item.price
+            : product.price;
           validatedItems.push({
             productId: item.productId,
             quantity: item.quantity,
