@@ -30,8 +30,9 @@ import {
 } from "@/components/ui/select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Store, ArrowRight, ArrowLeft, Loader2, CheckCircle, Zap } from "lucide-react";
+import { ArrowRight, ArrowLeft, Loader2, CheckCircle, Zap } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
+import { ZenoLogo } from "@/components/ZenoLogo";
 
 const BRAZILIAN_STATES = [
   { value: "AC", label: "Acre" },
@@ -401,11 +402,9 @@ export default function RegisterPage() {
         <div className="container mx-auto px-4 py-8">
           <div className="max-w-lg mx-auto">
             <div className="text-center mb-8">
-              <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
-                <Store className="h-10 w-10 text-primary" />
+              <div className="flex justify-center mb-4">
+                <ZenoLogo size="xl" showText={true} showSubtitle={true} />
               </div>
-              <h1 className="text-xl font-bold mb-1">LOJAMADRUGADAO</h1>
-              <p className="text-muted-foreground text-sm">11 99284-5596</p>
             </div>
 
             <Card>
@@ -681,11 +680,9 @@ export default function RegisterPage() {
       <div className="container mx-auto px-4 py-8">
         <div className="max-w-lg mx-auto">
           <div className="text-center mb-8">
-            <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
-              <Store className="h-10 w-10 text-primary" />
+            <div className="flex justify-center mb-4">
+              <ZenoLogo size="xl" showText={true} showSubtitle={true} />
             </div>
-            <h1 className="text-xl font-bold mb-1">LOJAMADRUGADAO</h1>
-            <p className="text-muted-foreground text-sm">11 99284-5596</p>
           </div>
 
           <Card>

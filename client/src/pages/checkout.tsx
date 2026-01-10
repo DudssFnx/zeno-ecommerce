@@ -30,8 +30,8 @@ import {
   CheckCircle2
 } from "lucide-react";
 import { SiWhatsapp } from "react-icons/si";
-import logoImage from "@assets/image_1765659931449.png";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { ZenoLogo } from "@/components/ZenoLogo";
 
 const STORE_WHATSAPP = "5511992845596";
 
@@ -359,14 +359,12 @@ export default function CheckoutPage() {
         <header className="sticky top-0 z-50 bg-zinc-900 text-white">
           <div className="container mx-auto px-4 py-3">
             <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-3 cursor-pointer" onClick={() => setLocation("/")}>
-                <img 
-                  src={logoImage} 
-                  alt="Lojamadrugadao" 
-                  className="h-10 w-10 rounded-full border-2 border-white/20"
-                />
-                <h1 className="font-bold text-lg">LOJAMADRUGADAO</h1>
-              </div>
+              <ZenoLogo 
+                size="md" 
+                showText={true} 
+                variant="light"
+                onClick={() => setLocation("/")}
+              />
               <ThemeToggle />
             </div>
           </div>
@@ -414,14 +412,12 @@ export default function CheckoutPage() {
         <header className="sticky top-0 z-50 bg-zinc-900 text-white">
           <div className="container mx-auto px-4 py-3">
             <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-3 cursor-pointer" onClick={() => setLocation("/")}>
-                <img 
-                  src={logoImage} 
-                  alt="Lojamadrugadao" 
-                  className="h-10 w-10 rounded-full border-2 border-white/20"
-                />
-                <h1 className="font-bold text-lg">LOJAMADRUGADAO</h1>
-              </div>
+              <ZenoLogo 
+                size="md" 
+                showText={true} 
+                variant="light"
+                onClick={() => setLocation("/")}
+              />
               <ThemeToggle />
             </div>
           </div>
@@ -450,25 +446,17 @@ export default function CheckoutPage() {
       <header className="sticky top-0 z-50 bg-zinc-900 text-white">
         <div className="container mx-auto px-4 py-3">
           <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-3 cursor-pointer" onClick={() => setLocation("/")}>
-              <img 
-                src={logoImage} 
-                alt="Lojamadrugadao" 
-                className="h-10 w-10 rounded-full border-2 border-white/20"
-              />
-              <div className="hidden sm:block">
-                <h1 className="font-bold text-sm">LOJAMADRUGADAO</h1>
-                <div className="flex items-center gap-1 text-zinc-400 text-xs">
-                  <Phone className="h-3 w-3" />
-                  <span>11 99294-0168</span>
-                </div>
-              </div>
-            </div>
+            <ZenoLogo 
+              size="md" 
+              showText={true} 
+              variant="light"
+              onClick={() => setLocation("/")}
+            />
             <div className="flex items-center gap-4">
               <div className="hidden md:flex items-center gap-2 text-sm">
                 <ShoppingCart className="h-4 w-4" />
                 <span>{itemCount} itens</span>
-                <span className="font-bold text-orange-500">{formatPrice(total)}</span>
+                <span className="font-bold text-emerald-400">{formatPrice(total)}</span>
               </div>
               <ThemeToggle />
             </div>

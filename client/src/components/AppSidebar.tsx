@@ -46,7 +46,6 @@ import {
   Tag,
   CreditCard,
 } from "lucide-react";
-import logoImage from "@assets/image_1765659931449.png";
 
 type UserRole = "admin" | "sales" | "customer" | "supplier";
 
@@ -186,21 +185,17 @@ export function AppSidebar({ userRole = "customer", userName = "User", onLogout 
   return (
     <Sidebar className="border-r-0">
       <SidebarHeader className="p-0">
-        <div className="bg-gradient-to-br from-primary/10 via-primary/5 to-transparent p-4">
+        <div className="bg-gradient-to-br from-emerald-500/10 via-emerald-500/5 to-transparent p-4">
           <div className="flex items-center gap-3">
-            <div className="relative">
-              <img 
-                src={logoImage} 
-                alt="Logo" 
-                className="h-11 w-11 rounded-xl shadow-sm ring-2 ring-primary/20" 
-              />
-              <div className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full bg-green-500 ring-2 ring-sidebar" />
+            <div className="relative flex items-center justify-center h-11 w-11 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600 shadow-lg shadow-emerald-500/20">
+              <span className="text-xl font-black text-white tracking-tighter">Z</span>
+              <div className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full bg-green-400 ring-2 ring-sidebar" />
             </div>
             <div className="flex-1 min-w-0">
-              <h2 className="font-bold text-sm tracking-tight truncate">Lojamadrugadao</h2>
+              <h2 className="font-black text-lg tracking-tight truncate bg-gradient-to-r from-emerald-600 to-emerald-500 dark:from-emerald-400 dark:to-emerald-300 bg-clip-text text-transparent">Zeno</h2>
               <div className="flex items-center gap-1.5 mt-0.5">
-                <Sparkles className="h-3 w-3 text-primary" />
-                <span className="text-xs text-muted-foreground">Portal Atacado</span>
+                <Sparkles className="h-3 w-3 text-emerald-500" />
+                <span className="text-xs text-muted-foreground">B2B Platform</span>
               </div>
             </div>
           </div>

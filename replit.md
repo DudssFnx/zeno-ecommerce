@@ -1,8 +1,14 @@
-# B2B Wholesale Catalog & Order Management System
+# Zeno - B2B Wholesale Platform
 
 ## Overview
 
-A private, closed B2B wholesale catalog and order management platform for registered business clients. It facilitates product catalog browsing and order generation, specifically designed for internal business use with required authentication and role-based access control. The system aims to modernize a legacy system by incrementally migrating to a new B2B model while supporting existing functionalities.
+**Zeno** is a private, closed B2B wholesale catalog and order management platform for registered business clients. It facilitates product catalog browsing and order generation, specifically designed for internal business use with required authentication and role-based access control. The system aims to modernize a legacy system by incrementally migrating to a new B2B model while supporting existing functionalities.
+
+### Brand Identity
+- **Name**: Zeno
+- **Primary Color**: Emerald (#10B981 - emerald-500)
+- **Logo**: Modern "Z" icon with emerald gradient background
+- **Tagline**: B2B Platform
 
 ## User Preferences
 

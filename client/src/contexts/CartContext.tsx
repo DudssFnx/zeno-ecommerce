@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from "react";
 
-const CART_STORAGE_KEY = "lojamadrugadao_cart";
+const CART_STORAGE_KEY = "zeno_cart";
 
 export interface CartItem {
   id: string;

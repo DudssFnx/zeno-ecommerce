@@ -42,7 +42,7 @@ import { SiWhatsapp, SiMercadopago } from "react-icons/si";
 import type { Product as SchemaProduct, Category } from "@shared/schema";
 import { useCart } from "@/contexts/CartContext";
 import { useToast } from "@/hooks/use-toast";
-import logoImage from "@assets/image_1765659931449.png";
+import { ZenoLogo } from "@/components/ZenoLogo";
 import bannerImage1 from "@assets/image_1765676126936.png";
 import bannerImage2 from "@assets/image_1765676145067.png";
 
@@ -176,25 +176,17 @@ export default function LandingPage() {
       <header className="sticky top-0 z-50 bg-zinc-900 text-white">
         <div className="container mx-auto px-4 py-3">
           <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <img 
-                src={logoImage} 
-                alt="Lojamadrugadao" 
-                className="h-12 w-12 rounded-full border-2 border-white/20 cursor-pointer select-none"
-                onClick={handleLogoClick}
-                data-testid="img-logo"
+            <div 
+              className="cursor-pointer select-none"
+              onClick={handleLogoClick}
+              onDoubleClick={() => setLocation("/login")}
+              data-testid="phone-employee-login"
+            >
+              <ZenoLogo 
+                size="lg" 
+                showText={true} 
+                variant="light"
               />
-              <div className="hidden sm:block">
-                <h1 className="font-bold text-lg tracking-wide">LOJAMADRUGADAO</h1>
-                <div 
-                  className="flex items-center gap-1 text-zinc-400 text-xs cursor-pointer select-none"
-                  onDoubleClick={() => setLocation("/login")}
-                  data-testid="phone-employee-login"
-                >
-                  <Phone className="h-3 w-3" />
-                  <span>11 99294-0168</span>
-                </div>
-              </div>
             </div>
 
             <form onSubmit={handleSearch} className="hidden md:flex flex-1 max-w-md mx-4">
@@ -662,22 +654,19 @@ export default function LandingPage() {
       <section className="bg-black text-white py-16">
         <div className="container mx-auto px-4">
           <div className="text-center max-w-2xl mx-auto">
-            <img 
-              src={logoImage} 
-              alt="Lojamadrugadao" 
-              className="h-20 w-20 rounded-full mx-auto mb-6 border-2 border-white/20"
-            />
-            <h2 className="text-3xl md:text-4xl font-bold mb-4">@LOJAMADRUGADAO</h2>
+            <div className="flex justify-center mb-6">
+              <ZenoLogo size="xl" showText={false} variant="light" />
+            </div>
+            <h2 className="text-3xl md:text-4xl font-bold mb-4 bg-gradient-to-r from-emerald-400 to-emerald-300 bg-clip-text text-transparent">Zeno</h2>
             <p className="text-zinc-400 mb-8">
-              Siga a gente e fique por dentro das novidades.
+              Fique por dentro das novidades.
             </p>
             <Button 
               size="lg"
-              onClick={() => window.open("https://instagram.com/lojamadrugadao", "_blank")}
-              className="bg-green-500 hover:bg-green-600 text-white font-bold px-8"
-              data-testid="button-seguir-instagram"
+              className="bg-emerald-500 hover:bg-emerald-600 text-white font-bold px-8"
+              data-testid="button-seguir"
             >
-              SEGUIR NO INSTAGRAM
+              SAIBA MAIS
             </Button>
           </div>
         </div>
@@ -710,20 +699,7 @@ export default function LandingPage() {
       <footer className="border-t py-4 bg-zinc-900 text-white">
         <div className="container mx-auto px-4">
           <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <img 
-                src={logoImage} 
-                alt="Lojamadrugadao" 
-                className="h-8 w-8 rounded-full"
-              />
-              <div>
-                <p className="font-semibold text-sm">LOJAMADRUGADAO SAO PAULO</p>
-                <div className="flex items-center gap-1 text-zinc-400 text-xs">
-                  <Phone className="h-3 w-3" />
-                  <span>11 99294-0168</span>
-                </div>
-              </div>
-            </div>
+            <ZenoLogo size="sm" showText={true} variant="light" />
             <p className="text-xs text-zinc-400">
               Precos de varejo. Para precos de atacado, faca login.
             </p>

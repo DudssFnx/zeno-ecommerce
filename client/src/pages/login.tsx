@@ -14,9 +14,8 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Loader2, Eye, EyeOff, Phone } from "lucide-react";
+import { Loader2, Eye, EyeOff } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import logoImage from "@assets/image_1765659931449.png";
 
 const loginSchema = z.object({
   email: z.string().min(1, "Campo obrigatorio"),
@@ -74,20 +73,17 @@ export default function LoginPage() {
     <div className="min-h-screen bg-zinc-900 flex flex-col items-center justify-center p-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <div className="flex justify-center mb-4">
-            <img 
-              src={logoImage} 
-              alt="Lojamadrugadao" 
-              className="h-24 w-24 rounded-full border-4 border-white/10"
-            />
+          <div className="flex justify-center mb-6">
+            <div className="flex items-center justify-center h-20 w-20 rounded-2xl bg-gradient-to-br from-emerald-500 to-emerald-600 shadow-xl shadow-emerald-500/30">
+              <span className="text-4xl font-black text-white tracking-tighter">Z</span>
+            </div>
           </div>
-          <h1 className="text-2xl font-bold text-white tracking-wide">
-            LOJAMADRUGADAO SAO PAULO
+          <h1 className="text-3xl font-black bg-gradient-to-r from-emerald-400 to-emerald-300 bg-clip-text text-transparent tracking-tight">
+            Zeno
           </h1>
-          <div className="flex items-center justify-center gap-2 mt-2 text-zinc-400">
-            <Phone className="h-4 w-4" />
-            <span>11 99294-0168</span>
-          </div>
+          <p className="text-zinc-400 mt-2 text-sm">
+            B2B Platform
+          </p>
         </div>
 
         {error && (

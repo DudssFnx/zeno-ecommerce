@@ -28,7 +28,7 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { useCart } from "@/contexts/CartContext";
 import { useToast } from "@/hooks/use-toast";
 import { DeliveryCatalog } from "@/components/DeliveryCatalog";
-import logoImage from "@assets/image_1765659931449.png";
+import { ZenoLogo } from "@/components/ZenoLogo";
 
 interface ProductsResponse {
   products: SchemaProduct[];
@@ -213,20 +213,12 @@ export default function PublicCatalogPage() {
         <header className="sticky top-0 z-50 bg-zinc-900 text-white">
           <div className="container mx-auto px-4 py-3">
             <div className="flex items-center justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <img 
-                  src={logoImage} 
-                  alt="Lojamadrugadao" 
-                  className="h-10 w-10 rounded-full border-2 border-white/20 cursor-pointer"
-                  onClick={() => setLocation("/")}
-                  data-testid="img-logo"
-                />
-                <div className="hidden sm:block">
-                  <h1 className="font-bold text-sm tracking-wide cursor-pointer" onClick={() => setLocation("/")}>
-                    LOJAMADRUGADAO
-                  </h1>
-                </div>
-              </div>
+              <ZenoLogo 
+                size="md" 
+                showText={true} 
+                variant="light"
+                onClick={() => setLocation("/")}
+              />
               <div className="flex items-center gap-2">
                 <ThemeToggle />
                 <Button
@@ -266,28 +258,12 @@ export default function PublicCatalogPage() {
       <header className="sticky top-0 z-50 bg-zinc-900 text-white">
         <div className="container mx-auto px-4 py-3">
           <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <img 
-                src={logoImage} 
-                alt="Lojamadrugadao" 
-                className="h-10 w-10 rounded-full border-2 border-white/20 cursor-pointer"
-                onClick={() => setLocation("/")}
-                data-testid="img-logo"
-              />
-              <div className="hidden sm:block">
-                <h1 className="font-bold text-sm tracking-wide cursor-pointer" onClick={() => setLocation("/")}>
-                  LOJAMADRUGADAO
-                </h1>
-                <div 
-                  className="flex items-center gap-1 text-zinc-400 text-xs cursor-pointer select-none"
-                  onDoubleClick={() => setLocation("/login")}
-                  data-testid="phone-employee-login"
-                >
-                  <Phone className="h-3 w-3" />
-                  <span>11 99294-0168</span>
-                </div>
-              </div>
-            </div>
+            <ZenoLogo 
+              size="md" 
+              showText={true} 
+              variant="light"
+              onClick={() => setLocation("/")}
+            />
 
             <form onSubmit={handleSearch} className="hidden md:flex flex-1 max-w-lg mx-4">
               <div className="relative w-full">
