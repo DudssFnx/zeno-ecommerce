@@ -7,6 +7,7 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { CartProvider, useCart } from "@/contexts/CartContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
+import { CompanyProvider } from "@/contexts/CompanyContext";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { AppSidebar } from "@/components/AppSidebar";
 import { CartDrawer } from "@/components/CartDrawer";
@@ -169,9 +170,11 @@ function AppContent() {
   }
 
   return (
-    <CartProvider>
-      <AuthenticatedApp />
-    </CartProvider>
+    <CompanyProvider>
+      <CartProvider>
+        <AuthenticatedApp />
+      </CartProvider>
+    </CompanyProvider>
   );
 }
 

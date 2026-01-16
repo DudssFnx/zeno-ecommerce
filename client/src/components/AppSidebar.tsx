@@ -1,5 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
+import { CompanySelector } from "@/components/CompanySelector";
 import {
   Sidebar,
   SidebarContent,
@@ -201,6 +202,11 @@ export function AppSidebar({ userRole = "customer", userName = "User", onLogout 
           </div>
         </div>
         
+        <div className="px-4 pb-4 pt-2">
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium mb-2">Empresa</p>
+          <CompanySelector />
+        </div>
+
         <div className="px-4 pb-4 pt-2">
           <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium mb-2">Visualizar como</p>
           <div className="flex gap-2">
