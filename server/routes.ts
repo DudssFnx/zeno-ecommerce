@@ -20,6 +20,7 @@ import * as blingService from "./services/bling";
 import bcrypt from "bcryptjs";
 import PDFDocument from "pdfkit";
 import { requireSuperAdmin, checkIsSuperAdmin } from "./middleware/superAdmin";
+import { extractCompanyContext, requireCompany, optionalCompany } from "./middleware/company";
 import * as companiesService from "./services/companies.service";
 
 /* =========================================================

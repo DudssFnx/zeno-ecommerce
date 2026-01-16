@@ -1,5 +1,17 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
+const ACTIVE_COMPANY_KEY = "zeno_active_company_id";
+
+function getCompanyHeaders(): Record<string, string> {
+  if (typeof window !== "undefined") {
+    const companyId = localStorage.getItem(ACTIVE_COMPANY_KEY);
+    if (companyId) {
+      return { "X-Company-Id": companyId };
+    }
+  }
+  return {};
+}
+
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
     const text = (await res.text()) || res.statusText;
@@ -12,9 +24,14 @@ export async function apiRequest(
   url: string,
   data?: unknown | undefined,
 ): Promise<Response> {
+  const headers: Record<string, string> = {
+    ...getCompanyHeaders(),
+    ...(data ? { "Content-Type": "application/json" } : {}),
+  };
+
   const res = await fetch(url, {
     method,
-    headers: data ? { "Content-Type": "application/json" } : {},
+    headers,
     body: data ? JSON.stringify(data) : undefined,
     credentials: "include",
   });
@@ -31,6 +48,7 @@ export const getQueryFn: <T>(options: {
   async ({ queryKey }) => {
     const res = await fetch(queryKey.join("/") as string, {
       credentials: "include",
+      headers: getCompanyHeaders(),
     });
 
     if (unauthorizedBehavior === "returnNull" && res.status === 401) {
