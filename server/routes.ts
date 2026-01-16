@@ -2,8 +2,8 @@ import { type Express } from "express";
 import { type Server } from "http";
 import { storage } from "./storage";
 import { db } from "./db";
-import { products, orderItems, orders, b2bUsers, customerCredits } from "@shared/schema";
-import { eq, sql } from "drizzle-orm";
+import { products, orderItems, orders, b2bUsers, customerCredits, userCompanies, companies } from "@shared/schema";
+import { eq, sql, inArray } from "drizzle-orm";
 import { setupAuth, isAuthenticated } from "./replitAuth";
 import {
   insertCategorySchema,
@@ -333,6 +333,37 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error fetching user:", error);
       res.status(500).json({ message: "Failed to fetch user" });
+    }
+  });
+
+  // ========== USER COMPANIES ==========
+  app.get("/api/user/companies", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const isB2bUser = req.user.isB2bUser;
+      
+      if (isB2bUser) {
+        const userCompanyLinks = await db.select().from(userCompanies).where(eq(userCompanies.userId, userId));
+        if (userCompanyLinks.length > 0) {
+          const companyIds = userCompanyLinks.map(uc => uc.companyId);
+          const companiesList = await db.select().from(companies).where(inArray(companies.id, companyIds));
+          return res.json(companiesList);
+        }
+        return res.json([]);
+      } else {
+        const user = await storage.getUser(userId);
+        if (!user) {
+          return res.json([]);
+        }
+        if (user.companyId) {
+          const company = await db.select().from(companies).where(eq(companies.id, user.companyId));
+          return res.json(company);
+        }
+        return res.json([]);
+      }
+    } catch (error) {
+      console.error("Error fetching user companies:", error);
+      res.status(500).json({ message: "Failed to fetch companies" });
     }
   });
 
