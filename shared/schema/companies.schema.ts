@@ -8,6 +8,7 @@ export const approvalStatusEnum = pgEnum("approval_status", ["PENDENTE", "APROVA
 
 export const companies = pgTable("companies", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  slug: varchar("slug", { length: 100 }).unique(),
   razaoSocial: text("razao_social").notNull(),
   nomeFantasia: text("nome_fantasia"),
   cnpj: varchar("cnpj", { length: 18 }).unique().notNull(),

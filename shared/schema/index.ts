@@ -86,3 +86,24 @@ export {
   type InsertStockMovement,
   type StockMovement
 } from "./purchases.schema";
+
+// Export plans and subscriptions schemas
+export {
+  plans,
+  insertPlanSchema,
+  type InsertPlan,
+  type Plan,
+  subscriptions,
+  insertSubscriptionSchema,
+  type InsertSubscription,
+  type Subscription,
+  usageMetrics,
+  insertUsageMetricSchema,
+  type InsertUsageMetric,
+  type UsageMetric,
+  planStatusEnum,
+  subscriptionStatusEnum,
+  billingCycleEnum,
+  planLimitsSchema,
+  type PlanLimits
+} from "./plans.schema";

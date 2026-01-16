@@ -18,6 +18,7 @@ export const sessions = pgTable(
 // Includes Replit Auth fields plus custom B2B fields
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id"), // Multi-tenant: links user to a company
   email: text("email").unique(),
   password: text("password"),
   firstName: text("first_name"),
@@ -62,6 +63,7 @@ export type InsertUser = z.infer<typeof insertUserSchema>;
 // Categories table with hierarchy support (parent/child)
 export const categories = pgTable("categories", {
   id: serial("id").primaryKey(),
+  companyId: varchar("company_id"), // Multi-tenant: links category to a company
   name: text("name").notNull(),
   slug: text("slug").notNull().unique(),
   parentId: integer("parent_id"),
@@ -79,6 +81,7 @@ export type Category = typeof categories.$inferSelect;
 // Suppliers table
 export const suppliers = pgTable("suppliers", {
   id: serial("id").primaryKey(),
+  companyId: varchar("company_id"), // Multi-tenant: links supplier to a company
   name: text("name").notNull(),
   tradingName: text("trading_name"),
   cnpj: text("cnpj"),
@@ -108,6 +111,7 @@ export type Supplier = typeof suppliers.$inferSelect;
 // Products table
 export const products = pgTable("products", {
   id: serial("id").primaryKey(),
+  companyId: varchar("company_id"), // Multi-tenant: links product to a company
   name: text("name").notNull(),
   sku: text("sku").notNull().unique(),
   categoryId: integer("category_id").references(() => categories.id),
@@ -174,6 +178,7 @@ export type Product = typeof products.$inferSelect;
 // 8. PEDIDO_ENVIADO - Finalizado
 export const orders = pgTable("orders", {
   id: serial("id").primaryKey(),
+  companyId: varchar("company_id"), // Multi-tenant: links order to a company
   userId: varchar("user_id").references(() => users.id), // nullable for guest orders
   orderNumber: text("order_number").notNull().unique(),
   status: text("status").notNull().default("ORCAMENTO"),
@@ -269,6 +274,7 @@ export type CustomerPrice = typeof customerPrices.$inferSelect;
 // Coupons and promotions (like Mercos)
 export const coupons = pgTable("coupons", {
   id: serial("id").primaryKey(),
+  companyId: varchar("company_id"), // Multi-tenant: links coupon to a company
   code: text("code").notNull().unique(),
   name: text("name").notNull(),
   discountType: text("discount_type").notNull().default("percent"), // percent, fixed
@@ -315,6 +321,7 @@ export type AgendaEvent = typeof agendaEvents.$inferSelect;
 // Site settings for global configurations
 export const siteSettings = pgTable("site_settings", {
   id: serial("id").primaryKey(),
+  companyId: varchar("company_id"), // Multi-tenant: links settings to a company
   key: text("key").notNull().unique(),
   value: text("value"),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -325,6 +332,7 @@ export type SiteSetting = typeof siteSettings.$inferSelect;
 // Catalog banners for customization
 export const catalogBanners = pgTable("catalog_banners", {
   id: serial("id").primaryKey(),
+  companyId: varchar("company_id"), // Multi-tenant: links banner to a company
   position: text("position").notNull(), // hero, promo1, promo2, promo3, footer
   title: text("title"),
   subtitle: text("subtitle"),
@@ -352,6 +360,7 @@ export type CatalogBanner = typeof catalogBanners.$inferSelect;
 // Catalog carousel slides (hero slider)
 export const catalogSlides = pgTable("catalog_slides", {
   id: serial("id").primaryKey(),
+  companyId: varchar("company_id"), // Multi-tenant: links slide to a company
   title: text("title"),
   subtitle: text("subtitle"),
   buttonText: text("button_text"),
