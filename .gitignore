@@ -18,8 +18,8 @@ Thumbs.db
 
 # Replit (CRÍTICO)
 .replit
-.local
-attached_assets
+.local/
+attached_assets/
 
 # Editor
 .vscode
