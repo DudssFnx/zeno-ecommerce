@@ -1,8 +1,12 @@
+import "dotenv/config"; // <--- ADICIONE ESTA LINHA AQUI
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 
 if (!process.env.DATABASE_URL) {
-  throw new Error("DATABASE_URL não definida");
+  console.error("ERRO: DATABASE_URL não encontrada no ambiente!");
+  // Fallback para evitar erro de 'base' caso a variável falhe
+  process.env.DATABASE_URL =
+    "postgresql://postgres:HuAEUzZKFvIviCrffwOmkAMFaSYDwiHz@gondola.proxy.rlwy.net:32164/railway";
 }
 
 const pool = new Pool({
