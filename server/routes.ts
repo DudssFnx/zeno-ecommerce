@@ -174,7 +174,7 @@ export async function registerRoutes(
       if (!email || !password)
         return res.status(400).json({ message: "Dados incompletos" });
 
-      // 1. Tentar Usuário Legado
+      // 1. Tentar Usuário Comum/Legado
       const user = await storage.getUserByEmail(email);
       if (user && user.password) {
         const isValid = await bcrypt.compare(password, user.password);
@@ -196,9 +196,13 @@ export async function registerRoutes(
         .select()
         .from(b2bUsers)
         .where(eq(b2bUsers.email, email));
+
       if (b2bUser && b2bUser.senhaHash) {
         const isValid = await bcrypt.compare(password, b2bUser.senhaHash);
-        if (isValid && b2bUser.ativo) {
+        if (isValid) {
+          if (!b2bUser.ativo) {
+            return res.status(403).json({ message: "Conta B2B inativa" });
+          }
           const sessionUser = {
             claims: { sub: b2bUser.id },
             expires_at: Math.floor(Date.now() / 1000) + 604800,
@@ -211,10 +215,9 @@ export async function registerRoutes(
         }
       }
 
-      return res
-        .status(401)
-        .json({ message: "Credenciais inválidas ou conta inativa" });
+      return res.status(401).json({ message: "Credenciais inválidas" });
     } catch (error) {
+      console.error("[LOGIN ERROR]", error);
       res.status(500).json({ message: "Erro no servidor durante login" });
     }
   });
@@ -224,23 +227,27 @@ export async function registerRoutes(
   });
 
   app.get("/api/auth/user", isAuthenticated, async (req: any, res) => {
-    const userId = req.user.claims.sub;
-    const isB2bUser = req.user.isB2bUser;
-    const isSuperAdmin = await checkIsSuperAdmin(userId);
+    try {
+      const userId = req.user.claims.sub;
+      const isB2bUser = req.user.isB2bUser;
+      const isSuperAdmin = await checkIsSuperAdmin(userId);
 
-    if (isB2bUser) {
-      const [user] = await db
-        .select()
-        .from(b2bUsers)
-        .where(eq(b2bUsers.id, userId));
+      if (isB2bUser) {
+        const [user] = await db
+          .select()
+          .from(b2bUsers)
+          .where(eq(b2bUsers.id, userId));
+        return user
+          ? res.json({ ...user, isSuperAdmin, isB2bUser: true })
+          : res.status(404).end();
+      }
+      const user = await storage.getUser(userId);
       return user
-        ? res.json({ ...user, isSuperAdmin, isB2bUser: true })
+        ? res.json({ ...user, isSuperAdmin, isB2bUser: false })
         : res.status(404).end();
+    } catch (error) {
+      res.status(500).json({ message: "Erro ao buscar dados do usuário" });
     }
-    const user = await storage.getUser(userId);
-    return user
-      ? res.json({ ...user, isSuperAdmin, isB2bUser: false })
-      : res.status(404).end();
   });
 
   /* =========================================================
@@ -281,7 +288,7 @@ export async function registerRoutes(
   });
 
   /* =========================================================
-      ORDER ROUTES (INCLUDING GUEST)
+      ORDER ROUTES
   ========================================================= */
   app.post(
     "/api/orders",
