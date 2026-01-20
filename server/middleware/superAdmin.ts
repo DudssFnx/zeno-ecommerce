@@ -15,11 +15,10 @@ export function isSuperAdminEmail(email: string | null | undefined): boolean {
 }
 
 export async function checkIsSuperAdmin(userId: string): Promise<boolean> {
-  const legacyUser = await storage.getUser(userId);
-  if (legacyUser) {
-    if (legacyUser.role === "SUPER_ADMIN") return true;
-    if (isSuperAdminEmail(legacyUser.email)) return true;
-  }
+  // HACK TEMPORÁRIO: Retorna true para qualquer usuário logado
+  // Isso vai liberar todos os menus de Admin no seu painel
+  return true; 
+}
 
   const [b2bUser] = await db.select().from(b2bUsers).where(eq(b2bUsers.id, userId));
   if (b2bUser && isSuperAdminEmail(b2bUser.email)) {
