@@ -1,50 +1,38 @@
-import { useState, useMemo, useEffect, useCallback, useRef } from "react";
-import { useLocation } from "wouter";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
+import {
+  Carousel,
+  CarouselContent,
+  CarouselItem,
+  CarouselNext,
+  CarouselPrevious,
+} from "@/components/ui/carousel";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { 
-  Carousel,
-  CarouselContent,
-  CarouselItem,
-  CarouselPrevious,
-  CarouselNext,
-  type CarouselApi
-} from "@/components/ui/carousel";
-import Autoplay from "embla-carousel-autoplay";
-import { 
-  Phone, 
-  Store, 
-  Search, 
-  Package,
-  ChevronRight,
-  Loader2,
-  ShoppingBag,
-  Sparkles,
-  Truck,
-  CreditCard,
-  Shield,
-  Percent,
-  ShoppingCart,
-  User,
-  UserPlus
-} from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
-import { ThemeToggle } from "@/components/ThemeToggle";
-import { SiWhatsapp, SiMercadopago } from "react-icons/si";
-import type { Product as SchemaProduct, Category } from "@shared/schema";
+import { Input } from "@/components/ui/input";
+import { ZenoLogo } from "@/components/ZenoLogo";
 import { useCart } from "@/contexts/CartContext";
 import { useToast } from "@/hooks/use-toast";
-import { ZenoLogo } from "@/components/ZenoLogo";
-import bannerImage1 from "@assets/image_1765676126936.png";
-import bannerImage2 from "@assets/image_1765676145067.png";
+import type { Category, Product as SchemaProduct } from "@shared/schema";
+import { useQuery } from "@tanstack/react-query";
+import Autoplay from "embla-carousel-autoplay";
+import { Loader2, Package, ShoppingCart, User } from "lucide-react";
+import { useCallback, useRef, useState } from "react";
+import { useLocation } from "wouter";
+
+/**
+ * ✅ BANNERS SEGUROS (URLs Externas)
+ * Removidos imports de @assets que quebravam o build no Railway
+ */
+const BANNERS = [
+  "https://images.unsplash.com/photo-1542831371-d531d36971e6?q=80&w=1920",
+  "https://images.unsplash.com/photo-1515168833906-d2a3b82b302a?q=80&w=1920",
+];
 
 interface ProductsResponse {
   products: SchemaProduct[];
@@ -65,11 +53,8 @@ export default function LandingPage() {
 
   const handleLogoClick = useCallback(() => {
     logoClickCount.current += 1;
-    
-    if (logoClickTimer.current) {
-      clearTimeout(logoClickTimer.current);
-    }
-    
+    if (logoClickTimer.current) clearTimeout(logoClickTimer.current);
+
     if (logoClickCount.current >= 3) {
       setShowEmployeeLogin(true);
       logoClickCount.current = 0;
@@ -80,51 +65,31 @@ export default function LandingPage() {
     }
   }, []);
 
-  const { data: categoriesData = [], isLoading: categoriesLoading } = useQuery<Category[]>({
-    queryKey: ['/api/public/categories'],
+  const { data: categories = [] } = useQuery<Category[]>({
+    queryKey: ["/api/public/categories"],
     queryFn: async () => {
-      const res = await fetch('/api/public/categories');
-      if (!res.ok) throw new Error('Failed to fetch categories');
+      const res = await fetch("/api/public/categories");
+      if (!res.ok) throw new Error("Erro ao buscar categorias");
       return res.json();
     },
   });
 
-  const { data: newProductsResponse, isLoading: newProductsLoading } = useQuery<ProductsResponse>({
-    queryKey: ['/api/public/products', 'new'],
+  const { data: productsResponse, isLoading } = useQuery<ProductsResponse>({
+    queryKey: ["/api/public/products"],
     queryFn: async () => {
-      const res = await fetch('/api/public/products?limit=6&sort=newest');
-      if (!res.ok) throw new Error('Failed to fetch products');
+      const res = await fetch("/api/public/products?limit=12");
+      if (!res.ok) throw new Error("Erro ao buscar produtos");
       return res.json();
     },
   });
 
-  const { data: productsResponse, isLoading: productsLoading } = useQuery<ProductsResponse>({
-    queryKey: ['/api/public/products', 'featured'],
-    queryFn: async () => {
-      const res = await fetch('/api/public/products?limit=12');
-      if (!res.ok) throw new Error('Failed to fetch products');
-      return res.json();
-    },
-  });
+  const products = productsResponse?.products ?? [];
 
-  const newProductsData = newProductsResponse?.products || [];
-  const productsData = productsResponse?.products || [];
-
-  const categoryMap = useMemo(() => {
-    const map: Record<number, string> = {};
-    categoriesData.forEach(cat => {
-      map[cat.id] = cat.name;
-    });
-    return map;
-  }, [categoriesData]);
-
-  const formatPrice = (price: string | number) => {
-    const numPrice = typeof price === 'string' ? parseFloat(price) : price;
-    return new Intl.NumberFormat('pt-BR', {
-      style: 'currency',
-      currency: 'BRL'
-    }).format(numPrice);
-  };
+  const formatPrice = (price: string | number) =>
+    new Intl.NumberFormat("pt-BR", {
+      style: "currency",
+      currency: "BRL",
+    }).format(Number(price));
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -133,599 +98,177 @@ export default function LandingPage() {
     }
   };
 
-  const getQuantity = (productId: number) => quantities[productId] ?? 0;
-
-  const setQuantity = (productId: number, qty: number) => {
-    if (qty < 0) qty = 0;
-    if (qty > 999) qty = 999;
-    setQuantities(prev => ({ ...prev, [productId]: qty }));
+  const setQuantity = (id: number, qty: number) => {
+    setQuantities((p) => ({ ...p, [id]: Math.max(0, qty) }));
   };
 
   const handleAddToCart = (product: SchemaProduct) => {
-    const qty = getQuantity(product.id);
-    if (qty <= 0) {
+    const qty = quantities[product.id] ?? 0;
+    if (!qty) {
       toast({
         title: "Informe a quantidade",
-        description: "Digite a quantidade desejada",
         variant: "destructive",
       });
       return;
     }
-    
-    const price = typeof product.price === 'string' ? parseFloat(product.price) : product.price;
-    
+
     addItem({
       productId: String(product.id),
       name: product.name,
       sku: product.sku,
-      price: price,
+      price: Number(product.price),
       quantity: qty,
-      image: product.image || undefined,
+      image: product.image ?? undefined,
     });
 
-    toast({
-      title: "Adicionado ao carrinho",
-      description: `${qty}x ${product.name}`,
-    });
-
-    setQuantities(prev => ({ ...prev, [product.id]: 0 }));
+    toast({ title: "Produto adicionado ao carrinho" });
+    setQuantity(product.id, 0);
   };
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
+    <div className="min-h-screen flex flex-col bg-background">
+      {/* HEADER */}
       <header className="sticky top-0 z-50 bg-zinc-900 text-white">
-        <div className="container mx-auto px-4 py-3">
-          <div className="flex items-center justify-between gap-4">
-            <div 
-              className="cursor-pointer select-none"
-              onClick={handleLogoClick}
-              onDoubleClick={() => setLocation("/login")}
-              data-testid="phone-employee-login"
-            >
-              <ZenoLogo 
-                size="lg" 
-                showText={true} 
-                variant="light"
-              />
-            </div>
-
-            <form onSubmit={handleSearch} className="hidden md:flex flex-1 max-w-md mx-4">
-              <div className="relative w-full">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
-                <Input
-                  placeholder="Buscar produtos..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10 bg-zinc-800 border-zinc-700 text-white placeholder:text-zinc-500"
-                  data-testid="input-search"
-                />
-              </div>
-            </form>
-
-            <div className="flex items-center gap-2">
-              <Button 
-                variant="ghost"
-                size="icon"
-                onClick={openCart}
-                className="text-white hover:bg-zinc-800 relative"
-                data-testid="button-cart"
-              >
-                <ShoppingCart className="h-5 w-5" />
-                {itemCount > 0 && (
-                  <span className="absolute -top-1 -right-1 bg-orange-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-medium">
-                    {itemCount > 99 ? "99+" : itemCount}
-                  </span>
-                )}
-              </Button>
-              
-              <Button 
-                variant="ghost"
-                size="sm"
-                onClick={() => setLocation("/login")}
-                className="text-white hover:bg-zinc-800 hidden sm:flex"
-                data-testid="button-login"
-              >
-                <User className="h-4 w-4 mr-1" />
-                Entrar
-              </Button>
-              
-              <Button 
-                variant="ghost"
-                size="sm"
-                onClick={() => setLocation("/register")}
-                className="text-white hover:bg-zinc-800 hidden sm:flex"
-                data-testid="button-register"
-              >
-                <UserPlus className="h-4 w-4 mr-1" />
-                Cadastrar
-              </Button>
-              
-              <Button 
-                onClick={() => setLocation("/login")}
-                className="bg-orange-500 hover:bg-orange-600 text-white"
-                data-testid="button-atacado-login"
-              >
-                <Store className="h-4 w-4 mr-2" />
-                <span className="hidden sm:inline">Atacado</span>
-              </Button>
-              <ThemeToggle />
-            </div>
+        <div className="container mx-auto px-4 py-3 flex items-center gap-4">
+          <div onClick={handleLogoClick} className="cursor-pointer">
+            <ZenoLogo variant="light" />
           </div>
+
+          <form onSubmit={handleSearch} className="flex-1 hidden md:block">
+            <Input
+              className="bg-zinc-800 border-zinc-700 text-white"
+              placeholder="Buscar produtos..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </form>
+
+          <Button
+            variant="ghost"
+            onClick={openCart}
+            className="text-white hover:bg-zinc-800"
+          >
+            <ShoppingCart className="h-5 w-5" />
+            {itemCount > 0 && (
+              <span className="ml-2 bg-orange-500 text-white text-[10px] rounded-full px-1.5 py-0.5">
+                {itemCount}
+              </span>
+            )}
+          </Button>
+
+          <Button
+            variant="ghost"
+            onClick={() => setLocation("/login")}
+            className="text-white hover:bg-zinc-800"
+          >
+            <User className="mr-2 h-4 w-4" /> Entrar
+          </Button>
+
+          <ThemeToggle />
         </div>
       </header>
 
-      <section className="relative">
-        <Carousel 
-          opts={{ loop: true }} 
-          plugins={[Autoplay({ delay: 4000, stopOnInteraction: false })]}
-          className="w-full"
-          data-testid="carousel-banner"
-        >
-          <CarouselContent>
-            <CarouselItem>
-              <div className="relative aspect-[21/9] md:aspect-[3/1] w-full overflow-hidden">
-                <img 
-                  src={bannerImage1} 
-                  alt="Promocao Bem Bolado" 
+      {/* BANNERS */}
+      <Carousel plugins={[Autoplay({ delay: 4000 })]} className="w-full">
+        <CarouselContent>
+          {BANNERS.map((src, i) => (
+            <CarouselItem key={i}>
+              <div className="relative h-[300px] w-full">
+                <img
+                  src={src}
+                  alt={`Banner ${i + 1}`}
                   className="w-full h-full object-cover"
-                  data-testid="img-banner-1"
                 />
               </div>
             </CarouselItem>
-            <CarouselItem>
-              <div className="relative aspect-[21/9] md:aspect-[3/1] w-full overflow-hidden">
-                <img 
-                  src={bannerImage2} 
-                  alt="Promocao Especial" 
-                  className="w-full h-full object-cover"
-                  data-testid="img-banner-2"
-                />
-              </div>
-            </CarouselItem>
-            <CarouselItem>
-              <div className="relative aspect-[21/9] md:aspect-[3/1] w-full overflow-hidden bg-gradient-to-r from-zinc-900 to-zinc-800">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="container mx-auto px-4">
-                    <div className="flex flex-col md:flex-row items-center justify-between gap-6">
-                      <div className="max-w-lg text-center md:text-left">
-                        <h2 className="text-2xl md:text-4xl font-bold text-white mb-2">
-                          Compre no Atacado
-                        </h2>
-                        <p className="text-white/80 text-sm md:text-base mb-4">
-                          Precos exclusivos para revendedores. Cadastre-se e economize ate 40% nos produtos!
-                        </p>
-                        <div className="flex flex-col sm:flex-row gap-3 justify-center md:justify-start">
-                          <Button 
-                            size="lg"
-                            onClick={() => setLocation("/register")}
-                            className="bg-orange-500 hover:bg-orange-600"
-                            data-testid="button-cadastrar-atacado"
-                          >
-                            <Store className="h-5 w-5 mr-2" />
-                            Solicitar Cadastro
-                          </Button>
-                          <Button 
-                            size="lg"
-                            variant="outline"
-                            onClick={() => setLocation("/login")}
-                            className="border-white/30 text-white hover:bg-white/10"
-                            data-testid="button-ja-tenho-conta"
-                          >
-                            Ja tenho conta
-                          </Button>
-                        </div>
-                      </div>
-                      <div className="hidden md:flex items-center gap-4">
-                        <div className="text-center p-4 bg-white/10 rounded-lg">
-                          <p className="text-3xl font-bold text-orange-500">40%</p>
-                          <p className="text-white/80 text-sm">de desconto</p>
-                        </div>
-                        <div className="text-center p-4 bg-white/10 rounded-lg">
-                          <p className="text-3xl font-bold text-orange-500">12x</p>
-                          <p className="text-white/80 text-sm">sem juros</p>
-                        </div>
-                        <div className="text-center p-4 bg-white/10 rounded-lg">
-                          <p className="text-3xl font-bold text-orange-500">Frete</p>
-                          <p className="text-white/80 text-sm">Gratis SP</p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </CarouselItem>
-          </CarouselContent>
-          <CarouselPrevious className="left-4" />
-          <CarouselNext className="right-4" />
-        </Carousel>
-      </section>
+          ))}
+        </CarouselContent>
+        <CarouselPrevious className="left-4" />
+        <CarouselNext className="right-4" />
+      </Carousel>
 
-      <form onSubmit={handleSearch} className="md:hidden container mx-auto px-4 py-4">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Buscar produtos..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10"
-            data-testid="input-search-mobile"
-          />
-        </div>
-      </form>
-
-      {categoriesData.length > 0 && (
-        <section className="container mx-auto px-4 py-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-bold">Categorias</h2>
-            <Button 
-              variant="ghost" 
-              size="sm"
-              onClick={() => setLocation("/catalogo")}
-              data-testid="button-ver-categorias"
-            >
-              Ver todas
-              <ChevronRight className="h-4 w-4 ml-1" />
-            </Button>
-          </div>
-          
-          {categoriesLoading ? (
-            <div className="flex justify-center py-8">
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-            </div>
-          ) : (
-            <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
-              {categoriesData.slice(0, 10).map(category => (
-                <Button
-                  key={category.id}
-                  variant="outline"
-                  className="shrink-0 px-4"
-                  onClick={() => setLocation(`/catalogo?category=${encodeURIComponent(category.name)}`)}
-                  data-testid={`button-category-${category.id}`}
-                >
-                  {category.name}
-                </Button>
-              ))}
-            </div>
-          )}
-        </section>
-      )}
-
-      <section className="bg-muted/50 py-4 border-y">
-        <div className="container mx-auto px-4">
-          <div className="flex flex-wrap justify-center gap-6 md:gap-12 text-sm">
-            <div className="flex items-center gap-2">
-              <Truck className="h-5 w-5 text-orange-500" />
-              <div>
-                <p className="font-semibold">Frete Gratis</p>
-                <p className="text-xs text-muted-foreground">Acima de R$299</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <CreditCard className="h-5 w-5 text-orange-500" />
-              <div>
-                <p className="font-semibold">12x no Cartao</p>
-                <p className="text-xs text-muted-foreground">Sem juros</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <Shield className="h-5 w-5 text-orange-500" />
-              <div>
-                <p className="font-semibold">100% Seguro</p>
-                <p className="text-xs text-muted-foreground">Compra protegida</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <Percent className="h-5 w-5 text-orange-500" />
-              <div>
-                <p className="font-semibold">5% Desconto</p>
-                <p className="text-xs text-muted-foreground">Pagamento via PIX</p>
-              </div>
-            </div>
-          </div>
-          <p className="text-center text-xs text-muted-foreground mt-3">
-            *Condicoes validas apenas para compras no varejo
-          </p>
-        </div>
-      </section>
-
-      {categoriesData.length >= 3 && (
-        <section className="container mx-auto px-4 py-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {categoriesData.slice(0, 3).map((category, index) => (
-              <Card 
-                key={category.id}
-                className="overflow-hidden cursor-pointer group hover-elevate"
-                onClick={() => setLocation(`/catalogo?category=${encodeURIComponent(category.name)}`)}
-                data-testid={`banner-category-${category.id}`}
-              >
-                <div className="relative h-32 md:h-40 bg-gradient-to-br from-zinc-800 to-zinc-900 flex items-center justify-center">
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
-                  <h3 className="relative text-xl md:text-2xl font-bold text-white text-center px-4 group-hover:scale-105 transition-transform">
-                    {category.name.toUpperCase()}
-                  </h3>
-                </div>
-              </Card>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {newProductsData.length > 0 && (
-        <section className="container mx-auto px-4 py-6">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <Sparkles className="h-5 w-5 text-orange-500" />
-              <h2 className="text-xl font-bold">Lancamentos</h2>
-            </div>
-            <Button 
-              variant="ghost" 
-              size="sm"
-              onClick={() => setLocation("/catalogo")}
-              data-testid="button-ver-lancamentos"
-            >
-              Ver todos
-              <ChevronRight className="h-4 w-4 ml-1" />
-            </Button>
-          </div>
-          
-          {newProductsLoading ? (
-            <div className="flex justify-center py-8">
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-              {newProductsData.map(product => (
-                <Card 
-                  key={product.id}
-                  className="overflow-hidden group hover-elevate transition-all duration-200 ring-2 ring-orange-500/20"
-                  data-testid={`card-new-product-${product.id}`}
-                >
-                  <div className="aspect-square bg-muted/30 flex items-center justify-center relative overflow-hidden">
-                    {product.image ? (
-                      <img
-                        src={product.image}
-                        alt={product.name}
-                        className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-                      />
-                    ) : (
-                      <Package className="h-12 w-12 text-muted-foreground/20" />
-                    )}
-                    <div className="absolute top-1.5 right-1.5">
-                      <Badge className="text-xs font-medium bg-orange-500 text-white">
-                        Novo
-                      </Badge>
-                    </div>
-                    {product.stock === 0 && (
-                      <div className="absolute inset-0 bg-background/80 flex items-center justify-center backdrop-blur-sm">
-                        <Badge variant="destructive">Indisponivel</Badge>
-                      </div>
-                    )}
-                    {product.brand && (
-                      <div className="absolute top-1.5 left-1.5">
-                        <Badge variant="secondary" className="text-xs font-medium bg-background/90 backdrop-blur-sm">
-                          {product.brand}
-                        </Badge>
-                      </div>
-                    )}
-                  </div>
-                  <CardContent className="p-2">
-                    <p className="text-xs text-muted-foreground mb-0.5 font-mono">
-                      {product.sku}
-                    </p>
-                    <h3 className="font-medium text-xs line-clamp-2 min-h-[2rem] leading-tight mb-1">
-                      {product.name}
-                    </h3>
-                    <p className="text-sm font-bold text-orange-600 dark:text-orange-500 mb-2">
-                      {formatPrice(product.price)}
-                    </p>
-                    {product.stock > 0 && (
-                      <div className="flex items-center gap-1">
-                        <Input
-                          type="number"
-                          min="0"
-                          max="999"
-                          value={getQuantity(product.id)}
-                          onChange={(e) => setQuantity(product.id, parseInt(e.target.value) || 0)}
-                          onClick={(e) => e.stopPropagation()}
-                          className="h-8 w-14 text-center text-sm"
-                          data-testid={`input-qty-new-${product.id}`}
-                        />
-                        <Button
-                          className="flex-1 bg-orange-500 hover:bg-orange-600 text-white h-8 font-semibold text-xs"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleAddToCart(product);
-                          }}
-                          data-testid={`button-add-cart-new-${product.id}`}
-                        >
-                          COMPRAR
-                        </Button>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          )}
-        </section>
-      )}
-
-      <section className="container mx-auto px-4 py-6 flex-1">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-bold">Produtos em Destaque</h2>
-          <Button 
-            variant="ghost" 
-            size="sm"
-            onClick={() => setLocation("/catalogo")}
-            data-testid="button-ver-produtos"
-          >
-            Ver todos
-            <ChevronRight className="h-4 w-4 ml-1" />
-          </Button>
-        </div>
-
-        {productsLoading ? (
-          <div className="flex flex-col items-center justify-center py-16">
-            <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
-            <p className="text-muted-foreground">Carregando produtos...</p>
-          </div>
-        ) : productsData.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 text-center">
-            <div className="w-20 h-20 rounded-full bg-muted/50 flex items-center justify-center mb-4">
-              <Package className="h-10 w-10 text-muted-foreground/50" />
-            </div>
-            <h3 className="font-semibold text-lg mb-2">Nenhum produto disponivel</h3>
-            <p className="text-muted-foreground text-sm">
-              Os produtos serao exibidos aqui quando forem cadastrados
-            </p>
+      {/* PRODUTOS */}
+      <main className="container mx-auto px-4 py-8 flex-1">
+        <h2 className="text-2xl font-bold mb-6">Destaques</h2>
+        {isLoading ? (
+          <div className="flex justify-center py-20">
+            <Loader2 className="animate-spin h-8 w-8 text-primary" />
           </div>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-            {productsData.map(product => (
-              <Card 
-                key={product.id}
-                className="overflow-hidden group hover-elevate transition-all duration-200"
-                data-testid={`card-product-${product.id}`}
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+            {products.map((p) => (
+              <Card
+                key={p.id}
+                className="overflow-hidden hover:shadow-md transition-shadow"
               >
-                <div className="aspect-square bg-muted/30 flex items-center justify-center relative overflow-hidden">
-                  {product.image ? (
-                    <img
-                      src={product.image}
-                      alt={product.name}
-                      className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-                    />
-                  ) : (
-                    <Package className="h-12 w-12 text-muted-foreground/20" />
-                  )}
-                  {product.stock === 0 && (
-                    <div className="absolute inset-0 bg-background/80 flex items-center justify-center backdrop-blur-sm">
-                      <Badge variant="destructive">Indisponivel</Badge>
-                    </div>
-                  )}
-                  {product.brand && (
-                    <div className="absolute top-1.5 left-1.5">
-                      <Badge variant="secondary" className="text-xs font-medium bg-background/90 backdrop-blur-sm">
-                        {product.brand}
-                      </Badge>
-                    </div>
-                  )}
-                </div>
                 <CardContent className="p-2">
-                  <p className="text-xs text-muted-foreground mb-0.5 font-mono">
-                    {product.sku}
-                  </p>
-                  <h3 className="font-medium text-xs line-clamp-2 min-h-[2rem] leading-tight mb-1">
-                    {product.name}
-                  </h3>
-                  <p className="text-sm font-bold text-orange-600 dark:text-orange-500 mb-2" data-testid={`text-price-${product.id}`}>
-                    {formatPrice(product.price)}
-                  </p>
-                  {product.stock > 0 && (
-                    <div className="flex items-center gap-1">
-                      <Input
-                        type="number"
-                        min="0"
-                        max="999"
-                        value={getQuantity(product.id)}
-                        onChange={(e) => setQuantity(product.id, parseInt(e.target.value) || 0)}
-                        onClick={(e) => e.stopPropagation()}
-                        className="h-8 w-14 text-center text-sm"
-                        data-testid={`input-qty-${product.id}`}
+                  <div className="aspect-square bg-muted flex items-center justify-center rounded-md overflow-hidden mb-2">
+                    {p.image ? (
+                      <img
+                        src={p.image}
+                        alt={p.name}
+                        className="object-cover w-full h-full"
                       />
-                      <Button
-                        className="flex-1 bg-orange-500 hover:bg-orange-600 text-white h-8 font-semibold text-xs"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleAddToCart(product);
-                        }}
-                        data-testid={`button-add-cart-${product.id}`}
-                      >
-                        COMPRAR
-                      </Button>
-                    </div>
-                  )}
+                    ) : (
+                      <Package className="h-8 w-8 text-muted-foreground" />
+                    )}
+                  </div>
+                  <p className="text-[10px] text-muted-foreground uppercase">
+                    {p.sku}
+                  </p>
+                  <p className="font-medium text-sm line-clamp-2 h-10 mb-1">
+                    {p.name}
+                  </p>
+                  <p className="font-bold text-lg text-orange-600">
+                    {formatPrice(p.price)}
+                  </p>
+                  <div className="flex flex-col gap-2 mt-3">
+                    <Input
+                      type="number"
+                      min="0"
+                      className="h-8"
+                      placeholder="Qtd"
+                      value={quantities[p.id] || ""}
+                      onChange={(e) =>
+                        setQuantity(p.id, Number(e.target.value))
+                      }
+                    />
+                    <Button
+                      size="sm"
+                      className="w-full"
+                      onClick={() => handleAddToCart(p)}
+                    >
+                      Adicionar
+                    </Button>
+                  </div>
                 </CardContent>
               </Card>
             ))}
           </div>
         )}
-      </section>
+      </main>
 
-      <section className="bg-black text-white py-16">
+      {/* FOOTER */}
+      <footer className="bg-zinc-900 text-zinc-400 py-8 text-center text-xs border-t border-zinc-800">
         <div className="container mx-auto px-4">
-          <div className="text-center max-w-2xl mx-auto">
-            <div className="flex justify-center mb-6">
-              <ZenoLogo size="xl" showText={false} variant="light" />
-            </div>
-            <h2 className="text-3xl md:text-4xl font-bold mb-4 bg-gradient-to-r from-emerald-400 to-emerald-300 bg-clip-text text-transparent">Zeno</h2>
-            <p className="text-zinc-400 mb-8">
-              Fique por dentro das novidades.
-            </p>
-            <Button 
-              size="lg"
-              className="bg-emerald-500 hover:bg-emerald-600 text-white font-bold px-8"
-              data-testid="button-seguir"
-            >
-              SAIBA MAIS
-            </Button>
-          </div>
-        </div>
-      </section>
-
-      <section className="bg-fuchsia-600 py-12">
-        <div className="container mx-auto px-4">
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <Button 
-              size="lg"
-              onClick={() => window.open("https://www.mercadolivre.com.br/pagina/loja420#from=share_eshop", "_blank")}
-              className="bg-white hover:bg-gray-100 text-indigo-900 font-bold px-8 py-6 text-base border-2 border-black min-w-[280px]"
-              data-testid="button-mercado-livre"
-            >
-              COMPRE NO MERCADO LIVRE
-            </Button>
-            <Button 
-              size="lg"
-              onClick={() => window.open("https://wa.me/5511992845596", "_blank")}
-              className="bg-emerald-500 hover:bg-emerald-600 text-white font-bold px-8 py-6 text-base border-2 border-black min-w-[280px]"
-              data-testid="button-whatsapp"
-            >
-              <SiWhatsapp className="h-5 w-5 mr-2" />
-              FALAR COM DISTRIBUIDOR
-            </Button>
-          </div>
-        </div>
-      </section>
-
-      <footer className="border-t py-4 bg-zinc-900 text-white">
-        <div className="container mx-auto px-4">
-          <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-            <ZenoLogo size="sm" showText={true} variant="light" />
-            <p className="text-xs text-zinc-400">
-              Precos de varejo. Para precos de atacado, faca login.
-            </p>
-          </div>
+          <p>© 2026 Zeno — Plataforma de E-commerce B2B & Varejo</p>
+          <p className="mt-2 text-zinc-600">Todos os direitos reservados</p>
         </div>
       </footer>
 
+      {/* LOGIN FUNCIONÁRIO */}
       <Dialog open={showEmployeeLogin} onOpenChange={setShowEmployeeLogin}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
-            <DialogTitle>Acesso Funcionario</DialogTitle>
+            <DialogTitle>Painel Administrativo</DialogTitle>
           </DialogHeader>
-          <div className="flex flex-col gap-4 py-4">
-            <p className="text-sm text-muted-foreground">
-              Area restrita para funcionarios da empresa.
+          <div className="py-6">
+            <p className="text-sm text-muted-foreground mb-4">
+              Você está acessando a área restrita para funcionários e
+              administradores.
             </p>
-            <Button 
-              onClick={() => {
-                setShowEmployeeLogin(false);
-                setLocation("/login");
-              }}
-              className="w-full"
-              data-testid="button-employee-login-confirm"
-            >
-              <User className="h-4 w-4 mr-2" />
-              Entrar como Funcionario
+            <Button className="w-full" onClick={() => setLocation("/login")}>
+              Ir para tela de login
             </Button>
           </div>
         </DialogContent>
