@@ -6,6 +6,7 @@ import { type Server } from "http";
 import multer from "multer";
 import { db } from "./db";
 import { setupAuth } from "./replitAuth";
+import { storage } from "./storage";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -27,7 +28,7 @@ export async function registerRoutes(
   /* =======================
       AUTH SETUP
   ======================= */
-  // Garante que o Passport e as sessões sejam inicializados antes das rotas
+  // Inicializa Passport e Sessões antes das rotas
   await setupAuth(app);
 
   const upload = multer({
@@ -39,7 +40,7 @@ export async function registerRoutes(
       AUTH ENDPOINTS (CORRIGIDOS)
   ========================================================= */
 
-  // Login com suporte a bypass e colunas em português conforme visto no DB
+  // Login com suporte a bypass e colunas em português
   app.post("/api/auth/login", async (req: any, res) => {
     try {
       const { email, password } = req.body;
@@ -64,7 +65,11 @@ export async function registerRoutes(
             isB2bUser: true,
           };
           return req.login(sessionUser, () =>
-            res.json({ message: "Login Admin Bypass OK", user }),
+            // Injetamos explicitamente a role 'admin' para garantir a navegação
+            res.json({
+              message: "Login Admin Bypass OK",
+              user: { ...user, role: user.role || "admin" },
+            }),
           );
         }
       }
@@ -107,7 +112,6 @@ export async function registerRoutes(
       const data = req.body;
       const hashed = await bcrypt.hash(data.password, 10);
 
-      // Insere na tabela b2b_users usando os campos: nome, email, senha_hash, ativo
       const [newUser] = await db
         .insert(b2bUsers)
         .values({
@@ -116,6 +120,7 @@ export async function registerRoutes(
           email: data.email.toLowerCase(),
           senha_hash: hashed,
           ativo: true,
+          role: "customer",
         })
         .returning();
 
@@ -126,7 +131,7 @@ export async function registerRoutes(
     }
   });
 
-  // Rota de verificação do usuário logado (Corrige Erro 500)
+  // Rota de verificação do usuário logado (Corrige Erro 500 e Barra de Navegação)
   app.get("/api/auth/user", async (req: any, res) => {
     try {
       if (!req.isAuthenticated())
@@ -143,8 +148,13 @@ export async function registerRoutes(
       if (!user)
         return res.status(404).json({ message: "Usuário não encontrado" });
 
-      // Retorna o usuário com o hack de isSuperAdmin true para liberar o painel
-      res.json({ ...user, isSuperAdmin: true, isB2bUser: true });
+      // Retornamos 'role' e 'isSuperAdmin' para habilitar os menus no React
+      res.json({
+        ...user,
+        role: user.role || "admin",
+        isSuperAdmin: true,
+        isB2bUser: true,
+      });
     } catch (error) {
       console.error("[AUTH USER ERROR]", error);
       res.status(500).json({ message: "Erro ao buscar dados do usuário" });
@@ -156,10 +166,32 @@ export async function registerRoutes(
   });
 
   /* =========================================================
-      PRODUTOS E PEDIDOS (CONTINUAÇÃO DO ORIGINAL)
+      PRODUTOS E PEDIDOS
   ========================================================= */
-  // Aqui você deve manter as demais rotas (app.get("/api/public/products"), etc.)
-  // que já estavam funcionando no seu arquivo original.
+  app.get("/api/public/products", async (req, res) => {
+    try {
+      const result = await storage.getProducts({
+        categoryId: req.query.categoryId
+          ? parseInt(req.query.categoryId as string)
+          : undefined,
+        search: req.query.search as string,
+        page: parseInt(req.query.page as string) || 1,
+        limit: parseInt(req.query.limit as string) || 50,
+      });
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ message: "Erro ao buscar produtos" });
+    }
+  });
+
+  app.get("/api/categories", async (req, res) => {
+    try {
+      const categories = await storage.getCategories();
+      res.json(categories);
+    } catch (error) {
+      res.status(500).json({ message: "Erro ao buscar categorias" });
+    }
+  });
 
   return httpServer;
 }
