@@ -11,17 +11,23 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express,
 ): Promise<Server> {
-  // Health Check
+  /* =======================
+      HEALTH CHECK
+  ======================= */
   app.get("/api/health/db", async (_req, res) => {
     try {
       await db.execute(sql`SELECT 1`);
       res.json({ status: "ok", database: "connected" });
     } catch (error) {
-      res.status(500).json({ status: "error" });
+      console.error("[HEALTH DB]", error);
+      res.status(500).json({ status: "error", database: "disconnected" });
     }
   });
 
-  // Configuração de Autenticação
+  /* =======================
+      AUTH SETUP
+  ======================= */
+  // Garante que o Passport e as sessões sejam inicializados antes das rotas
   await setupAuth(app);
 
   const upload = multer({
@@ -33,20 +39,23 @@ export async function registerRoutes(
       AUTH ENDPOINTS (CORRIGIDOS)
   ========================================================= */
 
-  // Login com suporte a bypass e colunas em português
+  // Login com suporte a bypass e colunas em português conforme visto no DB
   app.post("/api/auth/login", async (req: any, res) => {
     try {
       const { email, password } = req.body;
       if (!email || !password)
         return res.status(400).json({ message: "Dados incompletos" });
 
-      // 1. BYPASS PARA ADMIN (Garante seu acesso agora)
-      if (email === "admin@admin.com" && password === "123456") {
+      const lowerEmail = email.toLowerCase();
+
+      // 1. BYPASS PARA ADMIN (Garante seu acesso imediato com senha 123456)
+      if (lowerEmail === "admin@admin.com" && password === "123456") {
         const [user] = await db
           .select()
           .from(b2bUsers)
-          .where(eq(b2bUsers.email, email))
+          .where(eq(b2bUsers.email, lowerEmail))
           .limit(1);
+
         if (user) {
           const sessionUser = {
             claims: { sub: user.id },
@@ -60,17 +69,23 @@ export async function registerRoutes(
         }
       }
 
-      // 2. Tentativa Normal B2B (Usando senha_hash)
+      // 2. Tentativa Normal B2B (Usando coluna senha_hash do PostgreSQL)
       const [b2bUser] = await db
         .select()
         .from(b2bUsers)
-        .where(eq(b2bUsers.email, email.toLowerCase()));
+        .where(eq(b2bUsers.email, lowerEmail))
+        .limit(1);
 
       if (b2bUser && b2bUser.senha_hash) {
         const isValid = await bcrypt.compare(password, b2bUser.senha_hash);
         if (isValid) {
+          if (!b2bUser.ativo) {
+            return res.status(403).json({ message: "Conta inativa" });
+          }
           const sessionUser = {
             claims: { sub: b2bUser.id },
+            expires_at: Math.floor(Date.now() / 1000) + 604800,
+            isLocalAuth: true,
             isB2bUser: true,
           };
           return req.login(sessionUser, () =>
@@ -92,12 +107,12 @@ export async function registerRoutes(
       const data = req.body;
       const hashed = await bcrypt.hash(data.password, 10);
 
-      // Insere na tabela b2b_users com as colunas corretas
+      // Insere na tabela b2b_users usando os campos: nome, email, senha_hash, ativo
       const [newUser] = await db
         .insert(b2bUsers)
         .values({
           id: crypto.randomUUID(),
-          nome: data.nome || data.firstName,
+          nome: data.nome || data.firstName || "Usuário",
           email: data.email.toLowerCase(),
           senha_hash: hashed,
           ativo: true,
@@ -106,33 +121,45 @@ export async function registerRoutes(
 
       res.status(201).json({ message: "Usuário criado!", user: newUser });
     } catch (error) {
-      console.error(error);
+      console.error("[REGISTER ERROR]", error);
       res.status(500).json({ message: "Erro ao criar registro" });
     }
   });
 
+  // Rota de verificação do usuário logado (Corrige Erro 500)
   app.get("/api/auth/user", async (req: any, res) => {
     try {
       if (!req.isAuthenticated())
         return res.status(401).json({ message: "Não autenticado" });
 
       const userId = req.user.claims?.sub || req.user.id;
+
       const [user] = await db
         .select()
         .from(b2bUsers)
-        .where(eq(b2bUsers.id, userId));
+        .where(eq(b2bUsers.id, userId))
+        .limit(1);
 
       if (!user)
         return res.status(404).json({ message: "Usuário não encontrado" });
 
-      res.json({ ...user, isSuperAdmin: true }); // Hack temporário para liberar menus
+      // Retorna o usuário com o hack de isSuperAdmin true para liberar o painel
+      res.json({ ...user, isSuperAdmin: true, isB2bUser: true });
     } catch (error) {
-      res.status(500).json({ message: "Erro ao buscar dados" });
+      console.error("[AUTH USER ERROR]", error);
+      res.status(500).json({ message: "Erro ao buscar dados do usuário" });
     }
   });
 
-  // Manter o restante das rotas de produtos/pedidos abaixo...
-  // (Copie o restante do seu arquivo original a partir daqui)
+  app.post("/api/auth/logout", (req: any, res) => {
+    req.logout(() => res.json({ message: "Logout efetuado" }));
+  });
+
+  /* =========================================================
+      PRODUTOS E PEDIDOS (CONTINUAÇÃO DO ORIGINAL)
+  ========================================================= */
+  // Aqui você deve manter as demais rotas (app.get("/api/public/products"), etc.)
+  // que já estavam funcionando no seu arquivo original.
 
   return httpServer;
 }
