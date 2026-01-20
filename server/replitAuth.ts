@@ -10,14 +10,19 @@ import { storage } from "./storage";
 
 const getOidcConfig = memoize(
   async () => {
+    // Forçamos o uso do HTTPS e do endereço correto do Replit
+    const issuerUrl =
+      process.env.ISSUER_URL &&
+      process.env.ISSUER_URL !== "http://127.0.0.1:3000"
+        ? process.env.ISSUER_URL
+        : "https://replit.com/oidc";
+
     return await client.discovery(
-      new URL(process.env.ISSUER_URL ?? "https://replit.com/oidc"),
+      new URL(issuerUrl),
       process.env.REPL_ID!,
-      undefined, // client_secret (pode ser undefined se não houver)
-      undefined, // options para a requisição
+      undefined,
+      undefined,
       {
-        // ESTA É A MUDANÇA: Permite conexões HTTP caso o ISSUER_URL
-        // aponte para 127.0.0.1 ou um endereço sem SSL.
         allowInsecureRequests: true,
       }
     );
