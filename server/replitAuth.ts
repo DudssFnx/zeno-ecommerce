@@ -10,22 +10,34 @@ import { storage } from "./storage";
 
 const getOidcConfig = memoize(
   async () => {
-    // Forçamos o uso do HTTPS e do endereço correto do Replit
+    // Se não houver REPL_ID ou Client ID, retornamos null em vez de estourar erro
+    if (!process.env.REPL_ID && !process.env.BLING_CLIENT_ID) {
+      console.warn(
+        "⚠️ [Auth] REPL_ID ou BLING_CLIENT_ID não configurados. Autenticação desativada."
+      );
+      return null;
+    }
+
     const issuerUrl =
       process.env.ISSUER_URL &&
       process.env.ISSUER_URL !== "http://127.0.0.1:3000"
         ? process.env.ISSUER_URL
         : "https://replit.com/oidc";
 
-    return await client.discovery(
-      new URL(issuerUrl),
-      process.env.REPL_ID!,
-      undefined,
-      undefined,
-      {
-        allowInsecureRequests: true,
-      }
-    );
+    try {
+      return await client.discovery(
+        new URL(issuerUrl),
+        (process.env.REPL_ID || process.env.BLING_CLIENT_ID)!,
+        undefined,
+        undefined,
+        {
+          allowInsecureRequests: true,
+        }
+      );
+    } catch (err) {
+      console.error("❌ [Auth] Erro ao conectar com provedor OIDC:", err);
+      return null;
+    }
   },
   { maxAge: 3600 * 1000 }
 );
@@ -33,20 +45,25 @@ const getOidcConfig = memoize(
 export function getSession() {
   const sessionTtl = 7 * 24 * 60 * 60 * 1000; // 1 week
   const pgStore = connectPg(session);
-  const sessionStore = new pgStore({
-    conString: process.env.DATABASE_URL,
-    createTableIfMissing: false,
-    ttl: sessionTtl,
-    tableName: "sessions",
-  });
+
+  // Fallback para session store em memória caso o DB não esteja pronto
+  const sessionStore = process.env.DATABASE_URL
+    ? new pgStore({
+        conString: process.env.DATABASE_URL,
+        createTableIfMissing: true, // Alterado para true para facilitar o setup
+        ttl: sessionTtl,
+        tableName: "sessions",
+      })
+    : undefined;
+
   return session({
-    secret: process.env.SESSION_SECRET!,
+    secret: process.env.SESSION_SECRET || "zeno-secret-dev",
     store: sessionStore,
     resave: false,
     saveUninitialized: false,
     cookie: {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production", // Melhora a compatibilidade
+      secure: process.env.NODE_ENV === "production",
       maxAge: sessionTtl,
     },
   });
@@ -79,6 +96,9 @@ export async function setupAuth(app: Express) {
   app.use(passport.session());
 
   const config = await getOidcConfig();
+
+  // Se a configuração falhar, não registramos as rotas de login
+  if (!config) return;
 
   const verify: VerifyFunction = async (
     tokens: client.TokenEndpointResponse & client.TokenEndpointResponseHelpers,
@@ -132,7 +152,7 @@ export async function setupAuth(app: Express) {
     req.logout(() => {
       res.redirect(
         client.buildEndSessionUrl(config, {
-          client_id: process.env.REPL_ID!,
+          client_id: (process.env.REPL_ID || process.env.BLING_CLIENT_ID)!,
           post_logout_redirect_uri: `${req.protocol}://${req.hostname}`,
         }).href
       );
@@ -142,6 +162,10 @@ export async function setupAuth(app: Express) {
 
 export const isAuthenticated: RequestHandler = async (req, res, next) => {
   const user = req.user as any;
+
+  // HACK PARA DESENVOLVIMENTO: Se não houver config de Auth, deixa passar
+  const config = await getOidcConfig();
+  if (!config) return next();
 
   if (!req.isAuthenticated() || !user.expires_at) {
     return res.status(401).json({ message: "Unauthorized" });
@@ -159,7 +183,6 @@ export const isAuthenticated: RequestHandler = async (req, res, next) => {
   }
 
   try {
-    const config = await getOidcConfig();
     const tokenResponse = await client.refreshTokenGrant(config, refreshToken);
     updateUserSession(user, tokenResponse);
     return next();

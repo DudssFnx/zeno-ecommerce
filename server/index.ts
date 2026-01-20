@@ -1,11 +1,11 @@
-import express, { type Request, Response, NextFunction } from "express";
-import { registerRoutes } from "./routes";
-import { serveStatic } from "./static";
+import "dotenv/config"; // Carrega as variáveis do .env logo no início
+import express, { NextFunction, type Request, Response } from "express";
 import { createServer } from "http";
-import { initializeBlingTokens } from "./services/bling";
 import { pool } from "./db";
+import { registerRoutes } from "./routes";
 import { seedSuperAdmin } from "./scripts/seedSuperAdmin";
-
+import { initializeBlingTokens } from "./services/bling";
+import { serveStatic } from "./static";
 
 const app = express();
 const httpServer = createServer(app);
@@ -21,11 +21,10 @@ app.use(
     verify: (req, _res, buf) => {
       req.rawBody = buf;
     },
-  }),
+  })
 );
 
 app.use(express.urlencoded({ extended: false }));
-
 
 app.get("/health/db", async (_req, res) => {
   try {
@@ -39,7 +38,6 @@ app.get("/health/db", async (_req, res) => {
     });
   }
 });
-
 
 export function log(message: string, source = "express") {
   const formattedTime = new Date().toLocaleTimeString("en-US", {
@@ -70,7 +68,6 @@ app.use((req, res, next) => {
       if (capturedJsonResponse) {
         logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
       }
-
       log(logLine);
     }
   });
@@ -79,16 +76,17 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  // 1. Registrar rotas (Isso vai chamar o replitAuth que já corrigimos)
   await registerRoutes(httpServer, app);
-  
-  // Seed SUPER_ADMIN user on startup (creates if not exists)
+
+  // 2. Seed SUPER_ADMIN
   try {
     await seedSuperAdmin();
   } catch (error) {
     console.error("[SEED] Failed to seed SUPER_ADMIN:", error);
   }
 
-  // Initialize Bling tokens from database on server startup
+  // 3. Initialize Bling tokens
   try {
     const blingInitialized = await initializeBlingTokens();
     if (blingInitialized) {
@@ -103,14 +101,10 @@ app.use((req, res, next) => {
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
-
     res.status(status).json({ message });
-    throw err;
+    // Removido o throw err para evitar crash no Windows em loops de erro
   });
 
-  // importantly only setup vite in development and after
-  // setting up all the other routes so the catch-all route
-  // doesn't interfere with the other routes
   if (process.env.NODE_ENV === "production") {
     serveStatic(app);
   } else {
@@ -118,19 +112,16 @@ app.use((req, res, next) => {
     await setupVite(httpServer, app);
   }
 
-  // ALWAYS serve the app on the port specified in the environment variable PORT
-  // Other ports are firewalled. Default to 5000 if not specified.
-  // this serves both the API and the client.
-  // It is the only port that is not firewalled.
   const port = parseInt(process.env.PORT || "5000", 10);
+
+  // CORREÇÃO PARA WINDOWS: Removido reusePort que causa o erro Assertion Failed
   httpServer.listen(
     {
       port,
       host: "0.0.0.0",
-      reusePort: true,
     },
     () => {
       log(`serving on port ${port}`);
-    },
+    }
   );
 })();
