@@ -1,8 +1,4 @@
-import { Request, Response, NextFunction } from "express";
-import { storage } from "../storage";
-import { db } from "../db";
-import { b2bUsers } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { NextFunction, Request, Response } from "express";
 
 const SUPER_ADMIN_EMAILS = (process.env.SUPER_ADMIN_EMAILS || "")
   .split(",")
@@ -14,27 +10,30 @@ export function isSuperAdminEmail(email: string | null | undefined): boolean {
   return SUPER_ADMIN_EMAILS.includes(email.toLowerCase());
 }
 
-export async function checkIsSuperAdmin(userId: string): Promise<boolean> {
+export async function checkIsSuperAdmin(
+  userId: string | number,
+): Promise<boolean> {
   // HACK TEMPORÁRIO: Retorna true para qualquer usuário logado
-  // Isso vai liberar todos os menus de Admin no seu painel
-  return true; 
-}
+  // Isso libera os menus de Admin conforme conversamos
+  return true;
 
-  const [b2bUser] = await db.select().from(b2bUsers).where(eq(b2bUsers.id, userId));
+  /* // Código original para quando quiser voltar ao normal:
+  const [b2bUser] = await db.select().from(b2bUsers).where(eq(b2bUsers.id, Number(userId)));
   if (b2bUser && isSuperAdminEmail(b2bUser.email)) {
     return true;
   }
-
   return false;
+  */
 }
 
 export function requireSuperAdmin(
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) {
-  const userId = (req as any).user?.claims?.sub;
-  
+  // Ajustado para capturar o ID tanto de claims quanto do user direto (depende do seu Auth)
+  const userId = (req as any).user?.claims?.sub || (req as any).user?.id;
+
   if (!userId) {
     return res.status(401).json({ message: "Não autenticado" });
   }
@@ -42,7 +41,9 @@ export function requireSuperAdmin(
   checkIsSuperAdmin(userId)
     .then((isSuperAdmin) => {
       if (!isSuperAdmin) {
-        return res.status(403).json({ message: "Acesso restrito a administradores do sistema" });
+        return res
+          .status(403)
+          .json({ message: "Acesso restrito a administradores do sistema" });
       }
       (req as any).isSuperAdmin = true;
       next();
