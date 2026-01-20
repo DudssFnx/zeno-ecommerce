@@ -66,18 +66,13 @@ import {
   userModulePermissions,
   users,
 } from "@shared/schema";
-import { randomBytes, scrypt } from "crypto";
+import bcrypt from "bcryptjs";
 import { and, count, desc, eq, ilike, or, sql } from "drizzle-orm";
-import { promisify } from "util";
 import { db } from "./db";
 
-const scryptAsync = promisify(scrypt);
-
-// Função para garantir que a senha seja salva como Hash
+// Função para garantir que a senha seja salva no formato esperado pelo seu sistema (bcrypt)
 async function hashPassword(password: string) {
-  const salt = randomBytes(16).toString("hex");
-  const buf = (await scryptAsync(password, salt, 64)) as Buffer;
-  return `${buf.toString("hex")}.${salt}`;
+  return await bcrypt.hash(password, 10);
 }
 
 export interface IStorage {
@@ -89,7 +84,7 @@ export interface IStorage {
   updateUser(id: string, user: Partial<InsertUser>): Promise<User | undefined>;
   deleteUser(id: string): Promise<boolean>;
 
-  // ... (restante da interface permanece igual)
+  // Categories
   getCategories(): Promise<Category[]>;
   getCategory(id: number): Promise<Category | undefined>;
   getCategoryByBlingId(blingId: number): Promise<Category | undefined>;
@@ -99,6 +94,8 @@ export interface IStorage {
     category: Partial<InsertCategory>
   ): Promise<Category | undefined>;
   deleteCategory(id: number): Promise<boolean>;
+
+  // Suppliers
   getSuppliers(): Promise<Supplier[]>;
   getSupplier(id: number): Promise<Supplier | undefined>;
   createSupplier(supplier: InsertSupplier): Promise<Supplier>;
@@ -107,6 +104,8 @@ export interface IStorage {
     supplier: Partial<InsertSupplier>
   ): Promise<Supplier | undefined>;
   deleteSupplier(id: number): Promise<boolean>;
+
+  // Products
   getProducts(filters?: {
     categoryId?: number;
     search?: string;
@@ -127,6 +126,8 @@ export interface IStorage {
     product: Partial<InsertProduct>
   ): Promise<Product | undefined>;
   deleteProduct(id: number): Promise<boolean>;
+
+  // Orders
   getOrders(userId?: string): Promise<Order[]>;
   getOrder(id: number): Promise<Order | undefined>;
   getOrderWithDetails(id: number): Promise<any | undefined>;
@@ -138,6 +139,8 @@ export interface IStorage {
   ): Promise<Order | undefined>;
   getOrderItems(orderId: number): Promise<OrderItem[]>;
   createOrderItem(item: InsertOrderItem): Promise<OrderItem>;
+
+  // Settings & Others
   getPriceTables(): Promise<PriceTable[]>;
   getPriceTable(id: number): Promise<PriceTable | undefined>;
   createPriceTable(table: InsertPriceTable): Promise<PriceTable>;
@@ -259,7 +262,7 @@ export interface IStorage {
 }
 
 export class DatabaseStorage implements IStorage {
-  // Users
+  // --- USER METHODS ---
   async getUser(id: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.id, id));
     return user;
@@ -275,14 +278,14 @@ export class DatabaseStorage implements IStorage {
   }
 
   async upsertUser(userData: UpsertUser): Promise<User> {
-    // CRÍTICO: Criptografa a senha se ela for enviada em texto puro (ex: "123")
-    if (userData.password && !userData.password.includes(".")) {
+    // Se a senha for enviada em texto puro, criptografa usando bcrypt
+    if (userData.password && !userData.password.startsWith("$2")) {
       userData.password = await hashPassword(userData.password);
     }
 
     const [user] = await db
       .insert(users)
-      .values(userData)
+      .values(userData as any)
       .onConflictDoUpdate({
         target: users.id,
         set: {
@@ -299,9 +302,7 @@ export class DatabaseStorage implements IStorage {
     userData: Partial<InsertUser>
   ): Promise<User | undefined> {
     const { createdAt, updatedAt, ...safeData } = userData as any;
-
-    // Criptografa a senha se estiver sendo atualizada
-    if (safeData.password && !safeData.password.includes(".")) {
+    if (safeData.password && !safeData.password.startsWith("$2")) {
       safeData.password = await hashPassword(safeData.password);
     }
 
@@ -318,108 +319,98 @@ export class DatabaseStorage implements IStorage {
     return true;
   }
 
-  // --- O RESTANTE DOS MÉTODOS (CATEGORIES, PRODUCTS, ETC) CONTINUA ABAIXO ---
-  // (Mantenha o código original para Categories, Products, Orders, etc)
+  // --- CATEGORIES ---
   async getCategories(): Promise<Category[]> {
     return db.select().from(categories);
   }
   async getCategory(id: number): Promise<Category | undefined> {
-    const [category] = await db
-      .select()
-      .from(categories)
-      .where(eq(categories.id, id));
-    return category;
+    const [c] = await db.select().from(categories).where(eq(categories.id, id));
+    return c;
   }
   async getCategoryByBlingId(blingId: number): Promise<Category | undefined> {
-    const [category] = await db
+    const [c] = await db
       .select()
       .from(categories)
       .where(eq(categories.blingId, blingId));
-    return category;
+    return c;
   }
-  async createCategory(insertCategory: InsertCategory): Promise<Category> {
-    const [category] = await db
-      .insert(categories)
-      .values(insertCategory)
-      .returning();
-    return category;
+  async createCategory(insert: InsertCategory): Promise<Category> {
+    const [c] = await db.insert(categories).values(insert).returning();
+    return c;
   }
   async updateCategory(
     id: number,
-    categoryData: Partial<InsertCategory>
+    data: Partial<InsertCategory>
   ): Promise<Category | undefined> {
-    const [category] = await db
+    const [c] = await db
       .update(categories)
-      .set(categoryData)
+      .set(data)
       .where(eq(categories.id, id))
       .returning();
-    return category;
+    return c;
   }
   async deleteCategory(id: number): Promise<boolean> {
     await db.delete(categories).where(eq(categories.id, id));
     return true;
   }
+
+  // --- SUPPLIERS ---
   async getSuppliers(): Promise<Supplier[]> {
     return db.select().from(suppliers).orderBy(suppliers.name);
   }
   async getSupplier(id: number): Promise<Supplier | undefined> {
-    const [supplier] = await db
-      .select()
-      .from(suppliers)
-      .where(eq(suppliers.id, id));
-    return supplier;
+    const [s] = await db.select().from(suppliers).where(eq(suppliers.id, id));
+    return s;
   }
-  async createSupplier(insertSupplier: InsertSupplier): Promise<Supplier> {
-    const [supplier] = await db
-      .insert(suppliers)
-      .values(insertSupplier)
-      .returning();
-    return supplier;
+  async createSupplier(insert: InsertSupplier): Promise<Supplier> {
+    const [s] = await db.insert(suppliers).values(insert).returning();
+    return s;
   }
   async updateSupplier(
     id: number,
-    supplierData: Partial<InsertSupplier>
+    data: Partial<InsertSupplier>
   ): Promise<Supplier | undefined> {
-    const [supplier] = await db
+    const [s] = await db
       .update(suppliers)
-      .set(supplierData)
+      .set(data)
       .where(eq(suppliers.id, id))
       .returning();
-    return supplier;
+    return s;
   }
   async deleteSupplier(id: number): Promise<boolean> {
     await db.delete(suppliers).where(eq(suppliers.id, id));
     return true;
   }
-  async getProducts(filters?: any): Promise<any> {
-    const page = filters?.page || 1;
-    const limit = filters?.limit || 50;
+
+  // --- PRODUCTS ---
+  async getProducts(f?: any): Promise<any> {
+    const page = f?.page || 1;
+    const limit = f?.limit || 50;
     const offset = (page - 1) * limit;
-    const conditions = [];
-    if (filters?.categoryId)
-      conditions.push(eq(products.categoryId, filters.categoryId));
-    if (filters?.search)
-      conditions.push(
+    const cond = [];
+    if (f?.categoryId) cond.push(eq(products.categoryId, f.categoryId));
+    if (f?.search)
+      cond.push(
         or(
-          ilike(products.name, `%${filters.search}%`),
-          ilike(products.sku, `%${filters.search}%`)
+          ilike(products.name, `%${f.search}%`),
+          ilike(products.sku, `%${f.search}%`)
         )
       );
-    const productList = await db
+    const list = await db
       .select()
       .from(products)
-      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .where(cond.length > 0 ? and(...cond) : undefined)
       .limit(limit)
       .offset(offset);
-    const totalResult = await db
+    const total = await db
       .select({ count: count() })
       .from(products)
-      .where(conditions.length > 0 ? and(...conditions) : undefined);
+      .where(cond.length > 0 ? and(...cond) : undefined);
     return {
-      products: productList,
-      total: totalResult[0].count,
+      products: list,
+      total: total[0].count,
       page,
-      totalPages: Math.ceil(totalResult[0].count / limit),
+      totalPages: Math.ceil(total[0].count / limit),
     };
   }
   async getProduct(id: number): Promise<Product | undefined> {
@@ -430,8 +421,8 @@ export class DatabaseStorage implements IStorage {
     const [p] = await db.select().from(products).where(eq(products.sku, sku));
     return p;
   }
-  async createProduct(insertProduct: InsertProduct): Promise<Product> {
-    const [p] = await db.insert(products).values(insertProduct).returning();
+  async createProduct(insert: InsertProduct): Promise<Product> {
+    const [p] = await db.insert(products).values(insert).returning();
     return p;
   }
   async updateProduct(id: number, data: any): Promise<any> {
@@ -446,9 +437,11 @@ export class DatabaseStorage implements IStorage {
     await db.delete(products).where(eq(products.id, id));
     return true;
   }
-  async getOrders(userId?: string): Promise<Order[]> {
-    return userId
-      ? db.select().from(orders).where(eq(orders.userId, userId))
+
+  // --- ORDERS ---
+  async getOrders(uId?: string): Promise<Order[]> {
+    return uId
+      ? db.select().from(orders).where(eq(orders.userId, uId))
       : db.select().from(orders);
   }
   async getOrder(id: number): Promise<Order | undefined> {
@@ -473,13 +466,15 @@ export class DatabaseStorage implements IStorage {
       .returning();
     return o;
   }
-  async getOrderItems(orderId: number): Promise<OrderItem[]> {
-    return db.select().from(orderItems).where(eq(orderItems.orderId, orderId));
+  async getOrderItems(oId: number): Promise<OrderItem[]> {
+    return db.select().from(orderItems).where(eq(orderItems.orderId, oId));
   }
   async createOrderItem(data: InsertOrderItem): Promise<OrderItem> {
     const [i] = await db.insert(orderItems).values(data).returning();
     return i;
   }
+
+  // --- TABLES, COUPONS, SETTINGS ---
   async getPriceTables(): Promise<PriceTable[]> {
     return db.select().from(priceTables);
   }
@@ -506,11 +501,11 @@ export class DatabaseStorage implements IStorage {
     await db.delete(priceTables).where(eq(priceTables.id, id));
     return true;
   }
-  async getCustomerPrices(userId: string): Promise<CustomerPrice[]> {
+  async getCustomerPrices(uId: string): Promise<CustomerPrice[]> {
     return db
       .select()
       .from(customerPrices)
-      .where(eq(customerPrices.userId, userId));
+      .where(eq(customerPrices.userId, uId));
   }
   async setCustomerPrice(data: any): Promise<any> {
     const [p] = await db.insert(customerPrices).values(data).returning();
@@ -594,7 +589,7 @@ export class DatabaseStorage implements IStorage {
       .returning();
     return s;
   }
-  async getCatalogBanners(pos?: any): Promise<any> {
+  async getCatalogBanners(p?: any): Promise<any> {
     return db.select().from(catalogBanners);
   }
   async getCatalogBanner(id: number): Promise<any> {
@@ -661,11 +656,11 @@ export class DatabaseStorage implements IStorage {
       .returning();
     return c;
   }
-  async getCustomerCredits(userId: string): Promise<any> {
+  async getCustomerCredits(uId: string): Promise<any> {
     return db
       .select()
       .from(customerCredits)
-      .where(eq(customerCredits.userId, userId));
+      .where(eq(customerCredits.userId, uId));
   }
   async getAllCredits(): Promise<any> {
     return db.select().from(customerCredits);
@@ -693,14 +688,14 @@ export class DatabaseStorage implements IStorage {
     await db.delete(customerCredits).where(eq(customerCredits.id, id));
     return true;
   }
-  async getCustomerCreditBalance(userId: string): Promise<any> {
+  async getCustomerCreditBalance(uId: string): Promise<any> {
     return { total: 0, pending: 0, paid: 0 };
   }
-  async getCreditPayments(creditId: number): Promise<any> {
+  async getCreditPayments(cId: number): Promise<any> {
     return db
       .select()
       .from(creditPayments)
-      .where(eq(creditPayments.creditId, creditId));
+      .where(eq(creditPayments.creditId, cId));
   }
   async createCreditPayment(data: any): Promise<any> {
     const [p] = await db.insert(creditPayments).values(data).returning();
@@ -717,27 +712,27 @@ export class DatabaseStorage implements IStorage {
     const [m] = await db.insert(modules).values(data).returning();
     return m;
   }
-  async getUserPermissions(userId: string): Promise<any> {
+  async getUserPermissions(uId: string): Promise<any> {
     return db
       .select()
       .from(userModulePermissions)
-      .where(eq(userModulePermissions.userId, userId));
+      .where(eq(userModulePermissions.userId, uId));
   }
-  async getUserPermissionKeys(userId: string): Promise<any> {
-    const p = await this.getUserPermissions(userId);
+  async getUserPermissionKeys(uId: string): Promise<any> {
+    const p = await this.getUserPermissions(uId);
     return p.map((x: any) => x.moduleKey);
   }
-  async setUserPermissions(userId: string, keys: string[]): Promise<void> {
+  async setUserPermissions(uId: string, keys: string[]): Promise<void> {
     await db
       .delete(userModulePermissions)
-      .where(eq(userModulePermissions.userId, userId));
+      .where(eq(userModulePermissions.userId, uId));
     if (keys.length)
       await db
         .insert(userModulePermissions)
-        .values(keys.map((k) => ({ userId, moduleKey: k })));
+        .values(keys.map((k) => ({ userId: uId, moduleKey: k })));
   }
-  async hasModuleAccess(userId: string, key: string): Promise<boolean> {
-    const p = await this.getUserPermissionKeys(userId);
+  async hasModuleAccess(uId: string, key: string): Promise<boolean> {
+    const p = await this.getUserPermissionKeys(uId);
     return p.includes(key);
   }
   async getPaymentTypes(): Promise<any> {
@@ -824,11 +819,11 @@ export class DatabaseStorage implements IStorage {
     await db.delete(purchaseOrders).where(eq(purchaseOrders.id, id));
     return true;
   }
-  async getPurchaseOrderItems(orderId: number): Promise<any> {
+  async getPurchaseOrderItems(oId: number): Promise<any> {
     return db
       .select()
       .from(purchaseOrderItems)
-      .where(eq(purchaseOrderItems.purchaseOrderId, orderId));
+      .where(eq(purchaseOrderItems.purchaseOrderId, oId));
   }
   async createPurchaseOrderItem(data: any): Promise<any> {
     const [i] = await db.insert(purchaseOrderItems).values(data).returning();
