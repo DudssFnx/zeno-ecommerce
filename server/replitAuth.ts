@@ -1,18 +1,25 @@
 import * as client from "openid-client";
 import { Strategy, type VerifyFunction } from "openid-client/passport";
 
-import passport from "passport";
-import session from "express-session";
-import type { Express, RequestHandler } from "express";
-import memoize from "memoizee";
 import connectPg from "connect-pg-simple";
+import type { Express, RequestHandler } from "express";
+import session from "express-session";
+import memoize from "memoizee";
+import passport from "passport";
 import { storage } from "./storage";
 
 const getOidcConfig = memoize(
   async () => {
     return await client.discovery(
       new URL(process.env.ISSUER_URL ?? "https://replit.com/oidc"),
-      process.env.REPL_ID!
+      process.env.REPL_ID!,
+      undefined, // client_secret (pode ser undefined se não houver)
+      undefined, // options para a requisição
+      {
+        // ESTA É A MUDANÇA: Permite conexões HTTP caso o ISSUER_URL
+        // aponte para 127.0.0.1 ou um endereço sem SSL.
+        allowInsecureRequests: true,
+      }
     );
   },
   { maxAge: 3600 * 1000 }
@@ -34,7 +41,7 @@ export function getSession() {
     saveUninitialized: false,
     cookie: {
       httpOnly: true,
-      secure: true,
+      secure: process.env.NODE_ENV === "production", // Melhora a compatibilidade
       maxAge: sessionTtl,
     },
   });
@@ -90,7 +97,7 @@ export async function setupAuth(app: Express) {
           scope: "openid email profile offline_access",
           callbackURL: `https://${domain}/api/callback`,
         },
-        verify,
+        verify
       );
       passport.use(strategy);
       registeredStrategies.add(strategyName);
