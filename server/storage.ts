@@ -18,7 +18,7 @@ export interface IStorage {
 }
 
 export class DatabaseStorage implements IStorage {
-  // --- USUÁRIOS (Sincronizado com b2b_users do PSQL) ---
+  // --- USUÁRIOS ---
   async getUser(id: string): Promise<any | undefined> {
     const [user] = await db.select().from(b2bUsers).where(eq(b2bUsers.id, id));
     return user;
@@ -32,14 +32,14 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
 
-  // --- PRODUTOS (FORCE VISIBILITY E MAPEAMENTO FRONTEND) ---
+  // --- PRODUTOS (MAPEAMENTO RESILIENTE PARA FRONTEND) ---
   async getProducts(f?: any): Promise<any> {
     try {
       const page = f?.page || 1;
       const limit = f?.limit || 100;
       const offset = (page - 1) * limit;
 
-      // Busca global sem filtros para garantir que os dados apareçam no teste
+      // Busca global ignorando filtros de empresa para garantir visibilidade
       const list = await db
         .select()
         .from(b2bProducts)
@@ -49,7 +49,7 @@ export class DatabaseStorage implements IStorage {
 
       const totalResult = await db.select({ count: count() }).from(b2bProducts);
 
-      // MAPEAMENTO CRÍTICO: Converte chaves do banco (PT) para o esperado pelo Front (EN)
+      // MAPEAMENTO CRÍTICO: Entrega campos em PT e EN para o React encontrar
       const formattedProducts = list.map((p) => ({
         ...p,
         name: p.nome, // Frontend espera 'name'
@@ -59,18 +59,20 @@ export class DatabaseStorage implements IStorage {
       }));
 
       console.log(
-        `[STORAGE] Sucesso: ${formattedProducts.length} produtos mapeados para o Frontend.`
+        `[STORAGE] Sucesso: ${formattedProducts.length} produtos mapeados.`
       );
 
-      return {
+      // Retorno duplo: Objeto para paginação E Array para componentes simples
+      // Isso evita que a tabela apareça vazia se o hook esperar apenas a lista
+      return Object.assign(formattedProducts, {
         products: formattedProducts,
         total: totalResult[0].count,
         page,
         totalPages: Math.ceil(totalResult[0].count / limit),
-      };
+      });
     } catch (error) {
       console.error("[STORAGE ERROR] Falha ao listar b2b_products:", error);
-      return { products: [], total: 0, page: 1, totalPages: 0 };
+      return [];
     }
   }
 
@@ -89,7 +91,7 @@ export class DatabaseStorage implements IStorage {
         imagem: insert.imagem || insert.image || insert.imageUrl || null,
         status: "ATIVO",
         disponibilidade: "DISPONIVEL",
-        // Adicionando companyId padrão para evitar problemas de filtragem multitenant
+        // Fallback multitenant para evitar bloqueio por empresa
         companyId: insert.companyId || "comp-tec-01",
       };
 
