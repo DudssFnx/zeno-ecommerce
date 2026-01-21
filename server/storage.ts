@@ -7,19 +7,18 @@ import {
   type InsertCategory,
   type InsertOrder,
   type InsertOrderItem,
-  type InsertProduct,
   type InsertUser,
   type Order,
   type OrderItem,
   orderItems,
   orders,
-  type Product,
-  products,
   siteSettings,
   type UpsertUser,
   type User,
   users,
 } from "@shared/schema";
+// IMPORTANTE: Importando o schema correto do arquivo modular
+import { type B2bProduct, b2bProducts } from "@shared/schema/products.schema";
 import bcrypt from "bcryptjs";
 import { and, count, desc, eq, ilike, or, sql } from "drizzle-orm";
 import { db } from "./db";
@@ -29,7 +28,7 @@ async function hashPassword(password: string) {
 }
 
 export interface IStorage {
-  // Omiti a interface para brevidade, mas ela deve conter todos os métodos abaixo
+  // Métodos definidos na classe abaixo
 }
 
 export class DatabaseStorage implements IStorage {
@@ -112,51 +111,91 @@ export class DatabaseStorage implements IStorage {
     return true;
   }
 
-  // --- PRODUCTS ---
+  // --- PRODUCTS (CORRIGIDO PARA B2B_PRODUCTS) ---
   async getProducts(f?: any): Promise<any> {
-    const page = f?.page || 1;
-    const limit = f?.limit || 50;
-    const offset = (page - 1) * limit;
-    const cond = [];
-    if (f?.categoryId) cond.push(eq(products.categoryId, f.categoryId));
-    if (f?.search)
-      cond.push(
-        or(
-          ilike(products.name, `%${f.search}%`),
-          ilike(products.sku, `%${f.search}%`)
-        )
+    try {
+      const page = f?.page || 1;
+      const limit = f?.limit || 100;
+      const offset = (page - 1) * limit;
+      const cond = [];
+
+      // Mapeamento para as colunas em português do b2b_products
+      if (f?.search) {
+        cond.push(
+          or(
+            ilike(b2bProducts.nome, `%${f.search}%`),
+            ilike(b2bProducts.sku, `%${f.search}%`)
+          )
+        );
+      }
+
+      const list = await db
+        .select()
+        .from(b2bProducts)
+        .where(cond.length > 0 ? and(...cond) : undefined)
+        .limit(limit)
+        .offset(offset)
+        .orderBy(desc(b2bProducts.id));
+
+      const totalResult = await db
+        .select({ count: count() })
+        .from(b2bProducts)
+        .where(cond.length > 0 ? and(...cond) : undefined);
+
+      console.log(
+        `[STORAGE] Sucesso: ${list.length} produtos carregados da b2b_products.`
       );
 
-    const list = await db
+      return {
+        products: list,
+        total: totalResult[0].count,
+        page,
+        totalPages: Math.ceil(totalResult[0].count / limit),
+      };
+    } catch (error) {
+      console.error("[STORAGE ERROR] Falha ao listar b2b_products:", error);
+      return { products: [], total: 0, page: 1, totalPages: 0 };
+    }
+  }
+
+  async getProduct(id: number): Promise<B2bProduct | undefined> {
+    const [p] = await db
       .select()
-      .from(products)
-      .where(cond.length > 0 ? and(...cond) : undefined)
-      .limit(limit)
-      .offset(offset);
-    const totalResult = await db
-      .select({ count: count() })
-      .from(products)
-      .where(cond.length > 0 ? and(...cond) : undefined);
-
-    return {
-      products: list,
-      total: totalResult[0].count,
-      page,
-      totalPages: Math.ceil(totalResult[0].count / limit),
-    };
-  }
-
-  async getProduct(id: number): Promise<Product | undefined> {
-    const [p] = await db.select().from(products).where(eq(products.id, id));
+      .from(b2bProducts)
+      .where(eq(b2bProducts.id, id));
     return p;
   }
 
-  async createProduct(insert: InsertProduct): Promise<Product> {
-    const [p] = await db.insert(products).values(insert).returning();
-    return p;
+  async createProduct(insert: any): Promise<B2bProduct> {
+    try {
+      // Mapeamento de campos do Frontend para o Banco (Português)
+      const dataToInsert = {
+        nome: insert.nome || insert.name,
+        sku: insert.sku,
+        unidadeMedida: insert.unidadeMedida || "UN",
+        precoVarejo: insert.precoVarejo || insert.price || "0.00",
+        precoAtacado: insert.precoAtacado || insert.wholesalePrice || "0.00",
+        descricao: insert.descricao || insert.description,
+        // GARANTIA PARA IMAGEM: Aceita múltiplos nomes de campo do Front
+        imagem:
+          insert.imagem || insert.image || insert.imageUrl || insert.photo,
+        status: "ATIVO",
+        disponibilidade: "DISPONIVEL",
+      };
+
+      const [p] = await db
+        .insert(b2bProducts)
+        .values(dataToInsert as any)
+        .returning();
+      console.log(`[STORAGE] Produto gravado na b2b_products: ${p.nome}`);
+      return p;
+    } catch (error) {
+      console.error("[STORAGE ERROR] Falha ao gravar na b2b_products:", error);
+      throw error;
+    }
   }
 
-  // --- ORDERS & DETAILS (CRÍTICO PARA ROUTES.TS) ---
+  // --- ORDERS & DETAILS ---
   async getOrders(uId?: string): Promise<Order[]> {
     const query = db.select().from(orders).orderBy(desc(orders.createdAt));
     return uId ? query.where(eq(orders.userId, uId)) : query;
@@ -173,7 +212,6 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getNextOrderNumber(): Promise<number> {
-    // Tenta usar a sequence, se falhar pega o maior id + 1
     try {
       const res = await db.execute(
         sql`SELECT nextval('order_number_seq') as num`
@@ -222,7 +260,7 @@ export class DatabaseStorage implements IStorage {
     );
   }
 
-  // --- REQUISITOS ADICIONAIS ---
+  // --- SETTINGS ---
   async getSiteSetting(key: string): Promise<any> {
     const [s] = await db
       .select()
@@ -240,7 +278,6 @@ export class DatabaseStorage implements IStorage {
     return s;
   }
 
-  // ... (Demais métodos como CatalogBanners, Coupons etc mantidos conforme sua lógica)
   async getCoupons(): Promise<Coupon[]> {
     return db.select().from(coupons);
   }
