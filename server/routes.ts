@@ -1,4 +1,4 @@
-import { b2bUsers } from "@shared/schema";
+import { b2bUsers, companies, userCompanies } from "@shared/schema";
 import bcrypt from "bcryptjs";
 import { eq, sql } from "drizzle-orm";
 import { type Express } from "express";
@@ -10,7 +10,7 @@ import { storage } from "./storage";
 
 export async function registerRoutes(
   httpServer: Server,
-  app: Express,
+  app: Express
 ): Promise<Server> {
   /* =======================
       HEALTH CHECK
@@ -28,7 +28,6 @@ export async function registerRoutes(
   /* =======================
       AUTH SETUP
   ======================= */
-  // Inicializa Passport e Sessões antes das rotas
   await setupAuth(app);
 
   const upload = multer({
@@ -37,10 +36,9 @@ export async function registerRoutes(
   });
 
   /* =========================================================
-      AUTH ENDPOINTS (CORRIGIDOS)
+      AUTH ENDPOINTS
   ========================================================= */
 
-  // Login com suporte a bypass e colunas em português
   app.post("/api/auth/login", async (req: any, res) => {
     try {
       const { email, password } = req.body;
@@ -49,7 +47,7 @@ export async function registerRoutes(
 
       const lowerEmail = email.toLowerCase();
 
-      // 1. BYPASS PARA ADMIN (Garante seu acesso imediato com senha 123456)
+      // 1. BYPASS PARA ADMIN (admin@admin.com / 123456)
       if (lowerEmail === "admin@admin.com" && password === "123456") {
         const [user] = await db
           .select()
@@ -59,22 +57,22 @@ export async function registerRoutes(
 
         if (user) {
           const sessionUser = {
+            id: user.id, // Adicionado ID direto para compatibilidade
             claims: { sub: user.id },
             expires_at: Math.floor(Date.now() / 1000) + 604800,
             isLocalAuth: true,
             isB2bUser: true,
           };
           return req.login(sessionUser, () =>
-            // Injetamos explicitamente a role 'admin' para garantir a navegação
             res.json({
               message: "Login Admin Bypass OK",
               user: { ...user, role: user.role || "admin" },
-            }),
+            })
           );
         }
       }
 
-      // 2. Tentativa Normal B2B (Usando coluna senha_hash do PostgreSQL)
+      // 2. TENTATIVA NORMAL
       const [b2bUser] = await db
         .select()
         .from(b2bUsers)
@@ -84,17 +82,18 @@ export async function registerRoutes(
       if (b2bUser && b2bUser.senha_hash) {
         const isValid = await bcrypt.compare(password, b2bUser.senha_hash);
         if (isValid) {
-          if (!b2bUser.ativo) {
+          if (!b2bUser.ativo)
             return res.status(403).json({ message: "Conta inativa" });
-          }
+
           const sessionUser = {
+            id: b2bUser.id,
             claims: { sub: b2bUser.id },
             expires_at: Math.floor(Date.now() / 1000) + 604800,
             isLocalAuth: true,
             isB2bUser: true,
           };
           return req.login(sessionUser, () =>
-            res.json({ message: "Login OK", user: b2bUser }),
+            res.json({ message: "Login OK", user: b2bUser })
           );
         }
       }
@@ -106,32 +105,6 @@ export async function registerRoutes(
     }
   });
 
-  // Registro corrigido para as colunas do seu banco
-  app.post("/api/register", async (req, res) => {
-    try {
-      const data = req.body;
-      const hashed = await bcrypt.hash(data.password, 10);
-
-      const [newUser] = await db
-        .insert(b2bUsers)
-        .values({
-          id: crypto.randomUUID(),
-          nome: data.nome || data.firstName || "Usuário",
-          email: data.email.toLowerCase(),
-          senha_hash: hashed,
-          ativo: true,
-          role: "customer",
-        })
-        .returning();
-
-      res.status(201).json({ message: "Usuário criado!", user: newUser });
-    } catch (error) {
-      console.error("[REGISTER ERROR]", error);
-      res.status(500).json({ message: "Erro ao criar registro" });
-    }
-  });
-
-  // Rota de verificação do usuário logado (Corrige Erro 500 e Barra de Navegação)
   app.get("/api/auth/user", async (req: any, res) => {
     try {
       if (!req.isAuthenticated())
@@ -148,11 +121,22 @@ export async function registerRoutes(
       if (!user)
         return res.status(404).json({ message: "Usuário não encontrado" });
 
-      // Retornamos 'role' e 'isSuperAdmin' para habilitar os menus no React
+      // Busca as empresas vinculadas (Lógica Multitenant)
+      const userCos = await db
+        .select({
+          id: companies.id,
+          razaoSocial: companies.razao_social,
+          slug: companies.slug,
+        })
+        .from(userCompanies)
+        .innerJoin(companies, eq(userCompanies.companyId, companies.id))
+        .where(eq(userCompanies.userId, userId));
+
       res.json({
         ...user,
         role: user.role || "admin",
-        isSuperAdmin: true,
+        isSuperAdmin: user.email === "admin@admin.com",
+        companies: userCos,
         isB2bUser: true,
       });
     } catch (error) {
@@ -166,28 +150,34 @@ export async function registerRoutes(
   });
 
   /* =========================================================
-      PRODUTOS E PEDIDOS
+      PRODUTOS (MULTITENANT & PUBLIC)
   ========================================================= */
-  app.get("/api/public/products", async (req, res) => {
+
+  // Rota que o painel administrativo costuma chamar
+  app.get("/api/products", async (req, res) => {
     try {
-      const result = await storage.getProducts({
-        categoryId: req.query.categoryId
-          ? parseInt(req.query.categoryId as string)
-          : undefined,
-        search: req.query.search as string,
-        page: parseInt(req.query.page as string) || 1,
-        limit: parseInt(req.query.limit as string) || 50,
-      });
-      res.json(result);
+      const result = await storage.getProducts(req.query);
+      res.json(result.products || result); // Ajuste para retornar array ou objeto paginado
     } catch (error) {
+      console.error("[API PRODUCTS ERROR]", error);
       res.status(500).json({ message: "Erro ao buscar produtos" });
+    }
+  });
+
+  app.post("/api/products", async (req: any, res) => {
+    try {
+      if (!req.isAuthenticated()) return res.status(401).send();
+      const product = await storage.createProduct(req.body);
+      res.status(201).json(product);
+    } catch (error) {
+      res.status(500).json({ message: "Erro ao criar produto" });
     }
   });
 
   app.get("/api/categories", async (req, res) => {
     try {
-      const categories = await storage.getCategories();
-      res.json(categories);
+      const cats = await storage.getCategories();
+      res.json(cats);
     } catch (error) {
       res.status(500).json({ message: "Erro ao buscar categorias" });
     }
