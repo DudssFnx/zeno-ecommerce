@@ -8,7 +8,6 @@ async function hashPassword(password: string) {
   return await bcrypt.hash(password, 10);
 }
 
-// Interface para manter a compatibilidade com o restante da aplicação
 export interface IStorage {
   getUser(id: string): Promise<any | undefined>;
   getUserByEmail(email: string): Promise<any | undefined>;
@@ -19,7 +18,7 @@ export interface IStorage {
 }
 
 export class DatabaseStorage implements IStorage {
-  // --- USUÁRIOS ---
+  // --- USUÁRIOS (Sincronizado com b2b_users do PSQL) ---
   async getUser(id: string): Promise<any | undefined> {
     const [user] = await db.select().from(b2bUsers).where(eq(b2bUsers.id, id));
     return user;
@@ -33,14 +32,14 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
 
-  // --- PRODUTOS (AJUSTADO PARA ID NUMÉRICO DO PSQL) ---
+  // --- PRODUTOS (Busca Global para Testes) ---
   async getProducts(f?: any): Promise<any> {
     try {
       const page = f?.page || 1;
       const limit = f?.limit || 100;
       const offset = (page - 1) * limit;
 
-      // Busca sem filtros restritivos para garantir que o "Produto Teste Manual" apareça na lista
+      // Busca sem filtros para garantir que o "Produto Teste Manual" (ID 1) apareça
       const list = await db
         .select()
         .from(b2bProducts)
@@ -51,7 +50,7 @@ export class DatabaseStorage implements IStorage {
       const totalResult = await db.select({ count: count() }).from(b2bProducts);
 
       console.log(
-        `[STORAGE] Produtos no banco: ${totalResult[0].count}. Enviando para o Front.`
+        `[STORAGE] Sucesso: ${list.length} produtos carregados da b2b_products.`
       );
 
       return {
@@ -61,14 +60,14 @@ export class DatabaseStorage implements IStorage {
         totalPages: Math.ceil(totalResult[0].count / limit),
       };
     } catch (error) {
-      console.error("[STORAGE ERROR]", error);
+      console.error("[STORAGE ERROR] Falha ao listar b2b_products:", error);
       return { products: [], total: 0, page: 1, totalPages: 0 };
     }
   }
 
   async createProduct(insert: any): Promise<B2bProduct> {
     try {
-      // Mapeamento resiliente: aceita nomes em PT e EN do Frontend
+      // Mapeamento resiliente: Garante que os campos batam com o banco
       const dataToInsert = {
         nome: insert.nome || insert.name || "Sem Nome",
         sku: insert.sku || `SKU-${Date.now()}`,
@@ -78,6 +77,7 @@ export class DatabaseStorage implements IStorage {
           insert.precoAtacado || insert.wholesalePrice || "0.00"
         ),
         descricao: insert.descricao || insert.description || "",
+        imagem: insert.imagem || insert.image || insert.imageUrl || null,
         status: "ATIVO",
         disponibilidade: "DISPONIVEL",
       };
@@ -86,10 +86,7 @@ export class DatabaseStorage implements IStorage {
         .insert(b2bProducts)
         .values(dataToInsert as any)
         .returning();
-
-      console.log(
-        `[STORAGE] Produto criado com sucesso: ${p.nome} (ID: ${p.id})`
-      );
+      console.log(`[STORAGE] Produto gravado com sucesso! ID: ${p.id}`);
       return p;
     } catch (error) {
       console.error("[STORAGE ERROR] Falha no insert:", error);
