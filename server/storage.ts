@@ -32,14 +32,14 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
 
-  // --- PRODUTOS (Busca Global para Testes) ---
+  // --- PRODUTOS (FORCE VISIBILITY E MAPEAMENTO FRONTEND) ---
   async getProducts(f?: any): Promise<any> {
     try {
       const page = f?.page || 1;
       const limit = f?.limit || 100;
       const offset = (page - 1) * limit;
 
-      // Busca sem filtros para garantir que o "Produto Teste Manual" (ID 1) apareça
+      // Busca global sem filtros para garantir que os dados apareçam no teste
       const list = await db
         .select()
         .from(b2bProducts)
@@ -49,12 +49,21 @@ export class DatabaseStorage implements IStorage {
 
       const totalResult = await db.select({ count: count() }).from(b2bProducts);
 
+      // MAPEAMENTO CRÍTICO: Converte chaves do banco (PT) para o esperado pelo Front (EN)
+      const formattedProducts = list.map((p) => ({
+        ...p,
+        name: p.nome, // Frontend espera 'name'
+        price: p.precoVarejo, // Frontend espera 'price'
+        image: p.imagem, // Frontend espera 'image'
+        description: p.descricao, // Frontend espera 'description'
+      }));
+
       console.log(
-        `[STORAGE] Sucesso: ${list.length} produtos carregados da b2b_products.`
+        `[STORAGE] Sucesso: ${formattedProducts.length} produtos mapeados para o Frontend.`
       );
 
       return {
-        products: list,
+        products: formattedProducts,
         total: totalResult[0].count,
         page,
         totalPages: Math.ceil(totalResult[0].count / limit),
@@ -67,7 +76,7 @@ export class DatabaseStorage implements IStorage {
 
   async createProduct(insert: any): Promise<B2bProduct> {
     try {
-      // Mapeamento resiliente: Garante que os campos batam com o banco
+      // Mapeamento resiliente: Garante que os campos batam com o banco (snake_case/PT)
       const dataToInsert = {
         nome: insert.nome || insert.name || "Sem Nome",
         sku: insert.sku || `SKU-${Date.now()}`,
@@ -80,12 +89,15 @@ export class DatabaseStorage implements IStorage {
         imagem: insert.imagem || insert.image || insert.imageUrl || null,
         status: "ATIVO",
         disponibilidade: "DISPONIVEL",
+        // Adicionando companyId padrão para evitar problemas de filtragem multitenant
+        companyId: insert.companyId || "comp-tec-01",
       };
 
       const [p] = await db
         .insert(b2bProducts)
         .values(dataToInsert as any)
         .returning();
+
       console.log(`[STORAGE] Produto gravado com sucesso! ID: ${p.id}`);
       return p;
     } catch (error) {
