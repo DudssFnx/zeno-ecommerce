@@ -7,17 +7,14 @@ import {
   type InsertCategory,
   type InsertOrder,
   type InsertOrderItem,
-  type InsertUser,
   type Order,
   type OrderItem,
   orderItems,
   orders,
   siteSettings,
-  type UpsertUser,
-  type User,
-  users,
 } from "@shared/schema";
-// IMPORTANTE: Importando o schema correto do arquivo modular
+// IMPORTANTE: Importando o schema correto do arquivo modular e a tabela b2bUsers
+import { b2bUsers } from "@shared/schema";
 import { type B2bProduct, b2bProducts } from "@shared/schema/products.schema";
 import bcrypt from "bcryptjs";
 import { and, count, desc, eq, ilike, or, sql } from "drizzle-orm";
@@ -28,58 +25,66 @@ async function hashPassword(password: string) {
 }
 
 export interface IStorage {
-  // Métodos definidos na classe abaixo
+  getUser(id: string): Promise<any | undefined>;
+  getUserByEmail(email: string): Promise<any | undefined>;
+  getUsers(): Promise<any[]>;
+  upsertUser(userData: any): Promise<any>;
+  updateUser(id: string, userData: any): Promise<any | undefined>;
+  deleteUser(id: string): Promise<boolean>;
+  getProducts(f?: any): Promise<any>;
+  getProduct(id: number): Promise<B2bProduct | undefined>;
+  createProduct(insert: any): Promise<B2bProduct>;
 }
 
 export class DatabaseStorage implements IStorage {
-  // --- USER METHODS ---
-  async getUser(id: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.id, id));
+  // --- USER METHODS (Sincronizados com b2b_users) ---
+  async getUser(id: string): Promise<any | undefined> {
+    const [user] = await db.select().from(b2bUsers).where(eq(b2bUsers.id, id));
     return user;
   }
 
-  async getUserByEmail(email: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.email, email));
+  async getUserByEmail(email: string): Promise<any | undefined> {
+    const [user] = await db
+      .select()
+      .from(b2bUsers)
+      .where(eq(b2bUsers.email, email.toLowerCase()));
     return user;
   }
 
-  async getUsers(): Promise<User[]> {
-    return db.select().from(users).orderBy(desc(users.createdAt));
+  async getUsers(): Promise<any[]> {
+    return db.select().from(b2bUsers).orderBy(desc(b2bUsers.id));
   }
 
-  async upsertUser(userData: UpsertUser): Promise<User> {
+  async upsertUser(userData: any): Promise<any> {
     if (userData.password && !userData.password.startsWith("$2")) {
       userData.password = await hashPassword(userData.password);
     }
     const [user] = await db
-      .insert(users)
-      .values(userData as any)
+      .insert(b2bUsers)
+      .values(userData)
       .onConflictDoUpdate({
-        target: users.id,
+        target: b2bUsers.id,
         set: { ...userData, updatedAt: new Date() },
       })
       .returning();
     return user;
   }
 
-  async updateUser(
-    id: string,
-    userData: Partial<InsertUser>
-  ): Promise<User | undefined> {
+  async updateUser(id: string, userData: any): Promise<any | undefined> {
     const { createdAt, updatedAt, ...safeData } = userData as any;
     if (safeData.password && !safeData.password.startsWith("$2")) {
       safeData.password = await hashPassword(safeData.password);
     }
     const [user] = await db
-      .update(users)
+      .update(b2bUsers)
       .set({ ...safeData, updatedAt: new Date() })
-      .where(eq(users.id, id))
+      .where(eq(b2bUsers.id, id))
       .returning();
     return user;
   }
 
   async deleteUser(id: string): Promise<boolean> {
-    await db.delete(users).where(eq(users.id, id));
+    await db.delete(b2bUsers).where(eq(b2bUsers.id, id));
     return true;
   }
 
@@ -111,7 +116,7 @@ export class DatabaseStorage implements IStorage {
     return true;
   }
 
-  // --- PRODUCTS (CORRIGIDO PARA B2B_PRODUCTS) ---
+  // --- PRODUCTS (CORRIGIDO PARA B2B_PRODUCTS E BUSCA GLOBAL) ---
   async getProducts(f?: any): Promise<any> {
     try {
       const page = f?.page || 1;
@@ -119,7 +124,6 @@ export class DatabaseStorage implements IStorage {
       const offset = (page - 1) * limit;
       const cond = [];
 
-      // Mapeamento para as colunas em português do b2b_products
       if (f?.search) {
         cond.push(
           or(
@@ -129,6 +133,7 @@ export class DatabaseStorage implements IStorage {
         );
       }
 
+      // Busca sem filtros de empresa/categoria para garantir que os testes apareçam
       const list = await db
         .select()
         .from(b2bProducts)
@@ -143,7 +148,7 @@ export class DatabaseStorage implements IStorage {
         .where(cond.length > 0 ? and(...cond) : undefined);
 
       console.log(
-        `[STORAGE] Sucesso: ${list.length} produtos carregados da b2b_products.`
+        `[STORAGE] Sucesso: ${list.length} produtos carregados da b2b_products. Total no banco: ${totalResult[0].count}`
       );
 
       return {
@@ -168,29 +173,38 @@ export class DatabaseStorage implements IStorage {
 
   async createProduct(insert: any): Promise<B2bProduct> {
     try {
-      // Mapeamento de campos do Frontend para o Banco (Português)
+      // Mapeamento rigoroso para as colunas do PostgreSQL (snake_case)
       const dataToInsert = {
-        nome: insert.nome || insert.name,
-        sku: insert.sku,
-        unidadeMedida: insert.unidadeMedida || "UN",
-        precoVarejo: insert.precoVarejo || insert.price || "0.00",
-        precoAtacado: insert.precoAtacado || insert.wholesalePrice || "0.00",
-        descricao: insert.descricao || insert.description,
-        // GARANTIA PARA IMAGEM: Aceita múltiplos nomes de campo do Front
-        imagem:
-          insert.imagem || insert.image || insert.imageUrl || insert.photo,
+        nome: insert.nome || insert.name || "Produto Sem Nome",
+        sku: insert.sku || `SKU-${Date.now()}`,
+        unidadeMedida: insert.unidadeMedida || insert.unit || "UN",
+        precoVarejo: String(insert.precoVarejo || insert.price || "0.00"),
+        precoAtacado: String(
+          insert.precoAtacado || insert.wholesalePrice || "0.00"
+        ),
+        descricao: insert.descricao || insert.description || "",
+        imagem: insert.imagem || insert.image || insert.imageUrl || null,
         status: "ATIVO",
         disponibilidade: "DISPONIVEL",
       };
+
+      console.log(
+        "[STORAGE] Tentando gravar produto na b2b_products:",
+        dataToInsert
+      );
 
       const [p] = await db
         .insert(b2bProducts)
         .values(dataToInsert as any)
         .returning();
-      console.log(`[STORAGE] Produto gravado na b2b_products: ${p.nome}`);
+
+      console.log(`[STORAGE] Produto gravado com sucesso! ID: ${p.id}`);
       return p;
     } catch (error) {
-      console.error("[STORAGE ERROR] Falha ao gravar na b2b_products:", error);
+      console.error(
+        "[STORAGE ERROR] Falha crítica ao gravar na b2b_products:",
+        error
+      );
       throw error;
     }
   }
