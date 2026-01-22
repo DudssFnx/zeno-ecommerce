@@ -59,21 +59,24 @@ export async function registerRoutes(
           return req.login(user, () =>
             res.json({
               message: "Login Admin Bypass OK",
-              user: { ...user, role: user.role || "admin" },
+              user: { ...user, role: (user as any).role || "admin" },
             })
           );
         }
       }
 
       // 2. TENTATIVA NORMAL
-      const [b2bUser] = await db
+      const [b2bUser]: any = await db
         .select()
         .from(b2bUsers)
         .where(eq(b2bUsers.email, lowerEmail))
         .limit(1);
 
-      if (b2bUser && b2bUser.senha_hash) {
-        const isValid = await bcrypt.compare(password, b2bUser.senha_hash);
+      // Verificação flexível para senha_hash ou senhaHash
+      const hash = b2bUser?.senha_hash || b2bUser?.senhaHash;
+
+      if (b2bUser && hash) {
+        const isValid = await bcrypt.compare(password, hash);
         if (isValid) {
           if (!b2bUser.ativo)
             return res.status(403).json({ message: "Conta inativa" });
@@ -96,10 +99,9 @@ export async function registerRoutes(
       if (!req.isAuthenticated())
         return res.status(401).json({ message: "Não autenticado" });
 
-      // O passport coloca o usuário em req.user. Pegamos o ID de lá.
       const userId = req.user.id;
 
-      const [user] = await db
+      const [user]: any = await db
         .select()
         .from(b2bUsers)
         .where(eq(b2bUsers.id, userId))
@@ -108,13 +110,13 @@ export async function registerRoutes(
       if (!user)
         return res.status(404).json({ message: "Usuário não encontrado" });
 
-      // Busca as empresas vinculadas com proteção contra erro 500
       let userCos = [];
       try {
         userCos = await db
           .select({
             id: companies.id,
-            razaoSocial: companies.razao_social,
+            razaoSocial:
+              (companies as any).razao_social || (companies as any).razaoSocial,
             slug: companies.slug,
           })
           .from(userCompanies)
@@ -122,7 +124,6 @@ export async function registerRoutes(
           .where(eq(userCompanies.userId, userId));
       } catch (cosError) {
         console.error("[AUTH USER COMPANIES ERROR]", cosError);
-        // Não quebra a rota, apenas retorna vazio para as empresas
         userCos = [];
       }
 
@@ -150,7 +151,6 @@ export async function registerRoutes(
   app.get("/api/products", async (req, res) => {
     try {
       const result = await storage.getProducts(req.query);
-      // Retorna apenas a lista se o frontend não estiver preparado para paginação
       const productsList = Array.isArray(result)
         ? result
         : result.products || [];

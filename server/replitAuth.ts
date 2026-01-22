@@ -26,14 +26,14 @@ const getOidcConfig = memoize(
         (process.env.REPL_ID || process.env.BLING_CLIENT_ID)!,
         undefined,
         undefined,
-        { allowInsecureRequests: true },
+        { allowInsecureRequests: true }
       );
     } catch (err) {
       console.error("❌ [Auth] Erro OIDC (Ignorado em modo Local):", err);
       return null;
     }
   },
-  { maxAge: 3600 * 1000 },
+  { maxAge: 3600 * 1000 }
 );
 
 export function getSession() {
@@ -44,7 +44,7 @@ export function getSession() {
     ? new pgStore({
         conString: process.env.DATABASE_URL,
         createTableIfMissing: true,
-        ttl: sessionTtl / 1000, // connect-pg-simple usa segundos
+        ttl: sessionTtl / 1000,
         tableName: "sessions",
       })
     : undefined;
@@ -54,11 +54,13 @@ export function getSession() {
     store: sessionStore,
     resave: false,
     saveUninitialized: false,
-    proxy: true, // ESSENCIAL PARA RAILWAY (Confia no proxy reverso HTTPS)
+    proxy: true,
     cookie: {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production", // Ativa secure em produção (HTTPS)
-      sameSite: process.env.NODE_ENV === "production" ? "lax" : "none",
+      // MODIFICAÇÃO AQUI: Garante que funcione em HTTP (localhost)
+      secure: false,
+      // MODIFICAÇÃO AQUI: 'lax' funciona melhor que 'none' para evitar bloqueios localmente
+      sameSite: "lax",
       maxAge: sessionTtl,
     },
   });
