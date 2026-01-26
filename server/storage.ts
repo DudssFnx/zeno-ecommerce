@@ -1,7 +1,7 @@
 import { b2bUsers, categories, siteSettings } from "@shared/schema";
 import { type B2bProduct, b2bProducts } from "@shared/schema/products.schema";
 import bcrypt from "bcryptjs";
-import { count, desc, eq, isNull, ne, or } from "drizzle-orm";
+import { and, count, desc, eq, isNull, ne, or } from "drizzle-orm";
 import { db } from "./db";
 
 async function hashPassword(password: string) {
@@ -13,6 +13,12 @@ export interface IStorage {
   getUserByEmail(email: string): Promise<any | undefined>;
   getProducts(f?: any): Promise<any>;
   createProduct(insert: any): Promise<B2bProduct>;
+  // NOVO: Método para verificar duplicidade
+  checkDuplicate(
+    sku: string,
+    name: string,
+    excludeId?: number,
+  ): Promise<boolean>;
   getCategories(): Promise<any[]>;
   getSiteSetting(key: string): Promise<any>;
 }
@@ -32,15 +38,13 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
 
-  // --- PRODUTOS (CORREÇÃO DO FILTRO ENUM) ---
+  // --- PRODUTOS ---
   async getProducts(f?: any): Promise<any> {
     try {
       const page = f?.page || 1;
       const limit = f?.limit || 100;
       const offset = (page - 1) * limit;
 
-      // FILTRO SEGURO: Só usamos valores que existem no banco.
-      // Traz o produto se: Status é Nulo OU Status é Diferente de 'INATIVO'
       const activeFilter = or(
         isNull(b2bProducts.status),
         ne(b2bProducts.status, "INATIVO"),
@@ -59,7 +63,6 @@ export class DatabaseStorage implements IStorage {
         .from(b2bProducts)
         .where(activeFilter);
 
-      // MAPEAMENTO CRÍTICO
       const formattedProducts = list.map((p) => ({
         ...p,
         name: p.nome,
@@ -82,6 +85,34 @@ export class DatabaseStorage implements IStorage {
       console.error("[STORAGE ERROR] Falha ao listar b2b_products:", error);
       return [];
     }
+  }
+
+  // NOVO: Implementação da verificação de duplicidade
+  async checkDuplicate(
+    sku: string,
+    name: string,
+    excludeId?: number,
+  ): Promise<boolean> {
+    // Procura por produto onde:
+    // (SKU é igual OU Nome é igual) E (Status não é INATIVO)
+    let condition = and(
+      or(eq(b2bProducts.sku, sku), eq(b2bProducts.nome, name)),
+      ne(b2bProducts.status, "INATIVO"),
+    );
+
+    // Se estiver editando (excludeId existe), ignora o próprio produto na busca
+    if (excludeId) {
+      condition = and(condition, ne(b2bProducts.id, excludeId));
+    }
+
+    const [existing] = await db
+      .select()
+      .from(b2bProducts)
+      .where(condition)
+      .limit(1);
+
+    // Retorna true se achou duplicata, false se não achou
+    return !!existing;
   }
 
   async createProduct(insert: any): Promise<B2bProduct> {

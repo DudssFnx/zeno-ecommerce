@@ -166,6 +166,21 @@ export async function registerRoutes(
   app.post("/api/products", async (req: any, res) => {
     try {
       if (!req.isAuthenticated()) return res.status(401).send();
+
+      // VALIDAÇÃO DE DUPLICIDADE (NOVO)
+      // Se já existe SKU ou Nome, bloqueia a criação
+      if (req.body.sku || req.body.name) {
+        const isDuplicate = await storage.checkDuplicate(
+          req.body.sku,
+          req.body.name,
+        );
+        if (isDuplicate) {
+          return res
+            .status(400)
+            .json({ message: "Já existe um produto com este Nome ou SKU." });
+        }
+      }
+
       const product = await storage.createProduct(req.body);
       res.status(201).json(product);
     } catch (error) {
@@ -199,6 +214,31 @@ export async function registerRoutes(
     try {
       if (!req.isAuthenticated()) return res.status(401).send();
       const id = parseInt(req.params.id);
+
+      // VALIDAÇÃO DE DUPLICIDADE NA EDIÇÃO (NOVO)
+      if (req.body.name || req.body.sku) {
+        // Busca o produto atual para comparar
+        const [current] = await db
+          .select()
+          .from(b2bProducts)
+          .where(eq(b2bProducts.id, id));
+
+        if (current) {
+          const newName = req.body.name || current.nome;
+          const newSku = req.body.sku || current.sku;
+
+          // Verificamos duplicidade EXCLUINDO o próprio ID da busca
+          const isDuplicate = await storage.checkDuplicate(newSku, newName, id);
+
+          if (isDuplicate) {
+            return res
+              .status(400)
+              .json({
+                message: "Já existe outro produto com este Nome ou SKU.",
+              });
+          }
+        }
+      }
 
       await db.update(b2bProducts).set(req.body).where(eq(b2bProducts.id, id));
 
