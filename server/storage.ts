@@ -1,7 +1,7 @@
 import { b2bUsers, categories, siteSettings } from "@shared/schema";
 import { type B2bProduct, b2bProducts } from "@shared/schema/products.schema";
 import bcrypt from "bcryptjs";
-import { count, desc, eq, notInArray } from "drizzle-orm"; // Added helpers
+import { and, count, desc, eq, sql } from "drizzle-orm"; // Added helpers
 import { db } from "./db";
 
 async function hashPassword(password: string) {
@@ -39,40 +39,47 @@ export class DatabaseStorage implements IStorage {
       const limit = f?.limit || 100;
       const offset = (page - 1) * limit;
 
-      // MODIFICATION HERE: Added filter to ignore deleted/inactive items
+      // CORREÇÃO: Usamos o operador 'ne' (not equal) para garantir que
+      // só removemos o que for explicitamente marcado como deletado.
+      // Se o status for nulo, vazio ou "ATIVO", ele VAI aparecer.
       const list = await db
         .select()
         .from(b2bProducts)
         .where(
-          // Filter out items that are INATIVO or DELETED
-          notInArray(b2bProducts.status, ["INATIVO", "DELETED", "EXCLUIDO"]),
+          // Mostra tudo que NÃO for "DELETED" e nem "EXCLUIDO"
+          // Isso recupera produtos antigos que podem estar sem status
+          and(
+            sql`${b2bProducts.status} IS DISTINCT FROM 'DELETED'`,
+            sql`${b2bProducts.status} IS DISTINCT FROM 'EXCLUIDO'`,
+          ),
         )
         .limit(limit)
         .offset(offset)
         .orderBy(desc(b2bProducts.id));
 
-      // Also update the count to reflect only active items
       const totalResult = await db
         .select({ count: count() })
         .from(b2bProducts)
         .where(
-          notInArray(b2bProducts.status, ["INATIVO", "DELETED", "EXCLUIDO"]),
+          and(
+            sql`${b2bProducts.status} IS DISTINCT FROM 'DELETED'`,
+            sql`${b2bProducts.status} IS DISTINCT FROM 'EXCLUIDO'`,
+          ),
         );
 
-      // MAPEAMENTO CRÍTICO: Entrega campos em PT e EN para o React encontrar
+      // MAPEAMENTO CRÍTICO
       const formattedProducts = list.map((p) => ({
         ...p,
-        name: p.nome, // Frontend espera 'name'
-        price: p.precoVarejo, // Frontend espera 'price'
-        image: p.imagem, // Frontend espera 'image'
-        description: p.descricao, // Frontend espera 'description'
+        name: p.nome,
+        price: p.precoVarejo,
+        image: p.imagem,
+        description: p.descricao,
       }));
 
       console.log(
-        `[STORAGE] Sucesso: ${formattedProducts.length} produtos ativos mapeados.`,
+        `[STORAGE] Sucesso: ${formattedProducts.length} produtos recuperados.`,
       );
 
-      // Retorno duplo: Objeto para paginação E Array para componentes simples
       return Object.assign(formattedProducts, {
         products: formattedProducts,
         total: totalResult[0].count,
