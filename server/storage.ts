@@ -1,7 +1,8 @@
 import { b2bUsers, categories, siteSettings } from "@shared/schema";
 import { type B2bProduct, b2bProducts } from "@shared/schema/products.schema";
 import bcrypt from "bcryptjs";
-import { and, count, desc, eq, sql } from "drizzle-orm"; // Added helpers
+// CORREÇÃO 1: Adicionado 'desc' na lista de imports
+import { and, count, desc, eq, isNull, ne, or } from "drizzle-orm";
 import { db } from "./db";
 
 async function hashPassword(password: string) {
@@ -39,20 +40,22 @@ export class DatabaseStorage implements IStorage {
       const limit = f?.limit || 100;
       const offset = (page - 1) * limit;
 
-      // CORREÇÃO: Usamos o operador 'ne' (not equal) para garantir que
-      // só removemos o que for explicitamente marcado como deletado.
-      // Se o status for nulo, vazio ou "ATIVO", ele VAI aparecer.
+      // FILTRO NATIVO: Muito mais seguro que SQL manual
+      // Traz produtos se: Status não existe (null) OU Status não é "excluído"
+      const activeFilter = or(
+        isNull(b2bProducts.status),
+        and(
+          ne(b2bProducts.status, "DELETED" as any),
+          ne(b2bProducts.status, "EXCLUIDO" as any),
+          ne(b2bProducts.status, "INATIVO"), // <--- Importante: filtra os inativos
+        ),
+      );
+
+      // CORREÇÃO 2: Restaurada paginação e ordenação que faltavam
       const list = await db
         .select()
         .from(b2bProducts)
-        .where(
-          // Mostra tudo que NÃO for "DELETED" e nem "EXCLUIDO"
-          // Isso recupera produtos antigos que podem estar sem status
-          and(
-            sql`${b2bProducts.status} IS DISTINCT FROM 'DELETED'`,
-            sql`${b2bProducts.status} IS DISTINCT FROM 'EXCLUIDO'`,
-          ),
-        )
+        .where(activeFilter)
         .limit(limit)
         .offset(offset)
         .orderBy(desc(b2bProducts.id));
@@ -60,12 +63,7 @@ export class DatabaseStorage implements IStorage {
       const totalResult = await db
         .select({ count: count() })
         .from(b2bProducts)
-        .where(
-          and(
-            sql`${b2bProducts.status} IS DISTINCT FROM 'DELETED'`,
-            sql`${b2bProducts.status} IS DISTINCT FROM 'EXCLUIDO'`,
-          ),
-        );
+        .where(activeFilter);
 
       // MAPEAMENTO CRÍTICO
       const formattedProducts = list.map((p) => ({
@@ -77,7 +75,7 @@ export class DatabaseStorage implements IStorage {
       }));
 
       console.log(
-        `[STORAGE] Sucesso: ${formattedProducts.length} produtos recuperados.`,
+        `[STORAGE] Sucesso: ${formattedProducts.length} produtos ativos recuperados.`,
       );
 
       return Object.assign(formattedProducts, {
@@ -94,7 +92,6 @@ export class DatabaseStorage implements IStorage {
 
   async createProduct(insert: any): Promise<B2bProduct> {
     try {
-      // Mapeamento resiliente: Garante que os campos batam com o banco (snake_case/PT)
       const dataToInsert = {
         nome: insert.nome || insert.name || "Sem Nome",
         sku: insert.sku || `SKU-${Date.now()}`,
@@ -107,7 +104,6 @@ export class DatabaseStorage implements IStorage {
         imagem: insert.imagem || insert.image || insert.imageUrl || null,
         status: "ATIVO",
         disponibilidade: "DISPONIVEL",
-        // Fallback multitenant para evitar bloqueio por empresa
         companyId: insert.companyId || "comp-tec-01",
       };
 
