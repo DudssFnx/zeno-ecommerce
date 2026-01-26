@@ -1,8 +1,7 @@
 import { b2bUsers, categories, siteSettings } from "@shared/schema";
 import { type B2bProduct, b2bProducts } from "@shared/schema/products.schema";
 import bcrypt from "bcryptjs";
-// CORREÇÃO 1: Adicionado 'desc' na lista de imports
-import { and, count, desc, eq, isNull, ne, or } from "drizzle-orm";
+import { count, desc, eq, isNull, ne, or } from "drizzle-orm";
 import { db } from "./db";
 
 async function hashPassword(password: string) {
@@ -33,25 +32,20 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
 
-  // --- PRODUTOS (MAPEAMENTO RESILIENTE PARA FRONTEND) ---
+  // --- PRODUTOS (CORREÇÃO DO FILTRO ENUM) ---
   async getProducts(f?: any): Promise<any> {
     try {
       const page = f?.page || 1;
       const limit = f?.limit || 100;
       const offset = (page - 1) * limit;
 
-      // FILTRO NATIVO: Muito mais seguro que SQL manual
-      // Traz produtos se: Status não existe (null) OU Status não é "excluído"
+      // FILTRO SEGURO: Só usamos valores que existem no banco.
+      // Traz o produto se: Status é Nulo OU Status é Diferente de 'INATIVO'
       const activeFilter = or(
         isNull(b2bProducts.status),
-        and(
-          ne(b2bProducts.status, "DELETED" as any),
-          ne(b2bProducts.status, "EXCLUIDO" as any),
-          ne(b2bProducts.status, "INATIVO"), // <--- Importante: filtra os inativos
-        ),
+        ne(b2bProducts.status, "INATIVO"),
       );
 
-      // CORREÇÃO 2: Restaurada paginação e ordenação que faltavam
       const list = await db
         .select()
         .from(b2bProducts)
@@ -75,7 +69,7 @@ export class DatabaseStorage implements IStorage {
       }));
 
       console.log(
-        `[STORAGE] Sucesso: ${formattedProducts.length} produtos ativos recuperados.`,
+        `[STORAGE] Sucesso: ${formattedProducts.length} produtos recuperados.`,
       );
 
       return Object.assign(formattedProducts, {
