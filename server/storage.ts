@@ -1,7 +1,7 @@
 import { b2bUsers, categories, siteSettings } from "@shared/schema";
 import { type B2bProduct, b2bProducts } from "@shared/schema/products.schema";
 import bcrypt from "bcryptjs";
-import { count, desc, eq } from "drizzle-orm";
+import { count, desc, eq, notInArray } from "drizzle-orm"; // Added helpers
 import { db } from "./db";
 
 async function hashPassword(password: string) {
@@ -39,15 +39,25 @@ export class DatabaseStorage implements IStorage {
       const limit = f?.limit || 100;
       const offset = (page - 1) * limit;
 
-      // Busca global ignorando filtros de empresa para garantir visibilidade
+      // MODIFICATION HERE: Added filter to ignore deleted/inactive items
       const list = await db
         .select()
         .from(b2bProducts)
+        .where(
+          // Filter out items that are INATIVO or DELETED
+          notInArray(b2bProducts.status, ["INATIVO", "DELETED", "EXCLUIDO"]),
+        )
         .limit(limit)
         .offset(offset)
         .orderBy(desc(b2bProducts.id));
 
-      const totalResult = await db.select({ count: count() }).from(b2bProducts);
+      // Also update the count to reflect only active items
+      const totalResult = await db
+        .select({ count: count() })
+        .from(b2bProducts)
+        .where(
+          notInArray(b2bProducts.status, ["INATIVO", "DELETED", "EXCLUIDO"]),
+        );
 
       // MAPEAMENTO CRÍTICO: Entrega campos em PT e EN para o React encontrar
       const formattedProducts = list.map((p) => ({
@@ -59,11 +69,10 @@ export class DatabaseStorage implements IStorage {
       }));
 
       console.log(
-        `[STORAGE] Sucesso: ${formattedProducts.length} produtos mapeados.`
+        `[STORAGE] Sucesso: ${formattedProducts.length} produtos ativos mapeados.`,
       );
 
       // Retorno duplo: Objeto para paginação E Array para componentes simples
-      // Isso evita que a tabela apareça vazia se o hook esperar apenas a lista
       return Object.assign(formattedProducts, {
         products: formattedProducts,
         total: totalResult[0].count,
@@ -85,7 +94,7 @@ export class DatabaseStorage implements IStorage {
         unidadeMedida: insert.unidadeMedida || "UN",
         precoVarejo: String(insert.precoVarejo || insert.price || "0.00"),
         precoAtacado: String(
-          insert.precoAtacado || insert.wholesalePrice || "0.00"
+          insert.precoAtacado || insert.wholesalePrice || "0.00",
         ),
         descricao: insert.descricao || insert.description || "",
         imagem: insert.imagem || insert.image || insert.imageUrl || null,
