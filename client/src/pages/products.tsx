@@ -1,33 +1,6 @@
-import { useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Command,
   CommandEmpty,
@@ -36,39 +9,72 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
-import { 
-  Plus, 
-  Search, 
-  Pencil, 
-  Trash2, 
-  Loader2, 
-  Upload, 
-  Image as ImageIcon, 
-  X, 
-  Copy, 
-  Star,
-  ArrowLeft,
-  Package,
-  DollarSign,
-  Boxes,
-  Save,
-  Ruler,
-  FileText,
-  Barcode,
-  Check,
-  ChevronsUpDown,
-  ChevronLeft,
-  ChevronRight
-} from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/AuthContext";
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { queryClient, apiRequest } from "@/lib/queryClient";
-import type { Product as SchemaProduct, Category } from "@shared/schema";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { zodResolver } from "@hookform/resolvers/zod";
+import type { Category, Product as SchemaProduct } from "@shared/schema";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import {
+  ArrowLeft,
+  Barcode,
+  Boxes,
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsUpDown,
+  Copy,
+  DollarSign,
+  FileText,
+  Image as ImageIcon,
+  Loader2,
+  Package,
+  Pencil,
+  Plus,
+  Ruler,
+  Save,
+  Search,
+  Star,
+  Trash2,
+  Upload,
+  X,
+} from "lucide-react";
+import { useState } from "react";
+import { useForm } from "react-hook-form";
+import { z } from "zod";
 
 interface ProductData {
   id: string;
@@ -96,14 +102,34 @@ const productSchema = z.object({
   categoryId: z.string().optional(),
   brand: z.string().optional(),
   price: z.coerce.number().min(0, "Preco deve ser positivo"),
-  cost: z.coerce.number().min(0, "Custo deve ser positivo").optional().or(z.literal("")),
+  cost: z.coerce
+    .number()
+    .min(0, "Custo deve ser positivo")
+    .optional()
+    .or(z.literal("")),
   stock: z.coerce.number().int().min(0, "Estoque deve ser 0 ou mais"),
   description: z.string().optional(),
   featured: z.boolean().default(false),
-  weight: z.coerce.number().min(0, "Peso deve ser positivo").optional().or(z.literal("")),
-  width: z.coerce.number().min(0, "Largura deve ser positiva").optional().or(z.literal("")),
-  height: z.coerce.number().min(0, "Altura deve ser positiva").optional().or(z.literal("")),
-  depth: z.coerce.number().min(0, "Profundidade deve ser positiva").optional().or(z.literal("")),
+  weight: z.coerce
+    .number()
+    .min(0, "Peso deve ser positivo")
+    .optional()
+    .or(z.literal("")),
+  width: z.coerce
+    .number()
+    .min(0, "Largura deve ser positiva")
+    .optional()
+    .or(z.literal("")),
+  height: z.coerce
+    .number()
+    .min(0, "Altura deve ser positiva")
+    .optional()
+    .or(z.literal("")),
+  depth: z.coerce
+    .number()
+    .min(0, "Profundidade deve ser positiva")
+    .optional()
+    .or(z.literal("")),
   gtin: z.string().optional(),
   gtinTributario: z.string().optional(),
   ncm: z.string().optional(),
@@ -131,7 +157,9 @@ export default function ProductsPage() {
   const [filterCategory, setFilterCategory] = useState<string>("");
   const [filterBrand, setFilterBrand] = useState<string>("");
   const [viewMode, setViewMode] = useState<"list" | "form">("list");
-  const [editingProduct, setEditingProduct] = useState<ProductData | null>(null);
+  const [editingProduct, setEditingProduct] = useState<ProductData | null>(
+    null,
+  );
   const [imageUrls, setImageUrls] = useState<string[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [activeFormTab, setActiveFormTab] = useState("dados");
@@ -139,37 +167,46 @@ export default function ProductsPage() {
   const [brandSearch, setBrandSearch] = useState("");
   const MAX_IMAGES = 5;
 
-  const { data: productsResponse, isLoading } = useQuery<{ products: SchemaProduct[]; total: number }>({
-    queryKey: ['/api/products'],
+  const { data: productsResponse, isLoading } = useQuery<{
+    products: SchemaProduct[];
+    total: number;
+  }>({
+    queryKey: ["/api/products"],
     queryFn: async () => {
-      const res = await fetch('/api/products?limit=10000', { credentials: 'include' });
-      if (!res.ok) throw new Error('Failed to fetch products');
+      const res = await fetch("/api/products?limit=10000", {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to fetch products");
       return res.json();
     },
   });
-  
-  const productsData = productsResponse?.products || [];
+
+  const productsData = Array.isArray(productsResponse)
+    ? productsResponse
+    : productsResponse?.products || [];
 
   const { data: categoriesData = [] } = useQuery<Category[]>({
-    queryKey: ['/api/categories'],
+    queryKey: ["/api/categories"],
     queryFn: async () => {
-      const res = await fetch('/api/categories?limit=1000', { credentials: 'include' });
-      if (!res.ok) throw new Error('Failed to fetch categories');
+      const res = await fetch("/api/categories?limit=1000", {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to fetch categories");
       return res.json();
     },
   });
 
   const { data: brandsData = [] } = useQuery<string[]>({
-    queryKey: ['/api/brands'],
+    queryKey: ["/api/brands"],
     queryFn: async () => {
-      const res = await fetch('/api/brands', { credentials: 'include' });
-      if (!res.ok) throw new Error('Failed to fetch brands');
+      const res = await fetch("/api/brands", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch brands");
       return res.json();
     },
   });
 
   const categoryMap: Record<number, string> = {};
-  categoriesData.forEach(cat => {
+  categoriesData.forEach((cat) => {
     categoryMap[cat.id] = cat.name;
   });
 
@@ -177,7 +214,9 @@ export default function ProductsPage() {
     id: String(p.id),
     name: p.name,
     sku: p.sku,
-    category: p.categoryId ? categoryMap[p.categoryId] || "Sem categoria" : "Sem categoria",
+    category: p.categoryId
+      ? categoryMap[p.categoryId] || "Sem categoria"
+      : "Sem categoria",
     categoryId: p.categoryId,
     brand: p.brand || "",
     price: parseFloat(p.price),
@@ -213,11 +252,13 @@ export default function ProductsPage() {
   });
 
   const filteredProducts = products.filter((p) => {
-    const matchesSearch = 
+    const matchesSearch =
       p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       p.sku.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesCategory = !filterCategory || String(p.categoryId) === filterCategory;
-    const matchesBrand = !filterBrand || p.brand.toLowerCase() === filterBrand.toLowerCase();
+    const matchesCategory =
+      !filterCategory || String(p.categoryId) === filterCategory;
+    const matchesBrand =
+      !filterBrand || p.brand.toLowerCase() === filterBrand.toLowerCase();
     return matchesSearch && matchesCategory && matchesBrand;
   });
 
@@ -245,38 +286,38 @@ export default function ProductsPage() {
 
   const handleImageUpload = async (file: File) => {
     if (imageUrls.length >= MAX_IMAGES) {
-      toast({ 
-        title: "Limite atingido", 
-        description: `Maximo de ${MAX_IMAGES} imagens por produto.`, 
-        variant: "destructive" 
+      toast({
+        title: "Limite atingido",
+        description: `Maximo de ${MAX_IMAGES} imagens por produto.`,
+        variant: "destructive",
       });
       return;
     }
-    
+
     setIsUploading(true);
     try {
       const formData = new FormData();
-      formData.append('file', file);
-      
-      const response = await fetch('/api/upload', {
-        method: 'POST',
+      formData.append("file", file);
+
+      const response = await fetch("/api/upload", {
+        method: "POST",
         body: formData,
-        credentials: 'include',
+        credentials: "include",
       });
-      
+
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.message || 'Falha no upload');
+        throw new Error(error.message || "Falha no upload");
       }
-      
+
       const data = await response.json();
-      setImageUrls(prev => [...prev, data.url]);
+      setImageUrls((prev) => [...prev, data.url]);
       toast({ title: "Imagem enviada" });
     } catch (error: any) {
-      toast({ 
-        title: "Erro no upload", 
-        description: error.message || "Falha ao enviar imagem", 
-        variant: "destructive" 
+      toast({
+        title: "Erro no upload",
+        description: error.message || "Falha ao enviar imagem",
+        variant: "destructive",
       });
     } finally {
       setIsUploading(false);
@@ -284,7 +325,7 @@ export default function ProductsPage() {
   };
 
   const removeImage = (index: number) => {
-    setImageUrls(prev => prev.filter((_, i) => i !== index));
+    setImageUrls((prev) => prev.filter((_, i) => i !== index));
   };
 
   const createProductMutation = useMutation({
@@ -295,7 +336,10 @@ export default function ProductsPage() {
         categoryId: data.categoryId ? parseInt(data.categoryId) : null,
         brand: data.brand || null,
         price: data.price.toFixed(2),
-        cost: data.cost && typeof data.cost === 'number' ? data.cost.toFixed(2) : null,
+        cost:
+          data.cost && typeof data.cost === "number"
+            ? data.cost.toFixed(2)
+            : null,
         stock: data.stock,
         description: data.description || null,
         image: imageUrls[0] || null,
@@ -307,31 +351,52 @@ export default function ProductsPage() {
         cest: data.cest || null,
         origem: data.taxOrigin || null,
         icmsCst: data.icmsCst || null,
-        icmsAliquota: data.icmsAliquota && typeof data.icmsAliquota === 'number' ? data.icmsAliquota.toFixed(2) : null,
+        icmsAliquota:
+          data.icmsAliquota && typeof data.icmsAliquota === "number"
+            ? data.icmsAliquota.toFixed(2)
+            : null,
         ipiCst: data.ipiCst || null,
-        ipiAliquota: data.ipiAliquota && typeof data.ipiAliquota === 'number' ? data.ipiAliquota.toFixed(2) : null,
+        ipiAliquota:
+          data.ipiAliquota && typeof data.ipiAliquota === "number"
+            ? data.ipiAliquota.toFixed(2)
+            : null,
         pisCst: data.pisCst || null,
-        pisAliquota: data.pisAliquota && typeof data.pisAliquota === 'number' ? data.pisAliquota.toFixed(2) : null,
+        pisAliquota:
+          data.pisAliquota && typeof data.pisAliquota === "number"
+            ? data.pisAliquota.toFixed(2)
+            : null,
         cofinsCst: data.cofinsCst || null,
-        cofinsAliquota: data.cofinsAliquota && typeof data.cofinsAliquota === 'number' ? data.cofinsAliquota.toFixed(2) : null,
+        cofinsAliquota:
+          data.cofinsAliquota && typeof data.cofinsAliquota === "number"
+            ? data.cofinsAliquota.toFixed(2)
+            : null,
       };
       await apiRequest("POST", "/api/products", payload);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/products'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/brands'] });
+      queryClient.invalidateQueries({ queryKey: ["/api/products"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/brands"] });
     },
   });
 
   const updateProductMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: ProductFormValues }) => {
+    mutationFn: async ({
+      id,
+      data,
+    }: {
+      id: string;
+      data: ProductFormValues;
+    }) => {
       const payload = {
         name: data.name,
         sku: data.sku,
         categoryId: data.categoryId ? parseInt(data.categoryId) : null,
         brand: data.brand || null,
         price: data.price.toFixed(2),
-        cost: data.cost && typeof data.cost === 'number' ? data.cost.toFixed(2) : null,
+        cost:
+          data.cost && typeof data.cost === "number"
+            ? data.cost.toFixed(2)
+            : null,
         stock: data.stock,
         description: data.description || null,
         image: imageUrls[0] || null,
@@ -343,19 +408,31 @@ export default function ProductsPage() {
         cest: data.cest || null,
         origem: data.taxOrigin || null,
         icmsCst: data.icmsCst || null,
-        icmsAliquota: data.icmsAliquota && typeof data.icmsAliquota === 'number' ? data.icmsAliquota.toFixed(2) : null,
+        icmsAliquota:
+          data.icmsAliquota && typeof data.icmsAliquota === "number"
+            ? data.icmsAliquota.toFixed(2)
+            : null,
         ipiCst: data.ipiCst || null,
-        ipiAliquota: data.ipiAliquota && typeof data.ipiAliquota === 'number' ? data.ipiAliquota.toFixed(2) : null,
+        ipiAliquota:
+          data.ipiAliquota && typeof data.ipiAliquota === "number"
+            ? data.ipiAliquota.toFixed(2)
+            : null,
         pisCst: data.pisCst || null,
-        pisAliquota: data.pisAliquota && typeof data.pisAliquota === 'number' ? data.pisAliquota.toFixed(2) : null,
+        pisAliquota:
+          data.pisAliquota && typeof data.pisAliquota === "number"
+            ? data.pisAliquota.toFixed(2)
+            : null,
         cofinsCst: data.cofinsCst || null,
-        cofinsAliquota: data.cofinsAliquota && typeof data.cofinsAliquota === 'number' ? data.cofinsAliquota.toFixed(2) : null,
+        cofinsAliquota:
+          data.cofinsAliquota && typeof data.cofinsAliquota === "number"
+            ? data.cofinsAliquota.toFixed(2)
+            : null,
       };
       await apiRequest("PATCH", `/api/products/${id}`, payload);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/products'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/brands'] });
+      queryClient.invalidateQueries({ queryKey: ["/api/products"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/brands"] });
     },
   });
 
@@ -364,7 +441,7 @@ export default function ProductsPage() {
       await apiRequest("DELETE", `/api/products/${id}`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/products'] });
+      queryClient.invalidateQueries({ queryKey: ["/api/products"] });
     },
   });
 
@@ -373,27 +450,58 @@ export default function ProductsPage() {
       await apiRequest("PATCH", `/api/products/${id}/toggle-featured`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/products'] });
+      queryClient.invalidateQueries({ queryKey: ["/api/products"] });
     },
   });
 
   const handleToggleFeatured = (product: ProductData) => {
     toggleFeaturedMutation.mutate(product.id, {
       onSuccess: () => {
-        toast({ 
-          title: product.featured ? "Removido dos destaques" : "Adicionado aos destaques",
+        toast({
+          title: product.featured
+            ? "Removido dos destaques"
+            : "Adicionado aos destaques",
           description: product.name,
         });
       },
       onError: (error: Error) => {
-        const desc = isAdmin ? `Falha ao alterar destaque: ${error.message}` : "Falha ao alterar destaque";
+        const desc = isAdmin
+          ? `Falha ao alterar destaque: ${error.message}`
+          : "Falha ao alterar destaque";
         toast({ title: "Erro", description: desc, variant: "destructive" });
       },
     });
   };
 
   const openAddForm = () => {
-    form.reset({ name: "", sku: "", categoryId: "", brand: "", price: 0, cost: "", stock: 0, description: "", featured: false, weight: "", width: "", height: "", depth: "", gtin: "", gtinTributario: "", ncm: "", cest: "", taxOrigin: "", icmsCst: "", icmsAliquota: "", ipiCst: "", ipiAliquota: "", pisCst: "", pisAliquota: "", cofinsCst: "", cofinsAliquota: "" });
+    form.reset({
+      name: "",
+      sku: "",
+      categoryId: "",
+      brand: "",
+      price: 0,
+      cost: "",
+      stock: 0,
+      description: "",
+      featured: false,
+      weight: "",
+      width: "",
+      height: "",
+      depth: "",
+      gtin: "",
+      gtinTributario: "",
+      ncm: "",
+      cest: "",
+      taxOrigin: "",
+      icmsCst: "",
+      icmsAliquota: "",
+      ipiCst: "",
+      ipiAliquota: "",
+      pisCst: "",
+      pisAliquota: "",
+      cofinsCst: "",
+      cofinsAliquota: "",
+    });
     setEditingProduct(null);
     setImageUrls([]);
     setActiveFormTab("dados");
@@ -401,7 +509,9 @@ export default function ProductsPage() {
   };
 
   const openEditForm = (product: ProductData) => {
-    const schemaProduct = productsData.find(p => p.id === parseInt(product.id));
+    const schemaProduct = productsData.find(
+      (p) => p.id === parseInt(product.id),
+    );
     form.reset({
       name: product.name,
       sku: product.sku,
@@ -422,31 +532,42 @@ export default function ProductsPage() {
       cest: schemaProduct?.cest || "",
       taxOrigin: schemaProduct?.origem || "",
       icmsCst: schemaProduct?.icmsCst || "",
-      icmsAliquota: schemaProduct?.icmsAliquota ? parseFloat(schemaProduct.icmsAliquota) : "",
+      icmsAliquota: schemaProduct?.icmsAliquota
+        ? parseFloat(schemaProduct.icmsAliquota)
+        : "",
       ipiCst: schemaProduct?.ipiCst || "",
-      ipiAliquota: schemaProduct?.ipiAliquota ? parseFloat(schemaProduct.ipiAliquota) : "",
+      ipiAliquota: schemaProduct?.ipiAliquota
+        ? parseFloat(schemaProduct.ipiAliquota)
+        : "",
       pisCst: schemaProduct?.pisCst || "",
-      pisAliquota: schemaProduct?.pisAliquota ? parseFloat(schemaProduct.pisAliquota) : "",
+      pisAliquota: schemaProduct?.pisAliquota
+        ? parseFloat(schemaProduct.pisAliquota)
+        : "",
       cofinsCst: schemaProduct?.cofinsCst || "",
-      cofinsAliquota: schemaProduct?.cofinsAliquota ? parseFloat(schemaProduct.cofinsAliquota) : "",
+      cofinsAliquota: schemaProduct?.cofinsAliquota
+        ? parseFloat(schemaProduct.cofinsAliquota)
+        : "",
     });
     setEditingProduct(product);
-    const existingImages = product.images || (product.image ? [product.image] : []);
+    const existingImages =
+      product.images || (product.image ? [product.image] : []);
     setImageUrls(existingImages);
     setActiveFormTab("dados");
     setViewMode("form");
   };
 
   const openCloneForm = (product: ProductData) => {
-    const baseSku = product.sku.replace(/-\d+$/, '');
-    const existingSkus = products.map(p => p.sku);
+    const baseSku = product.sku.replace(/-\d+$/, "");
+    const existingSkus = products.map((p) => p.sku);
     let counter = 1;
     let newSku = `${baseSku}-${counter}`;
     while (existingSkus.includes(newSku)) {
       counter++;
       newSku = `${baseSku}-${counter}`;
     }
-    const schemaProductDup = productsData.find(p => p.id === parseInt(product.id));
+    const schemaProductDup = productsData.find(
+      (p) => p.id === parseInt(product.id),
+    );
     form.reset({
       name: product.name + " (Copia)",
       sku: newSku,
@@ -467,16 +588,25 @@ export default function ProductsPage() {
       cest: schemaProductDup?.cest || "",
       taxOrigin: schemaProductDup?.origem || "",
       icmsCst: schemaProductDup?.icmsCst || "",
-      icmsAliquota: schemaProductDup?.icmsAliquota ? parseFloat(schemaProductDup.icmsAliquota) : "",
+      icmsAliquota: schemaProductDup?.icmsAliquota
+        ? parseFloat(schemaProductDup.icmsAliquota)
+        : "",
       ipiCst: schemaProductDup?.ipiCst || "",
-      ipiAliquota: schemaProductDup?.ipiAliquota ? parseFloat(schemaProductDup.ipiAliquota) : "",
+      ipiAliquota: schemaProductDup?.ipiAliquota
+        ? parseFloat(schemaProductDup.ipiAliquota)
+        : "",
       pisCst: schemaProductDup?.pisCst || "",
-      pisAliquota: schemaProductDup?.pisAliquota ? parseFloat(schemaProductDup.pisAliquota) : "",
+      pisAliquota: schemaProductDup?.pisAliquota
+        ? parseFloat(schemaProductDup.pisAliquota)
+        : "",
       cofinsCst: schemaProductDup?.cofinsCst || "",
-      cofinsAliquota: schemaProductDup?.cofinsAliquota ? parseFloat(schemaProductDup.cofinsAliquota) : "",
+      cofinsAliquota: schemaProductDup?.cofinsAliquota
+        ? parseFloat(schemaProductDup.cofinsAliquota)
+        : "",
     });
     setEditingProduct(null);
-    const existingImages = product.images || (product.image ? [product.image] : []);
+    const existingImages =
+      product.images || (product.image ? [product.image] : []);
     setImageUrls(existingImages);
     setActiveFormTab("dados");
     setViewMode("form");
@@ -492,10 +622,12 @@ export default function ProductsPage() {
             setViewMode("list");
           },
           onError: (error: Error) => {
-            const desc = isAdmin ? `Falha ao atualizar produto: ${error.message}` : "Falha ao atualizar produto";
+            const desc = isAdmin
+              ? `Falha ao atualizar produto: ${error.message}`
+              : "Falha ao atualizar produto";
             toast({ title: "Erro", description: desc, variant: "destructive" });
           },
-        }
+        },
       );
     } else {
       createProductMutation.mutate(values, {
@@ -504,7 +636,9 @@ export default function ProductsPage() {
           setViewMode("list");
         },
         onError: (error: Error) => {
-          const desc = isAdmin ? `Falha ao criar produto: ${error.message}` : "Falha ao criar produto";
+          const desc = isAdmin
+            ? `Falha ao criar produto: ${error.message}`
+            : "Falha ao criar produto";
           toast({ title: "Erro", description: desc, variant: "destructive" });
         },
       });
@@ -518,29 +652,32 @@ export default function ProductsPage() {
         toast({ title: "Produto excluido", description: product.name });
       },
       onError: (error: Error) => {
-        const desc = isAdmin ? `Falha ao excluir produto: ${error.message}` : "Falha ao excluir produto";
+        const desc = isAdmin
+          ? `Falha ao excluir produto: ${error.message}`
+          : "Falha ao excluir produto";
         toast({ title: "Erro", description: desc, variant: "destructive" });
       },
     });
   };
 
   const formatPrice = (price: number) => {
-    return new Intl.NumberFormat('pt-BR', {
-      style: 'currency',
-      currency: 'BRL'
+    return new Intl.NumberFormat("pt-BR", {
+      style: "currency",
+      currency: "BRL",
     }).format(price);
   };
 
-  const isPending = createProductMutation.isPending || updateProductMutation.isPending;
+  const isPending =
+    createProductMutation.isPending || updateProductMutation.isPending;
 
   if (viewMode === "form") {
     return (
       <div className="h-full flex flex-col bg-background">
         <div className="border-b p-4">
           <div className="flex items-center gap-4">
-            <Button 
-              variant="ghost" 
-              size="icon" 
+            <Button
+              variant="ghost"
+              size="icon"
               onClick={() => setViewMode("list")}
               data-testid="button-back-products"
             >
@@ -551,10 +688,12 @@ export default function ProductsPage() {
                 {editingProduct ? "Editar Produto" : "Novo Produto"}
               </h1>
               <p className="text-sm text-muted-foreground">
-                {editingProduct ? `Editando: ${editingProduct.name}` : "Preencha os dados do produto"}
+                {editingProduct
+                  ? `Editando: ${editingProduct.name}`
+                  : "Preencha os dados do produto"}
               </p>
             </div>
-            <Button 
+            <Button
               onClick={form.handleSubmit(handleSubmit)}
               disabled={isPending}
               className="bg-orange-500 hover:bg-orange-600"
@@ -605,7 +744,9 @@ export default function ProductsPage() {
                   <TabsContent value="dados" className="space-y-4">
                     <Card>
                       <CardHeader className="pb-4">
-                        <CardTitle className="text-base">Informacoes Basicas</CardTitle>
+                        <CardTitle className="text-base">
+                          Informacoes Basicas
+                        </CardTitle>
                       </CardHeader>
                       <CardContent className="space-y-4">
                         <FormField
@@ -615,10 +756,10 @@ export default function ProductsPage() {
                             <FormItem>
                               <FormLabel>Nome do Produto *</FormLabel>
                               <FormControl>
-                                <Input 
-                                  {...field} 
+                                <Input
+                                  {...field}
                                   placeholder="Ex: Camiseta Polo Masculina"
-                                  data-testid="input-product-name" 
+                                  data-testid="input-product-name"
                                 />
                               </FormControl>
                               <FormMessage />
@@ -634,10 +775,10 @@ export default function ProductsPage() {
                               <FormItem>
                                 <FormLabel>Codigo (SKU) *</FormLabel>
                                 <FormControl>
-                                  <Input 
-                                    {...field} 
+                                  <Input
+                                    {...field}
                                     placeholder="Ex: CAM-001"
-                                    data-testid="input-product-sku" 
+                                    data-testid="input-product-sku"
                                   />
                                 </FormControl>
                                 <FormMessage />
@@ -651,7 +792,10 @@ export default function ProductsPage() {
                             render={({ field }) => (
                               <FormItem className="flex flex-col">
                                 <FormLabel>Marca</FormLabel>
-                                <Popover open={brandPopoverOpen} onOpenChange={setBrandPopoverOpen}>
+                                <Popover
+                                  open={brandPopoverOpen}
+                                  onOpenChange={setBrandPopoverOpen}
+                                >
                                   <PopoverTrigger asChild>
                                     <FormControl>
                                       <Button
@@ -661,40 +805,53 @@ export default function ProductsPage() {
                                         className="justify-between font-normal"
                                         data-testid="input-product-brand"
                                       >
-                                        {field.value || "Selecione ou crie uma marca"}
+                                        {field.value ||
+                                          "Selecione ou crie uma marca"}
                                         <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                                       </Button>
                                     </FormControl>
                                   </PopoverTrigger>
-                                  <PopoverContent className="w-[300px] p-0" align="start">
+                                  <PopoverContent
+                                    className="w-[300px] p-0"
+                                    align="start"
+                                  >
                                     <Command>
-                                      <CommandInput 
-                                        placeholder="Buscar ou criar marca..." 
+                                      <CommandInput
+                                        placeholder="Buscar ou criar marca..."
                                         value={brandSearch}
                                         onValueChange={setBrandSearch}
                                       />
                                       <CommandList>
                                         <CommandEmpty>
                                           {brandSearch.trim() && (
-                                            <div 
+                                            <div
                                               className="cursor-pointer p-2 hover-elevate rounded-md mx-1"
                                               onClick={() => {
-                                                field.onChange(brandSearch.trim());
+                                                field.onChange(
+                                                  brandSearch.trim(),
+                                                );
                                                 setBrandSearch("");
                                                 setBrandPopoverOpen(false);
                                               }}
                                             >
                                               <div className="flex items-center gap-2">
                                                 <Plus className="h-4 w-4" />
-                                                <span>Criar marca "{brandSearch.trim()}"</span>
+                                                <span>
+                                                  Criar marca "
+                                                  {brandSearch.trim()}"
+                                                </span>
                                               </div>
                                             </div>
                                           )}
                                         </CommandEmpty>
                                         <CommandGroup>
                                           {brandsData
-                                            .filter(brand => 
-                                              brand.toLowerCase().includes(brandSearch.toLowerCase())
+                                            .filter((brand) =>
+                                              brand
+                                                .toLowerCase()
+                                                .includes(
+                                                  brandSearch.toLowerCase(),
+                                                ),
                                             )
                                             .map((brand) => (
                                               <CommandItem
@@ -708,25 +865,36 @@ export default function ProductsPage() {
                                               >
                                                 <Check
                                                   className={`mr-2 h-4 w-4 ${
-                                                    field.value === brand ? "opacity-100" : "opacity-0"
+                                                    field.value === brand
+                                                      ? "opacity-100"
+                                                      : "opacity-0"
                                                   }`}
                                                 />
                                                 {brand}
                                               </CommandItem>
                                             ))}
-                                          {brandSearch.trim() && !brandsData.some(b => b.toLowerCase() === brandSearch.trim().toLowerCase()) && (
-                                            <CommandItem
-                                              value={`create-${brandSearch}`}
-                                              onSelect={() => {
-                                                field.onChange(brandSearch.trim());
-                                                setBrandSearch("");
-                                                setBrandPopoverOpen(false);
-                                              }}
-                                            >
-                                              <Plus className="mr-2 h-4 w-4" />
-                                              Criar "{brandSearch.trim()}"
-                                            </CommandItem>
-                                          )}
+                                          {brandSearch.trim() &&
+                                            !brandsData.some(
+                                              (b) =>
+                                                b.toLowerCase() ===
+                                                brandSearch
+                                                  .trim()
+                                                  .toLowerCase(),
+                                            ) && (
+                                              <CommandItem
+                                                value={`create-${brandSearch}`}
+                                                onSelect={() => {
+                                                  field.onChange(
+                                                    brandSearch.trim(),
+                                                  );
+                                                  setBrandSearch("");
+                                                  setBrandPopoverOpen(false);
+                                                }}
+                                              >
+                                                <Plus className="mr-2 h-4 w-4" />
+                                                Criar "{brandSearch.trim()}"
+                                              </CommandItem>
+                                            )}
                                         </CommandGroup>
                                       </CommandList>
                                     </Command>
@@ -756,7 +924,10 @@ export default function ProductsPage() {
                           render={({ field }) => (
                             <FormItem>
                               <FormLabel>Categoria</FormLabel>
-                              <Select onValueChange={field.onChange} value={field.value}>
+                              <Select
+                                onValueChange={field.onChange}
+                                value={field.value}
+                              >
                                 <FormControl>
                                   <SelectTrigger data-testid="select-product-category">
                                     <SelectValue placeholder="Selecione uma categoria" />
@@ -764,7 +935,10 @@ export default function ProductsPage() {
                                 </FormControl>
                                 <SelectContent>
                                   {categoriesData.map((cat) => (
-                                    <SelectItem key={cat.id} value={String(cat.id)}>
+                                    <SelectItem
+                                      key={cat.id}
+                                      value={String(cat.id)}
+                                    >
                                       {cat.name}
                                     </SelectItem>
                                   ))}
@@ -782,11 +956,11 @@ export default function ProductsPage() {
                             <FormItem>
                               <FormLabel>Descricao</FormLabel>
                               <FormControl>
-                                <Textarea 
-                                  {...field} 
+                                <Textarea
+                                  {...field}
                                   placeholder="Descreva as caracteristicas do produto..."
                                   className="min-h-[120px]"
-                                  data-testid="input-product-description" 
+                                  data-testid="input-product-description"
                                 />
                               </FormControl>
                               <FormMessage />
@@ -834,14 +1008,16 @@ export default function ProductsPage() {
                                 <FormLabel>Preco de Venda *</FormLabel>
                                 <FormControl>
                                   <div className="relative">
-                                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">R$</span>
-                                    <Input 
-                                      {...field} 
+                                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+                                      R$
+                                    </span>
+                                    <Input
+                                      {...field}
                                       type="number"
                                       step="0.01"
                                       min="0"
                                       className="pl-10"
-                                      data-testid="input-product-price" 
+                                      data-testid="input-product-price"
                                     />
                                   </div>
                                 </FormControl>
@@ -858,15 +1034,17 @@ export default function ProductsPage() {
                                 <FormLabel>Custo</FormLabel>
                                 <FormControl>
                                   <div className="relative">
-                                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">R$</span>
-                                    <Input 
-                                      {...field} 
+                                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+                                      R$
+                                    </span>
+                                    <Input
+                                      {...field}
                                       type="number"
                                       step="0.01"
                                       min="0"
                                       className="pl-10"
                                       placeholder="0.00"
-                                      data-testid="input-product-cost" 
+                                      data-testid="input-product-cost"
                                     />
                                   </div>
                                 </FormControl>
@@ -876,17 +1054,32 @@ export default function ProductsPage() {
                           />
                         </div>
 
-                        {form.watch("price") > 0 && form.watch("cost") && typeof form.watch("cost") === 'number' && (form.watch("cost") as number) > 0 && (
-                          <div className="rounded-lg bg-muted/50 p-4">
-                            <p className="text-sm text-muted-foreground">Margem de Lucro</p>
-                            <p className="text-2xl font-bold text-green-600">
-                              {(((form.watch("price") - (form.watch("cost") as number)) / form.watch("price")) * 100).toFixed(1)}%
-                            </p>
-                            <p className="text-sm text-muted-foreground">
-                              Lucro: {formatPrice(form.watch("price") - (form.watch("cost") as number))}
-                            </p>
-                          </div>
-                        )}
+                        {form.watch("price") > 0 &&
+                          form.watch("cost") &&
+                          typeof form.watch("cost") === "number" &&
+                          (form.watch("cost") as number) > 0 && (
+                            <div className="rounded-lg bg-muted/50 p-4">
+                              <p className="text-sm text-muted-foreground">
+                                Margem de Lucro
+                              </p>
+                              <p className="text-2xl font-bold text-green-600">
+                                {(
+                                  ((form.watch("price") -
+                                    (form.watch("cost") as number)) /
+                                    form.watch("price")) *
+                                  100
+                                ).toFixed(1)}
+                                %
+                              </p>
+                              <p className="text-sm text-muted-foreground">
+                                Lucro:{" "}
+                                {formatPrice(
+                                  form.watch("price") -
+                                    (form.watch("cost") as number),
+                                )}
+                              </p>
+                            </div>
+                          )}
                       </CardContent>
                     </Card>
                   </TabsContent>
@@ -894,7 +1087,9 @@ export default function ProductsPage() {
                   <TabsContent value="estoque" className="space-y-4">
                     <Card>
                       <CardHeader className="pb-4">
-                        <CardTitle className="text-base">Controle de Estoque</CardTitle>
+                        <CardTitle className="text-base">
+                          Controle de Estoque
+                        </CardTitle>
                       </CardHeader>
                       <CardContent className="space-y-4">
                         <FormField
@@ -904,12 +1099,12 @@ export default function ProductsPage() {
                             <FormItem>
                               <FormLabel>Quantidade em Estoque</FormLabel>
                               <FormControl>
-                                <Input 
-                                  {...field} 
+                                <Input
+                                  {...field}
                                   type="number"
                                   min="0"
                                   className="max-w-[200px]"
-                                  data-testid="input-product-stock" 
+                                  data-testid="input-product-stock"
                                 />
                               </FormControl>
                               <FormMessage />
@@ -923,18 +1118,20 @@ export default function ProductsPage() {
                   <TabsContent value="imagens" className="space-y-4">
                     <Card>
                       <CardHeader className="pb-4">
-                        <CardTitle className="text-base">Imagens do Produto</CardTitle>
+                        <CardTitle className="text-base">
+                          Imagens do Produto
+                        </CardTitle>
                       </CardHeader>
                       <CardContent className="space-y-4">
                         <div className="grid grid-cols-5 gap-4">
                           {imageUrls.map((url, index) => (
-                            <div 
-                              key={index} 
+                            <div
+                              key={index}
                               className="relative aspect-square rounded-lg border-2 overflow-hidden bg-muted group"
                             >
-                              <img 
-                                src={url} 
-                                alt={`Imagem ${index + 1}`} 
+                              <img
+                                src={url}
+                                alt={`Imagem ${index + 1}`}
                                 className="w-full h-full object-cover"
                               />
                               <Button
@@ -954,7 +1151,7 @@ export default function ProductsPage() {
                               )}
                             </div>
                           ))}
-                          
+
                           {imageUrls.length < MAX_IMAGES && (
                             <label className="cursor-pointer aspect-square rounded-lg border-2 border-dashed flex flex-col items-center justify-center gap-2 text-muted-foreground hover:border-orange-500 hover:text-orange-500 transition-colors">
                               <input
@@ -964,7 +1161,7 @@ export default function ProductsPage() {
                                 onChange={(e) => {
                                   const file = e.target.files?.[0];
                                   if (file) handleImageUpload(file);
-                                  e.target.value = '';
+                                  e.target.value = "";
                                 }}
                                 data-testid="input-product-image"
                               />
@@ -973,15 +1170,20 @@ export default function ProductsPage() {
                               ) : (
                                 <>
                                   <Upload className="h-8 w-8" />
-                                  <span className="text-xs text-center">Adicionar<br/>imagem</span>
+                                  <span className="text-xs text-center">
+                                    Adicionar
+                                    <br />
+                                    imagem
+                                  </span>
                                 </>
                               )}
                             </label>
                           )}
                         </div>
-                        
+
                         <p className="text-xs text-muted-foreground">
-                          Formatos: JPG, PNG, WebP, GIF. Maximo 5 imagens. A primeira sera a imagem principal.
+                          Formatos: JPG, PNG, WebP, GIF. Maximo 5 imagens. A
+                          primeira sera a imagem principal.
                         </p>
                       </CardContent>
                     </Card>
@@ -990,7 +1192,9 @@ export default function ProductsPage() {
                   <TabsContent value="dimensoes" className="space-y-4">
                     <Card>
                       <CardHeader className="pb-4">
-                        <CardTitle className="text-base">Medidas e Peso</CardTitle>
+                        <CardTitle className="text-base">
+                          Medidas e Peso
+                        </CardTitle>
                         <p className="text-sm text-muted-foreground">
                           Informacoes para calculo de frete e logistica
                         </p>
@@ -1003,14 +1207,14 @@ export default function ProductsPage() {
                             <FormItem>
                               <FormLabel>Peso (kg)</FormLabel>
                               <FormControl>
-                                <Input 
-                                  {...field} 
+                                <Input
+                                  {...field}
                                   type="number"
                                   step="0.001"
                                   min="0"
                                   placeholder="Ex: 0.500"
                                   className="max-w-[200px]"
-                                  data-testid="input-product-weight" 
+                                  data-testid="input-product-weight"
                                 />
                               </FormControl>
                               <FormMessage />
@@ -1028,13 +1232,13 @@ export default function ProductsPage() {
                               <FormItem>
                                 <FormLabel>Largura (cm)</FormLabel>
                                 <FormControl>
-                                  <Input 
-                                    {...field} 
+                                  <Input
+                                    {...field}
                                     type="number"
                                     step="0.01"
                                     min="0"
                                     placeholder="Ex: 20"
-                                    data-testid="input-product-width" 
+                                    data-testid="input-product-width"
                                   />
                                 </FormControl>
                                 <FormMessage />
@@ -1049,13 +1253,13 @@ export default function ProductsPage() {
                               <FormItem>
                                 <FormLabel>Altura (cm)</FormLabel>
                                 <FormControl>
-                                  <Input 
-                                    {...field} 
+                                  <Input
+                                    {...field}
                                     type="number"
                                     step="0.01"
                                     min="0"
                                     placeholder="Ex: 15"
-                                    data-testid="input-product-height" 
+                                    data-testid="input-product-height"
                                   />
                                 </FormControl>
                                 <FormMessage />
@@ -1070,13 +1274,13 @@ export default function ProductsPage() {
                               <FormItem>
                                 <FormLabel>Profundidade (cm)</FormLabel>
                                 <FormControl>
-                                  <Input 
-                                    {...field} 
+                                  <Input
+                                    {...field}
                                     type="number"
                                     step="0.01"
                                     min="0"
                                     placeholder="Ex: 10"
-                                    data-testid="input-product-depth" 
+                                    data-testid="input-product-depth"
                                   />
                                 </FormControl>
                                 <FormMessage />
@@ -1105,10 +1309,10 @@ export default function ProductsPage() {
                               <FormItem>
                                 <FormLabel>GTIN/EAN</FormLabel>
                                 <FormControl>
-                                  <Input 
-                                    {...field} 
+                                  <Input
+                                    {...field}
                                     placeholder="Ex: 7891234567890"
-                                    data-testid="input-product-gtin" 
+                                    data-testid="input-product-gtin"
                                   />
                                 </FormControl>
                                 <FormMessage />
@@ -1122,10 +1326,10 @@ export default function ProductsPage() {
                               <FormItem>
                                 <FormLabel>GTIN/EAN Tributario</FormLabel>
                                 <FormControl>
-                                  <Input 
-                                    {...field} 
+                                  <Input
+                                    {...field}
                                     placeholder="Ex: 7891234567890"
-                                    data-testid="input-product-gtin-tributario" 
+                                    data-testid="input-product-gtin-tributario"
                                   />
                                 </FormControl>
                                 <FormMessage />
@@ -1138,7 +1342,9 @@ export default function ProductsPage() {
 
                     <Card>
                       <CardHeader className="pb-4">
-                        <CardTitle className="text-base">Classificacao Fiscal</CardTitle>
+                        <CardTitle className="text-base">
+                          Classificacao Fiscal
+                        </CardTitle>
                       </CardHeader>
                       <CardContent className="space-y-4">
                         <div className="grid grid-cols-2 gap-4">
@@ -1149,10 +1355,10 @@ export default function ProductsPage() {
                               <FormItem>
                                 <FormLabel>NCM</FormLabel>
                                 <FormControl>
-                                  <Input 
-                                    {...field} 
+                                  <Input
+                                    {...field}
                                     placeholder="Ex: 6109.10.00"
-                                    data-testid="input-product-ncm" 
+                                    data-testid="input-product-ncm"
                                   />
                                 </FormControl>
                                 <FormMessage />
@@ -1166,10 +1372,10 @@ export default function ProductsPage() {
                               <FormItem>
                                 <FormLabel>CEST</FormLabel>
                                 <FormControl>
-                                  <Input 
-                                    {...field} 
+                                  <Input
+                                    {...field}
                                     placeholder="Ex: 28.038.00"
-                                    data-testid="input-product-cest" 
+                                    data-testid="input-product-cest"
                                   />
                                 </FormControl>
                                 <FormMessage />
@@ -1183,22 +1389,53 @@ export default function ProductsPage() {
                           render={({ field }) => (
                             <FormItem>
                               <FormLabel>Origem</FormLabel>
-                              <Select onValueChange={field.onChange} value={field.value || ""}>
+                              <Select
+                                onValueChange={field.onChange}
+                                value={field.value || ""}
+                              >
                                 <FormControl>
                                   <SelectTrigger data-testid="select-product-tax-origin">
                                     <SelectValue placeholder="Selecione a origem" />
                                   </SelectTrigger>
                                 </FormControl>
                                 <SelectContent>
-                                  <SelectItem value="0">0 - Nacional</SelectItem>
-                                  <SelectItem value="1">1 - Estrangeira - Importacao direta</SelectItem>
-                                  <SelectItem value="2">2 - Estrangeira - Adquirida no mercado interno</SelectItem>
-                                  <SelectItem value="3">3 - Nacional - Mercadoria ou bem com conteudo de importacao superior a 40%</SelectItem>
-                                  <SelectItem value="4">4 - Nacional - Producao em conformidade com PPB</SelectItem>
-                                  <SelectItem value="5">5 - Nacional - Mercadoria ou bem com conteudo de importacao inferior ou igual a 40%</SelectItem>
-                                  <SelectItem value="6">6 - Estrangeira - Importacao direta, sem similar nacional, constante em lista da CAMEX</SelectItem>
-                                  <SelectItem value="7">7 - Estrangeira - Adquirida no mercado interno, sem similar nacional, constante em lista da CAMEX</SelectItem>
-                                  <SelectItem value="8">8 - Nacional - Mercadoria ou bem com conteudo de importacao superior a 70%</SelectItem>
+                                  <SelectItem value="0">
+                                    0 - Nacional
+                                  </SelectItem>
+                                  <SelectItem value="1">
+                                    1 - Estrangeira - Importacao direta
+                                  </SelectItem>
+                                  <SelectItem value="2">
+                                    2 - Estrangeira - Adquirida no mercado
+                                    interno
+                                  </SelectItem>
+                                  <SelectItem value="3">
+                                    3 - Nacional - Mercadoria ou bem com
+                                    conteudo de importacao superior a 40%
+                                  </SelectItem>
+                                  <SelectItem value="4">
+                                    4 - Nacional - Producao em conformidade com
+                                    PPB
+                                  </SelectItem>
+                                  <SelectItem value="5">
+                                    5 - Nacional - Mercadoria ou bem com
+                                    conteudo de importacao inferior ou igual a
+                                    40%
+                                  </SelectItem>
+                                  <SelectItem value="6">
+                                    6 - Estrangeira - Importacao direta, sem
+                                    similar nacional, constante em lista da
+                                    CAMEX
+                                  </SelectItem>
+                                  <SelectItem value="7">
+                                    7 - Estrangeira - Adquirida no mercado
+                                    interno, sem similar nacional, constante em
+                                    lista da CAMEX
+                                  </SelectItem>
+                                  <SelectItem value="8">
+                                    8 - Nacional - Mercadoria ou bem com
+                                    conteudo de importacao superior a 70%
+                                  </SelectItem>
                                 </SelectContent>
                               </Select>
                               <FormMessage />
@@ -1220,24 +1457,51 @@ export default function ProductsPage() {
                             render={({ field }) => (
                               <FormItem>
                                 <FormLabel>CST ICMS</FormLabel>
-                                <Select onValueChange={field.onChange} value={field.value || ""}>
+                                <Select
+                                  onValueChange={field.onChange}
+                                  value={field.value || ""}
+                                >
                                   <FormControl>
                                     <SelectTrigger data-testid="select-product-icms-cst">
                                       <SelectValue placeholder="Selecione CST" />
                                     </SelectTrigger>
                                   </FormControl>
                                   <SelectContent>
-                                    <SelectItem value="00">00 - Tributada integralmente</SelectItem>
-                                    <SelectItem value="10">10 - Tributada com cobranca de ICMS por ST</SelectItem>
-                                    <SelectItem value="20">20 - Com reducao de base de calculo</SelectItem>
-                                    <SelectItem value="30">30 - Isenta ou nao tributada com cobranca de ICMS por ST</SelectItem>
-                                    <SelectItem value="40">40 - Isenta</SelectItem>
-                                    <SelectItem value="41">41 - Nao tributada</SelectItem>
-                                    <SelectItem value="50">50 - Suspensao</SelectItem>
-                                    <SelectItem value="51">51 - Diferimento</SelectItem>
-                                    <SelectItem value="60">60 - ICMS cobrado anteriormente por ST</SelectItem>
-                                    <SelectItem value="70">70 - Com reducao de base de calculo e cobranca de ICMS por ST</SelectItem>
-                                    <SelectItem value="90">90 - Outras</SelectItem>
+                                    <SelectItem value="00">
+                                      00 - Tributada integralmente
+                                    </SelectItem>
+                                    <SelectItem value="10">
+                                      10 - Tributada com cobranca de ICMS por ST
+                                    </SelectItem>
+                                    <SelectItem value="20">
+                                      20 - Com reducao de base de calculo
+                                    </SelectItem>
+                                    <SelectItem value="30">
+                                      30 - Isenta ou nao tributada com cobranca
+                                      de ICMS por ST
+                                    </SelectItem>
+                                    <SelectItem value="40">
+                                      40 - Isenta
+                                    </SelectItem>
+                                    <SelectItem value="41">
+                                      41 - Nao tributada
+                                    </SelectItem>
+                                    <SelectItem value="50">
+                                      50 - Suspensao
+                                    </SelectItem>
+                                    <SelectItem value="51">
+                                      51 - Diferimento
+                                    </SelectItem>
+                                    <SelectItem value="60">
+                                      60 - ICMS cobrado anteriormente por ST
+                                    </SelectItem>
+                                    <SelectItem value="70">
+                                      70 - Com reducao de base de calculo e
+                                      cobranca de ICMS por ST
+                                    </SelectItem>
+                                    <SelectItem value="90">
+                                      90 - Outras
+                                    </SelectItem>
                                   </SelectContent>
                                 </Select>
                                 <FormMessage />
@@ -1251,13 +1515,13 @@ export default function ProductsPage() {
                               <FormItem>
                                 <FormLabel>Aliquota ICMS (%)</FormLabel>
                                 <FormControl>
-                                  <Input 
-                                    {...field} 
+                                  <Input
+                                    {...field}
                                     type="number"
                                     step="0.01"
                                     min="0"
                                     placeholder="Ex: 18"
-                                    data-testid="input-product-icms-aliquota" 
+                                    data-testid="input-product-icms-aliquota"
                                   />
                                 </FormControl>
                                 <FormMessage />
@@ -1280,27 +1544,58 @@ export default function ProductsPage() {
                             render={({ field }) => (
                               <FormItem>
                                 <FormLabel>CST IPI</FormLabel>
-                                <Select onValueChange={field.onChange} value={field.value || ""}>
+                                <Select
+                                  onValueChange={field.onChange}
+                                  value={field.value || ""}
+                                >
                                   <FormControl>
                                     <SelectTrigger data-testid="select-product-ipi-cst">
                                       <SelectValue placeholder="Selecione CST" />
                                     </SelectTrigger>
                                   </FormControl>
                                   <SelectContent>
-                                    <SelectItem value="00">00 - Entrada com recuperacao de credito</SelectItem>
-                                    <SelectItem value="01">01 - Entrada tributada com aliquota zero</SelectItem>
-                                    <SelectItem value="02">02 - Entrada isenta</SelectItem>
-                                    <SelectItem value="03">03 - Entrada nao tributada</SelectItem>
-                                    <SelectItem value="04">04 - Entrada imune</SelectItem>
-                                    <SelectItem value="05">05 - Entrada com suspensao</SelectItem>
-                                    <SelectItem value="49">49 - Outras entradas</SelectItem>
-                                    <SelectItem value="50">50 - Saida tributada</SelectItem>
-                                    <SelectItem value="51">51 - Saida tributada com aliquota zero</SelectItem>
-                                    <SelectItem value="52">52 - Saida isenta</SelectItem>
-                                    <SelectItem value="53">53 - Saida nao tributada</SelectItem>
-                                    <SelectItem value="54">54 - Saida imune</SelectItem>
-                                    <SelectItem value="55">55 - Saida com suspensao</SelectItem>
-                                    <SelectItem value="99">99 - Outras saidas</SelectItem>
+                                    <SelectItem value="00">
+                                      00 - Entrada com recuperacao de credito
+                                    </SelectItem>
+                                    <SelectItem value="01">
+                                      01 - Entrada tributada com aliquota zero
+                                    </SelectItem>
+                                    <SelectItem value="02">
+                                      02 - Entrada isenta
+                                    </SelectItem>
+                                    <SelectItem value="03">
+                                      03 - Entrada nao tributada
+                                    </SelectItem>
+                                    <SelectItem value="04">
+                                      04 - Entrada imune
+                                    </SelectItem>
+                                    <SelectItem value="05">
+                                      05 - Entrada com suspensao
+                                    </SelectItem>
+                                    <SelectItem value="49">
+                                      49 - Outras entradas
+                                    </SelectItem>
+                                    <SelectItem value="50">
+                                      50 - Saida tributada
+                                    </SelectItem>
+                                    <SelectItem value="51">
+                                      51 - Saida tributada com aliquota zero
+                                    </SelectItem>
+                                    <SelectItem value="52">
+                                      52 - Saida isenta
+                                    </SelectItem>
+                                    <SelectItem value="53">
+                                      53 - Saida nao tributada
+                                    </SelectItem>
+                                    <SelectItem value="54">
+                                      54 - Saida imune
+                                    </SelectItem>
+                                    <SelectItem value="55">
+                                      55 - Saida com suspensao
+                                    </SelectItem>
+                                    <SelectItem value="99">
+                                      99 - Outras saidas
+                                    </SelectItem>
                                   </SelectContent>
                                 </Select>
                                 <FormMessage />
@@ -1314,13 +1609,13 @@ export default function ProductsPage() {
                               <FormItem>
                                 <FormLabel>Aliquota IPI (%)</FormLabel>
                                 <FormControl>
-                                  <Input 
-                                    {...field} 
+                                  <Input
+                                    {...field}
                                     type="number"
                                     step="0.01"
                                     min="0"
                                     placeholder="Ex: 5"
-                                    data-testid="input-product-ipi-aliquota" 
+                                    data-testid="input-product-ipi-aliquota"
                                   />
                                 </FormControl>
                                 <FormMessage />
@@ -1343,24 +1638,55 @@ export default function ProductsPage() {
                             render={({ field }) => (
                               <FormItem>
                                 <FormLabel>CST PIS</FormLabel>
-                                <Select onValueChange={field.onChange} value={field.value || ""}>
+                                <Select
+                                  onValueChange={field.onChange}
+                                  value={field.value || ""}
+                                >
                                   <FormControl>
                                     <SelectTrigger data-testid="select-product-pis-cst">
                                       <SelectValue placeholder="Selecione CST" />
                                     </SelectTrigger>
                                   </FormControl>
                                   <SelectContent>
-                                    <SelectItem value="01">01 - Operacao tributavel com aliquota basica</SelectItem>
-                                    <SelectItem value="02">02 - Operacao tributavel com aliquota diferenciada</SelectItem>
-                                    <SelectItem value="03">03 - Operacao tributavel com aliquota por unidade de medida de produto</SelectItem>
-                                    <SelectItem value="04">04 - Operacao tributavel monofasica - revenda a aliquota zero</SelectItem>
-                                    <SelectItem value="05">05 - Operacao tributavel por ST</SelectItem>
-                                    <SelectItem value="06">06 - Operacao tributavel a aliquota zero</SelectItem>
-                                    <SelectItem value="07">07 - Operacao isenta da contribuicao</SelectItem>
-                                    <SelectItem value="08">08 - Operacao sem incidencia da contribuicao</SelectItem>
-                                    <SelectItem value="09">09 - Operacao com suspensao da contribuicao</SelectItem>
-                                    <SelectItem value="49">49 - Outras operacoes de saida</SelectItem>
-                                    <SelectItem value="99">99 - Outras operacoes</SelectItem>
+                                    <SelectItem value="01">
+                                      01 - Operacao tributavel com aliquota
+                                      basica
+                                    </SelectItem>
+                                    <SelectItem value="02">
+                                      02 - Operacao tributavel com aliquota
+                                      diferenciada
+                                    </SelectItem>
+                                    <SelectItem value="03">
+                                      03 - Operacao tributavel com aliquota por
+                                      unidade de medida de produto
+                                    </SelectItem>
+                                    <SelectItem value="04">
+                                      04 - Operacao tributavel monofasica -
+                                      revenda a aliquota zero
+                                    </SelectItem>
+                                    <SelectItem value="05">
+                                      05 - Operacao tributavel por ST
+                                    </SelectItem>
+                                    <SelectItem value="06">
+                                      06 - Operacao tributavel a aliquota zero
+                                    </SelectItem>
+                                    <SelectItem value="07">
+                                      07 - Operacao isenta da contribuicao
+                                    </SelectItem>
+                                    <SelectItem value="08">
+                                      08 - Operacao sem incidencia da
+                                      contribuicao
+                                    </SelectItem>
+                                    <SelectItem value="09">
+                                      09 - Operacao com suspensao da
+                                      contribuicao
+                                    </SelectItem>
+                                    <SelectItem value="49">
+                                      49 - Outras operacoes de saida
+                                    </SelectItem>
+                                    <SelectItem value="99">
+                                      99 - Outras operacoes
+                                    </SelectItem>
                                   </SelectContent>
                                 </Select>
                                 <FormMessage />
@@ -1374,13 +1700,13 @@ export default function ProductsPage() {
                               <FormItem>
                                 <FormLabel>Aliquota PIS (%)</FormLabel>
                                 <FormControl>
-                                  <Input 
-                                    {...field} 
+                                  <Input
+                                    {...field}
                                     type="number"
                                     step="0.01"
                                     min="0"
                                     placeholder="Ex: 1.65"
-                                    data-testid="input-product-pis-aliquota" 
+                                    data-testid="input-product-pis-aliquota"
                                   />
                                 </FormControl>
                                 <FormMessage />
@@ -1395,24 +1721,55 @@ export default function ProductsPage() {
                             render={({ field }) => (
                               <FormItem>
                                 <FormLabel>CST COFINS</FormLabel>
-                                <Select onValueChange={field.onChange} value={field.value || ""}>
+                                <Select
+                                  onValueChange={field.onChange}
+                                  value={field.value || ""}
+                                >
                                   <FormControl>
                                     <SelectTrigger data-testid="select-product-cofins-cst">
                                       <SelectValue placeholder="Selecione CST" />
                                     </SelectTrigger>
                                   </FormControl>
                                   <SelectContent>
-                                    <SelectItem value="01">01 - Operacao tributavel com aliquota basica</SelectItem>
-                                    <SelectItem value="02">02 - Operacao tributavel com aliquota diferenciada</SelectItem>
-                                    <SelectItem value="03">03 - Operacao tributavel com aliquota por unidade de medida de produto</SelectItem>
-                                    <SelectItem value="04">04 - Operacao tributavel monofasica - revenda a aliquota zero</SelectItem>
-                                    <SelectItem value="05">05 - Operacao tributavel por ST</SelectItem>
-                                    <SelectItem value="06">06 - Operacao tributavel a aliquota zero</SelectItem>
-                                    <SelectItem value="07">07 - Operacao isenta da contribuicao</SelectItem>
-                                    <SelectItem value="08">08 - Operacao sem incidencia da contribuicao</SelectItem>
-                                    <SelectItem value="09">09 - Operacao com suspensao da contribuicao</SelectItem>
-                                    <SelectItem value="49">49 - Outras operacoes de saida</SelectItem>
-                                    <SelectItem value="99">99 - Outras operacoes</SelectItem>
+                                    <SelectItem value="01">
+                                      01 - Operacao tributavel com aliquota
+                                      basica
+                                    </SelectItem>
+                                    <SelectItem value="02">
+                                      02 - Operacao tributavel com aliquota
+                                      diferenciada
+                                    </SelectItem>
+                                    <SelectItem value="03">
+                                      03 - Operacao tributavel com aliquota por
+                                      unidade de medida de produto
+                                    </SelectItem>
+                                    <SelectItem value="04">
+                                      04 - Operacao tributavel monofasica -
+                                      revenda a aliquota zero
+                                    </SelectItem>
+                                    <SelectItem value="05">
+                                      05 - Operacao tributavel por ST
+                                    </SelectItem>
+                                    <SelectItem value="06">
+                                      06 - Operacao tributavel a aliquota zero
+                                    </SelectItem>
+                                    <SelectItem value="07">
+                                      07 - Operacao isenta da contribuicao
+                                    </SelectItem>
+                                    <SelectItem value="08">
+                                      08 - Operacao sem incidencia da
+                                      contribuicao
+                                    </SelectItem>
+                                    <SelectItem value="09">
+                                      09 - Operacao com suspensao da
+                                      contribuicao
+                                    </SelectItem>
+                                    <SelectItem value="49">
+                                      49 - Outras operacoes de saida
+                                    </SelectItem>
+                                    <SelectItem value="99">
+                                      99 - Outras operacoes
+                                    </SelectItem>
                                   </SelectContent>
                                 </Select>
                                 <FormMessage />
@@ -1426,13 +1783,13 @@ export default function ProductsPage() {
                               <FormItem>
                                 <FormLabel>Aliquota COFINS (%)</FormLabel>
                                 <FormControl>
-                                  <Input 
-                                    {...field} 
+                                  <Input
+                                    {...field}
                                     type="number"
                                     step="0.01"
                                     min="0"
                                     placeholder="Ex: 7.6"
-                                    data-testid="input-product-cofins-aliquota" 
+                                    data-testid="input-product-cofins-aliquota"
                                   />
                                 </FormControl>
                                 <FormMessage />
@@ -1454,7 +1811,11 @@ export default function ProductsPage() {
               <CardContent className="p-3">
                 <div className="aspect-square rounded-md bg-muted mb-3 flex items-center justify-center overflow-hidden">
                   {imageUrls[0] ? (
-                    <img src={imageUrls[0]} alt="Preview" className="w-full h-full object-cover" />
+                    <img
+                      src={imageUrls[0]}
+                      alt="Preview"
+                      className="w-full h-full object-cover"
+                    />
                   ) : (
                     <Package className="h-12 w-12 text-muted-foreground" />
                   )}
@@ -1487,10 +1848,12 @@ export default function ProductsPage() {
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold">Produtos</h1>
-          <p className="text-muted-foreground">Gerencie seu catalogo de produtos</p>
+          <p className="text-muted-foreground">
+            Gerencie seu catalogo de produtos
+          </p>
         </div>
-        <Button 
-          onClick={openAddForm} 
+        <Button
+          onClick={openAddForm}
           className="bg-orange-500 hover:bg-orange-600"
           data-testid="button-add-product"
         >
@@ -1510,14 +1873,19 @@ export default function ProductsPage() {
             data-testid="input-search-products"
           />
         </div>
-        <Select value={filterCategory || "all"} onValueChange={handleCategoryFilter}>
+        <Select
+          value={filterCategory || "all"}
+          onValueChange={handleCategoryFilter}
+        >
           <SelectTrigger className="w-[180px]" data-testid="filter-category">
             <SelectValue placeholder="Categoria" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Todas Categorias</SelectItem>
             {categoriesData.map((cat) => (
-              <SelectItem key={cat.id} value={String(cat.id)}>{cat.name}</SelectItem>
+              <SelectItem key={cat.id} value={String(cat.id)}>
+                {cat.name}
+              </SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -1528,7 +1896,9 @@ export default function ProductsPage() {
           <SelectContent>
             <SelectItem value="all">Todas Marcas</SelectItem>
             {brandsData.map((brand) => (
-              <SelectItem key={brand} value={brand}>{brand}</SelectItem>
+              <SelectItem key={brand} value={brand}>
+                {brand}
+              </SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -1548,10 +1918,15 @@ export default function ProductsPage() {
             <Package className="h-12 w-12 text-muted-foreground mb-4" />
             <h3 className="font-semibold mb-2">Nenhum produto encontrado</h3>
             <p className="text-muted-foreground text-sm mb-4">
-              {searchQuery ? "Tente buscar por outro termo" : "Adicione seu primeiro produto"}
+              {searchQuery
+                ? "Tente buscar por outro termo"
+                : "Adicione seu primeiro produto"}
             </p>
             {!searchQuery && (
-              <Button onClick={openAddForm} className="bg-orange-500 hover:bg-orange-600">
+              <Button
+                onClick={openAddForm}
+                className="bg-orange-500 hover:bg-orange-600"
+              >
                 <Plus className="h-4 w-4 mr-2" />
                 Adicionar Produto
               </Button>
@@ -1574,7 +1949,7 @@ export default function ProductsPage() {
             </TableHeader>
             <TableBody>
               {paginatedProducts.map((product) => (
-                <TableRow 
+                <TableRow
                   key={product.id}
                   className="hover-elevate cursor-pointer"
                   onClick={() => openEditForm(product)}
@@ -1583,7 +1958,11 @@ export default function ProductsPage() {
                   <TableCell onClick={(e) => e.stopPropagation()}>
                     <div className="w-10 h-10 rounded bg-muted flex items-center justify-center overflow-hidden">
                       {product.image ? (
-                        <img src={product.image} alt={product.name} className="w-full h-full object-cover" />
+                        <img
+                          src={product.image}
+                          alt={product.name}
+                          className="w-full h-full object-cover"
+                        />
                       ) : (
                         <ImageIcon className="h-4 w-4 text-muted-foreground" />
                       )}
@@ -1600,10 +1979,20 @@ export default function ProductsPage() {
                       )}
                     </div>
                   </TableCell>
-                  <TableCell className="text-muted-foreground">{product.category}</TableCell>
-                  <TableCell className="text-right font-medium">{formatPrice(product.price)}</TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {product.category}
+                  </TableCell>
+                  <TableCell className="text-right font-medium">
+                    {formatPrice(product.price)}
+                  </TableCell>
                   <TableCell className="text-right">
-                    <span className={product.stock === 0 ? "text-destructive font-medium" : ""}>
+                    <span
+                      className={
+                        product.stock === 0
+                          ? "text-destructive font-medium"
+                          : ""
+                      }
+                    >
                       {product.stock}
                     </span>
                   </TableCell>
@@ -1613,10 +2002,16 @@ export default function ProductsPage() {
                         variant="ghost"
                         size="icon"
                         onClick={() => handleToggleFeatured(product)}
-                        title={product.featured ? "Remover destaque" : "Adicionar destaque"}
+                        title={
+                          product.featured
+                            ? "Remover destaque"
+                            : "Adicionar destaque"
+                        }
                         data-testid={`button-featured-${product.id}`}
                       >
-                        <Star className={`h-4 w-4 ${product.featured ? "fill-yellow-500 text-yellow-500" : ""}`} />
+                        <Star
+                          className={`h-4 w-4 ${product.featured ? "fill-yellow-500 text-yellow-500" : ""}`}
+                        />
                       </Button>
                       <Button
                         variant="ghost"
@@ -1657,12 +2052,14 @@ export default function ProductsPage() {
       {totalPages > 1 && (
         <div className="flex items-center justify-between gap-4 pt-4">
           <p className="text-sm text-muted-foreground">
-            Mostrando {startIndex + 1}-{Math.min(endIndex, filteredProducts.length)} de {filteredProducts.length} produtos
+            Mostrando {startIndex + 1}-
+            {Math.min(endIndex, filteredProducts.length)} de{" "}
+            {filteredProducts.length} produtos
           </p>
           <div className="flex items-center gap-2">
             <Button
               variant="outline"
-              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
               disabled={currentPage === 1}
               data-testid="button-prev-page"
             >
@@ -1696,7 +2093,7 @@ export default function ProductsPage() {
             </div>
             <Button
               variant="outline"
-              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
               disabled={currentPage === totalPages}
               data-testid="button-next-page"
             >
