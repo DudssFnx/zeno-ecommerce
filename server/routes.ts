@@ -1,4 +1,6 @@
 import { b2bUsers, companies, userCompanies } from "@shared/schema";
+// ADICIONADO: Importamos a tabela de produtos aqui
+import { b2bProducts } from "@shared/schema/products.schema";
 import bcrypt from "bcryptjs";
 import { eq, sql } from "drizzle-orm";
 import { type Express } from "express";
@@ -10,7 +12,7 @@ import { storage } from "./storage";
 
 export async function registerRoutes(
   httpServer: Server,
-  app: Express
+  app: Express,
 ): Promise<Server> {
   /* =======================
       HEALTH CHECK
@@ -60,7 +62,7 @@ export async function registerRoutes(
             res.json({
               message: "Login Admin Bypass OK",
               user: { ...user, role: (user as any).role || "admin" },
-            })
+            }),
           );
         }
       }
@@ -82,7 +84,7 @@ export async function registerRoutes(
             return res.status(403).json({ message: "Conta inativa" });
 
           return req.login(b2bUser, () =>
-            res.json({ message: "Login OK", user: b2bUser })
+            res.json({ message: "Login OK", user: b2bUser }),
           );
         }
       }
@@ -145,7 +147,7 @@ export async function registerRoutes(
   });
 
   /* =========================================================
-      PRODUTOS
+      PRODUTOS (GET, POST, PATCH, DELETE)
   ========================================================= */
 
   app.get("/api/products", async (req, res) => {
@@ -169,6 +171,63 @@ export async function registerRoutes(
     } catch (error) {
       console.error("[CREATE PRODUCT ERROR]", error);
       res.status(500).json({ message: "Erro ao criar produto" });
+    }
+  });
+
+  // NOVO: Rota para deletar (Soft Delete)
+  app.delete("/api/products/:id", async (req: any, res) => {
+    try {
+      if (!req.isAuthenticated()) return res.status(401).send();
+      const id = parseInt(req.params.id);
+
+      // Executa o Soft Delete no banco
+      await db
+        .update(b2bProducts)
+        .set({ status: "INATIVO" })
+        .where(eq(b2bProducts.id, id));
+
+      console.log(`[DELETE] Produto ${id} inativado com sucesso.`);
+      res.json({ message: "Produto excluído (inativado)" });
+    } catch (error) {
+      console.error("[DELETE PRODUCT ERROR]", error);
+      res.status(500).json({ message: "Erro ao excluir produto" });
+    }
+  });
+
+  // NOVO: Rota para editar produto
+  app.patch("/api/products/:id", async (req: any, res) => {
+    try {
+      if (!req.isAuthenticated()) return res.status(401).send();
+      const id = parseInt(req.params.id);
+
+      await db.update(b2bProducts).set(req.body).where(eq(b2bProducts.id, id));
+
+      res.json({ message: "Produto atualizado" });
+    } catch (error) {
+      console.error("[UPDATE PRODUCT ERROR]", error);
+      res.status(500).json({ message: "Erro ao atualizar" });
+    }
+  });
+
+  // NOVO: Rota para alternar destaque
+  app.patch("/api/products/:id/toggle-featured", async (req: any, res) => {
+    try {
+      if (!req.isAuthenticated()) return res.status(401).send();
+      const id = parseInt(req.params.id);
+
+      const [current] = await db
+        .select()
+        .from(b2bProducts)
+        .where(eq(b2bProducts.id, id));
+      if (current) {
+        await db
+          .update(b2bProducts)
+          .set({ featured: !current.featured })
+          .where(eq(b2bProducts.id, id));
+      }
+      res.json({ message: "Destaque alterado" });
+    } catch (error) {
+      res.status(500).json({ message: "Erro" });
     }
   });
 
