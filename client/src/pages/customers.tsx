@@ -29,7 +29,9 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import type { User } from "@shared/schema";
+import { useMemo, useState } from "react";
+// IMPORTANTE: Importamos o B2bUser base
+import type { B2bUser } from "@shared/schema";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   Building2,
@@ -46,16 +48,40 @@ import {
   Users,
   UserX,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+
+// === CORREÇÃO DE TIPAGEM ===
+// Definimos um tipo que combina o Schema do Banco com os campos mapeados pela API
+type CustomerType = B2bUser & {
+  // Campos mapeados pelo storage.ts (Inglês)
+  company?: string | null;
+  tradingName?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+  address?: string | null;
+  addressNumber?: string | null;
+  taxRegime?: string | null;
+  stateRegistration?: string | null;
+  phone?: string | null;
+  complement?: string | null;
+  neighborhood?: string | null;
+  city?: string | null;
+  state?: string | null;
+};
 
 export default function CustomersPage() {
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState("");
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
-  const [editingCustomer, setEditingCustomer] = useState<User | null>(null);
+
+  // Usamos o novo tipo CustomerType aqui
+  const [editingCustomer, setEditingCustomer] = useState<CustomerType | null>(
+    null,
+  );
   const [formLoading, setFormLoading] = useState(false);
-  const [customerToDelete, setCustomerToDelete] = useState<User | null>(null);
+  const [customerToDelete, setCustomerToDelete] = useState<CustomerType | null>(
+    null,
+  );
 
   // Estado inicial do formulário
   const [newCustomer, setNewCustomer] = useState({
@@ -82,7 +108,8 @@ export default function CustomersPage() {
     data: usersData = [],
     isLoading,
     refetch,
-  } = useQuery<User[]>({
+  } = useQuery<CustomerType[]>({
+    // Tipagem corrigida aqui também
     queryKey: ["/api/users"],
   });
 
@@ -95,6 +122,7 @@ export default function CustomersPage() {
     const total = customers.length;
     const approved = customers.filter((c) => c.approved).length;
     const pending = customers.filter((c) => !c.approved).length;
+    // Agora o TS sabe que 'company' existe
     const withCompany =
       customers.filter((c) => c.company).length ||
       customers.filter((c) => c.razaoSocial).length;
@@ -133,7 +161,13 @@ export default function CustomersPage() {
   }, [customers, searchQuery]);
 
   const updateUserMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: Partial<User> }) => {
+    mutationFn: async ({
+      id,
+      data,
+    }: {
+      id: string;
+      data: Partial<CustomerType>;
+    }) => {
       await apiRequest("PATCH", `/api/users/${id}`, data);
     },
     onSuccess: () => {
@@ -162,7 +196,7 @@ export default function CustomersPage() {
     },
   });
 
-  const handleEdit = (customer: User) => {
+  const handleEdit = (customer: CustomerType) => {
     setEditingCustomer(customer);
     setShowEditDialog(true);
   };
@@ -191,7 +225,7 @@ export default function CustomersPage() {
     );
   };
 
-  const handleApprove = (user: User) => {
+  const handleApprove = (user: CustomerType) => {
     updateUserMutation.mutate(
       { id: user.id, data: { approved: true } },
       {
@@ -212,7 +246,7 @@ export default function CustomersPage() {
     );
   };
 
-  const handleReject = (user: User) => {
+  const handleReject = (user: CustomerType) => {
     updateUserMutation.mutate(
       { id: user.id, data: { approved: false } },
       {
@@ -233,7 +267,7 @@ export default function CustomersPage() {
     );
   };
 
-  const handleToggleCustomerType = (user: User) => {
+  const handleToggleCustomerType = (user: CustomerType) => {
     const newType = user.customerType === "atacado" ? "varejo" : "atacado";
     updateUserMutation.mutate(
       { id: user.id, data: { customerType: newType } },
@@ -264,7 +298,7 @@ export default function CustomersPage() {
     }).format(new Date(date));
   };
 
-  // === BUSCA INTELIGENTE DE CNPJ ===
+  // === BUSCA INTELIGENTE DE CNPJ (CRIAÇÃO) ===
   const fetchCNPJData = async (cnpj: string) => {
     const cleanCnpj = cnpj.replace(/\D/g, "");
 
@@ -287,11 +321,9 @@ export default function CustomersPage() {
 
       const data = await response.json();
 
-      // Lógica para Sugerir Regime Tributário
-      // MEI, ME, EPP -> Geralmente Simples Nacional (1)
-      let regimeSugerido = "3"; // Lucro Real/Presumido
+      let regimeSugerido = "3";
       if (data.porte === "MEI" || data.porte === "ME" || data.porte === "EPP") {
-        regimeSugerido = "1"; // Simples Nacional
+        regimeSugerido = "1";
       }
 
       setNewCustomer((prev) => ({
@@ -307,7 +339,7 @@ export default function CustomersPage() {
         neighborhood: data.bairro || "",
         city: data.municipio || "",
         state: data.uf || "",
-        taxRegime: regimeSugerido, // Preenche a sugestão
+        taxRegime: regimeSugerido,
       }));
 
       toast({
@@ -320,6 +352,79 @@ export default function CustomersPage() {
       toast({
         title: "Erro na Busca",
         description: "Não foi possível buscar dados deste CNPJ na Receita.",
+        variant: "destructive",
+      });
+    } finally {
+      setFormLoading(false);
+    }
+  };
+
+  // === BUSCA INTELIGENTE DE CNPJ (EDIÇÃO) ===
+  const fetchCNPJDataEdit = async (cnpj: string) => {
+    if (!editingCustomer) return;
+    const cleanCnpj = cnpj.replace(/\D/g, "");
+
+    if (cleanCnpj.length !== 14) {
+      toast({
+        title: "CNPJ Inválido",
+        description: "O CNPJ deve ter 14 dígitos.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setFormLoading(true);
+    try {
+      const response = await fetch(
+        `https://brasilapi.com.br/api/cnpj/v1/${cleanCnpj}`,
+      );
+      if (!response.ok) throw new Error("CNPJ não encontrado");
+      const data = await response.json();
+
+      let regimeSugerido = "3";
+      if (data.porte === "MEI" || data.porte === "ME" || data.porte === "EPP") {
+        regimeSugerido = "1";
+      }
+
+      setEditingCustomer((prev) => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          company: data.razao_social || "",
+          razaoSocial: data.razao_social || "",
+          tradingName: data.nome_fantasia || data.razao_social || "",
+          nomeFantasia: data.nome_fantasia || data.razao_social || "",
+          firstName: data.nome_fantasia || data.razao_social || "",
+          nome: data.nome_fantasia || data.razao_social || "",
+          phone: data.ddd_telefone_1 || "",
+          telefone: data.ddd_telefone_1 || "",
+          cep: data.cep?.replace(/\D/g, "") || "",
+          address: data.logradouro || "",
+          endereco: data.logradouro || "",
+          addressNumber: data.numero || "",
+          numero: data.numero || "",
+          complement: data.complemento || "",
+          complemento: data.complemento || "",
+          neighborhood: data.bairro || "",
+          bairro: data.bairro || "",
+          city: data.municipio || "",
+          cidade: data.municipio || "",
+          state: data.uf || "",
+          estado: data.uf || "",
+          taxRegime: regimeSugerido,
+          regimeTributario: regimeSugerido,
+        };
+      });
+
+      toast({
+        title: "Dados Atualizados!",
+        description: "Informações da Receita aplicadas ao cadastro.",
+        className: "bg-green-600 text-white",
+      });
+    } catch (e) {
+      toast({
+        title: "Erro na Busca",
+        description: "Falha ao buscar dados na Receita.",
         variant: "destructive",
       });
     } finally {
@@ -442,7 +547,6 @@ export default function CustomersPage() {
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
-        {/* ... Cards de estatística mantidos iguais ... */}
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
@@ -458,6 +562,7 @@ export default function CustomersPage() {
             </div>
           </CardContent>
         </Card>
+
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
@@ -473,6 +578,7 @@ export default function CustomersPage() {
             </div>
           </CardContent>
         </Card>
+
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
@@ -490,6 +596,7 @@ export default function CustomersPage() {
             </div>
           </CardContent>
         </Card>
+
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
@@ -505,6 +612,7 @@ export default function CustomersPage() {
             </div>
           </CardContent>
         </Card>
+
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
@@ -520,6 +628,7 @@ export default function CustomersPage() {
             </div>
           </CardContent>
         </Card>
+
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
@@ -537,7 +646,6 @@ export default function CustomersPage() {
         </Card>
       </div>
 
-      {/* ... Barra de pesquisa e lista de clientes mantidas iguais ... */}
       <div className="flex flex-col lg:flex-row gap-6">
         <div className="flex-1 space-y-4">
           <div className="flex gap-3 items-center">
@@ -669,7 +777,7 @@ export default function CustomersPage() {
             </div>
           )}
         </div>
-        {/* ... Gráfico Lateral mantido igual ... */}
+
         <div className="w-full lg:w-80">
           <Card>
             <CardHeader className="pb-2">
@@ -743,7 +851,7 @@ export default function CustomersPage() {
           <DialogHeader>
             <DialogTitle>Cadastrar Novo Cliente</DialogTitle>
             <DialogDescription className="sr-only">
-              Preencha os dados abaixo para cadastrar um novo cliente.
+              Preencha os dados.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -776,7 +884,6 @@ export default function CustomersPage() {
                         setNewCustomer((p) => ({ ...p, cnpj: e.target.value }))
                       }
                       placeholder="00.000.000/0000-00"
-                      data-testid="input-cnpj"
                       maxLength={18}
                     />
                     <Button
@@ -789,8 +896,7 @@ export default function CustomersPage() {
                         <Loader2 className="h-4 w-4 animate-spin" />
                       ) : (
                         <>
-                          <Search className="h-4 w-4 mr-2" />
-                          Importar
+                          <Search className="h-4 w-4 mr-2" /> Importar
                         </>
                       )}
                     </Button>
@@ -799,7 +905,6 @@ export default function CustomersPage() {
                     * Busca automática na Receita Federal
                   </p>
                 </div>
-
                 <div>
                   <Label>Inscrição Estadual</Label>
                   <Input
@@ -813,7 +918,6 @@ export default function CustomersPage() {
                     placeholder="Inscrição Estadual"
                   />
                 </div>
-
                 <div>
                   <Label>Regime Tributário</Label>
                   <Select
@@ -832,7 +936,6 @@ export default function CustomersPage() {
                     </SelectContent>
                   </Select>
                 </div>
-
                 <div className="col-span-2">
                   <Label>Razão Social</Label>
                   <Input
@@ -840,7 +943,6 @@ export default function CustomersPage() {
                     onChange={(e) =>
                       setNewCustomer((p) => ({ ...p, company: e.target.value }))
                     }
-                    placeholder="Razão Social"
                     className="bg-muted/30"
                   />
                 </div>
@@ -854,7 +956,6 @@ export default function CustomersPage() {
                         tradingName: e.target.value,
                       }))
                     }
-                    placeholder="Nome Fantasia"
                   />
                 </div>
               </div>
@@ -867,7 +968,6 @@ export default function CustomersPage() {
                     onChange={(e) =>
                       setNewCustomer((p) => ({ ...p, cpf: e.target.value }))
                     }
-                    placeholder="000.000.000-00"
                   />
                 </div>
                 <div>
@@ -880,7 +980,6 @@ export default function CustomersPage() {
                         firstName: e.target.value,
                       }))
                     }
-                    placeholder="Nome Completo"
                   />
                 </div>
               </div>
@@ -895,7 +994,6 @@ export default function CustomersPage() {
                   onChange={(e) =>
                     setNewCustomer((p) => ({ ...p, email: e.target.value }))
                   }
-                  placeholder="email@exemplo.com"
                 />
               </div>
               <div>
@@ -905,7 +1003,6 @@ export default function CustomersPage() {
                   onChange={(e) =>
                     setNewCustomer((p) => ({ ...p, phone: e.target.value }))
                   }
-                  placeholder="(00) 00000-0000"
                 />
               </div>
             </div>
@@ -918,14 +1015,10 @@ export default function CustomersPage() {
                   <Input
                     value={newCustomer.cep}
                     onChange={(e) => {
-                      const value = e.target.value;
-                      setNewCustomer((p) => ({ ...p, cep: value }));
-                      const cleanCep = value.replace(/\D/g, "");
-                      if (cleanCep.length === 8) {
-                        fetchCEPData(value);
-                      }
+                      const v = e.target.value;
+                      setNewCustomer((p) => ({ ...p, cep: v }));
+                      if (v.replace(/\D/g, "").length === 8) fetchCEPData(v);
                     }}
-                    placeholder="00000-000"
                   />
                 </div>
                 <div className="col-span-2">
@@ -935,7 +1028,6 @@ export default function CustomersPage() {
                     onChange={(e) =>
                       setNewCustomer((p) => ({ ...p, address: e.target.value }))
                     }
-                    placeholder="Rua, Avenida..."
                   />
                 </div>
                 <div>
@@ -948,7 +1040,6 @@ export default function CustomersPage() {
                         addressNumber: e.target.value,
                       }))
                     }
-                    placeholder="Número"
                   />
                 </div>
                 <div className="col-span-2">
@@ -961,7 +1052,6 @@ export default function CustomersPage() {
                         complement: e.target.value,
                       }))
                     }
-                    placeholder="Apto, Sala..."
                   />
                 </div>
                 <div>
@@ -974,7 +1064,6 @@ export default function CustomersPage() {
                         neighborhood: e.target.value,
                       }))
                     }
-                    placeholder="Bairro"
                   />
                 </div>
                 <div>
@@ -984,7 +1073,6 @@ export default function CustomersPage() {
                     onChange={(e) =>
                       setNewCustomer((p) => ({ ...p, city: e.target.value }))
                     }
-                    placeholder="Cidade"
                   />
                 </div>
                 <div>
@@ -994,7 +1082,6 @@ export default function CustomersPage() {
                     onChange={(e) =>
                       setNewCustomer((p) => ({ ...p, state: e.target.value }))
                     }
-                    placeholder="UF"
                   />
                 </div>
               </div>
@@ -1013,7 +1100,7 @@ export default function CustomersPage() {
               >
                 {createCustomerMutation.isPending ? (
                   <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                ) : null}
+                ) : null}{" "}
                 Cadastrar
               </Button>
             </div>
@@ -1026,7 +1113,7 @@ export default function CustomersPage() {
           <DialogHeader>
             <DialogTitle>Editar Cliente</DialogTitle>
             <DialogDescription className="sr-only">
-              Edite os dados do cliente.
+              Edite os dados.
             </DialogDescription>
           </DialogHeader>
           {editingCustomer && (
@@ -1065,17 +1152,37 @@ export default function CustomersPage() {
                   />
                 </div>
 
-                <div>
+                {/* Botão de Importar na Edição */}
+                <div className="col-span-2 sm:col-span-1">
                   <Label>CNPJ</Label>
-                  <Input
-                    value={editingCustomer.cnpj || ""}
-                    onChange={(e) =>
-                      setEditingCustomer({
-                        ...editingCustomer,
-                        cnpj: e.target.value,
-                      })
-                    }
-                  />
+                  <div className="flex gap-2">
+                    <Input
+                      value={editingCustomer.cnpj || ""}
+                      onChange={(e) =>
+                        setEditingCustomer({
+                          ...editingCustomer,
+                          cnpj: e.target.value,
+                        })
+                      }
+                    />
+                    <Button
+                      type="button"
+                      size="icon"
+                      onClick={() =>
+                        fetchCNPJDataEdit(editingCustomer.cnpj || "")
+                      }
+                      disabled={
+                        formLoading || (editingCustomer.cnpj?.length || 0) < 14
+                      }
+                      title="Atualizar dados na Receita"
+                    >
+                      {formLoading ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Search className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </div>
                 </div>
 
                 <div>
@@ -1122,7 +1229,6 @@ export default function CustomersPage() {
                     }
                   />
                 </div>
-
                 <div>
                   <Label>Email</Label>
                   <Input
@@ -1161,12 +1267,10 @@ export default function CustomersPage() {
                     <Input
                       value={editingCustomer.cep || ""}
                       onChange={(e) => {
-                        const value = e.target.value;
-                        setEditingCustomer({ ...editingCustomer, cep: value });
-                        const cleanCep = value.replace(/\D/g, "");
-                        if (cleanCep.length === 8) {
-                          fetchCEPDataEdit(value);
-                        }
+                        const v = e.target.value;
+                        setEditingCustomer({ ...editingCustomer, cep: v });
+                        if (v.replace(/\D/g, "").length === 8)
+                          fetchCEPDataEdit(v);
                       }}
                     />
                   </div>
@@ -1287,7 +1391,7 @@ export default function CustomersPage() {
                 >
                   {updateUserMutation.isPending ? (
                     <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                  ) : null}
+                  ) : null}{" "}
                   Salvar
                 </Button>
               </div>
@@ -1303,19 +1407,15 @@ export default function CustomersPage() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Confirmar Exclusão</AlertDialogTitle>
-            <DialogDescription className="sr-only">
-              Confirme a exclusão do cliente.
-            </DialogDescription>
+            <DialogDescription className="sr-only">Confirme.</DialogDescription>
             <AlertDialogDescription>
               Tem certeza que deseja excluir o cliente{" "}
               <strong>
                 {customerToDelete?.firstName ||
                   customerToDelete?.company ||
-                  customerToDelete?.email ||
-                  customerToDelete?.nome ||
-                  customerToDelete?.razaoSocial}
+                  customerToDelete?.email}
               </strong>
-              ? Esta ação não pode ser desfeita.
+              ?
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -1330,7 +1430,7 @@ export default function CustomersPage() {
             >
               {deleteUserMutation.isPending ? (
                 <Loader2 className="h-4 w-4 animate-spin mr-2" />
-              ) : null}
+              ) : null}{" "}
               Excluir
             </AlertDialogAction>
           </AlertDialogFooter>

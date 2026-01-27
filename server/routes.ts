@@ -31,9 +31,7 @@ export async function registerRoutes(
     limits: { fileSize: 5 * 1024 * 1024 },
   });
 
-  // --- AUTH ENDPOINTS ---
-
-  // 1. Rota de Login Personalizada
+  // --- AUTH ENDPOINTS (Login/Register/Logout) ---
   app.post("/api/auth/login", async (req: any, res) => {
     try {
       const { email, password } = req.body;
@@ -41,7 +39,6 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Dados incompletos" });
       const lowerEmail = email.toLowerCase();
 
-      // Bypass Admin
       if (lowerEmail === "admin@admin.com" && password === "123456") {
         const [user] = await db
           .select()
@@ -81,27 +78,18 @@ export async function registerRoutes(
     }
   });
 
-  // 2. Rota de Registro Manual (CRÍTICO: Isso faltava para salvar o cliente corretamente!)
   app.post("/api/register", async (req: any, res) => {
     try {
-      const { username, password, email } = req.body;
+      const { username, email } = req.body;
       const targetEmail = email || username;
-
-      if (!targetEmail) {
+      if (!targetEmail)
         return res.status(400).json({ message: "Email é obrigatório" });
-      }
 
       const existingUser = await storage.getUserByEmail(targetEmail);
-      if (existingUser) {
-        return res
-          .status(400)
-          .json({ message: "Usuário já existe com este email" });
-      }
+      if (existingUser)
+        return res.status(400).json({ message: "Usuário já existe" });
 
-      // Aqui passamos o req.body COMPLETO (com cnpj, address, etc) para o storage
       const user = await storage.createUser(req.body);
-
-      // Loga o usuário automaticamente após registro (opcional, mas comum)
       req.login(user, (err: any) => {
         if (err)
           return res.status(500).json({ message: "Erro no login automático" });
@@ -126,14 +114,13 @@ export async function registerRoutes(
     req.logout(() => res.json({ message: "Logout efetuado" }));
   });
 
-  // --- ROTAS DE USUÁRIOS ---
+  // --- USUÁRIOS ---
   app.get("/api/users", async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).send();
     try {
       const users = await storage.getUsers();
       res.json(users);
     } catch (error) {
-      console.error("[GET USERS ERROR]", error);
       res.status(500).json({ message: "Erro ao buscar usuários" });
     }
   });
@@ -144,7 +131,6 @@ export async function registerRoutes(
       const updated = await storage.updateUser(req.params.id, req.body);
       res.json(updated);
     } catch (error) {
-      console.error("[UPDATE USER ERROR]", error);
       res.status(500).json({ message: "Erro ao atualizar usuário" });
     }
   });
@@ -155,7 +141,6 @@ export async function registerRoutes(
       await storage.deleteUser(req.params.id);
       res.json({ message: "Usuário excluído" });
     } catch (error) {
-      console.error("[DELETE USER ERROR]", error);
       res.status(500).json({ message: "Erro ao excluir usuário" });
     }
   });
@@ -164,12 +149,12 @@ export async function registerRoutes(
   app.get("/api/products", async (req, res) => {
     try {
       const result = await storage.getProducts(req.query);
-      const productsList = Array.isArray(result)
-        ? result
-        : result.products || [];
-      res.json(productsList);
+      if (Array.isArray(result)) {
+        res.json({ products: result, total: result.length });
+      } else {
+        res.json(result);
+      }
     } catch (error) {
-      console.error("[GET PRODUCTS ERROR]", error);
       res.status(500).send("Erro ao listar produtos");
     }
   });
@@ -178,36 +163,30 @@ export async function registerRoutes(
     if (!req.isAuthenticated()) return res.status(401).send();
     const { name, sku, price, stock } = req.body;
 
-    // Validação
-    if (!name || !sku)
-      return res.status(400).json({ message: "Nome e SKU obrigatórios" });
-    if (price === undefined || Number(price) < 0)
-      return res.status(400).json({ message: "Preço inválido" });
-    if (stock === undefined || Number(stock) < 0)
-      return res.status(400).json({ message: "Estoque inválido" });
+    // Mapeamento
+    const productData = {
+      ...req.body,
+      nome: name,
+      precoVarejo: price,
+      precoAtacado: req.body.cost,
+    };
 
-    const isDuplicate = await storage.checkDuplicate(sku, name);
-    if (isDuplicate)
-      return res.status(400).json({ message: "Produto duplicado" });
-
-    const product = await storage.createProduct(req.body);
+    const product = await storage.createProduct(productData);
     res.status(201).json(product);
   });
 
   app.patch("/api/products/:id", async (req: any, res) => {
     if (!req.isAuthenticated()) return res.status(401).send();
     const id = parseInt(req.params.id);
-
-    // Mapeamento Frontend -> Banco para Edição
     const dataToUpdate: any = {};
     if (req.body.name) dataToUpdate.nome = req.body.name;
     if (req.body.sku) dataToUpdate.sku = req.body.sku;
     if (req.body.price !== undefined)
-      dataToUpdate.precoVarejo = String(req.body.price);
+      dataToUpdate.precoVarejo = String(req.body.price || 0);
     if (req.body.stock !== undefined)
-      dataToUpdate.estoque = Number(req.body.stock);
+      dataToUpdate.estoque = Number(req.body.stock || 0);
     if (req.body.cost !== undefined)
-      dataToUpdate.precoAtacado = String(req.body.cost);
+      dataToUpdate.precoAtacado = String(req.body.cost || 0);
     if (req.body.description) dataToUpdate.descricao = req.body.description;
     if (req.body.image) dataToUpdate.imagem = req.body.image;
     if (req.body.featured !== undefined)
@@ -229,19 +208,39 @@ export async function registerRoutes(
     res.json({ message: "Produto excluído" });
   });
 
-  app.patch("/api/products/:id/toggle-featured", async (req: any, res) => {
+  // --- PEDIDOS (NOVAS ROTAS) ---
+  app.get("/api/orders", async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).send();
-    const id = parseInt(req.params.id);
-    const [current] = await db
-      .select()
-      .from(b2bProducts)
-      .where(eq(b2bProducts.id, id));
-    if (current)
-      await db
-        .update(b2bProducts)
-        .set({ featured: !current.featured })
-        .where(eq(b2bProducts.id, id));
-    res.json({ message: "Destaque alterado" });
+    try {
+      const orders = await storage.getOrders();
+      res.json(orders);
+    } catch (error) {
+      console.error("[GET ORDERS ERROR]", error);
+      res.status(500).json({ message: "Erro ao buscar pedidos" });
+    }
+  });
+
+  app.post("/api/orders", async (req: any, res) => {
+    if (!req.isAuthenticated()) return res.status(401).send();
+    try {
+      const order = await storage.createOrder(req.body);
+      res.status(201).json(order);
+    } catch (error) {
+      console.error("[CREATE ORDER ERROR]", error);
+      res.status(500).json({ message: "Erro ao criar pedido" });
+    }
+  });
+
+  app.get("/api/orders/:id", async (req, res) => {
+    if (!req.isAuthenticated()) return res.status(401).send();
+    try {
+      const order = await storage.getOrder(parseInt(req.params.id));
+      if (!order)
+        return res.status(404).json({ message: "Pedido não encontrado" });
+      res.json(order);
+    } catch (error) {
+      res.status(500).json({ message: "Erro ao buscar pedido" });
+    }
   });
 
   app.get("/api/categories", async (req, res) => {

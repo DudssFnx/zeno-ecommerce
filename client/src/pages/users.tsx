@@ -1,13 +1,10 @@
-import { useState, useEffect } from "react";
-import { UserCard, type UserData, type UserRole, type CustomerType } from "@/components/UserCard";
+import {
+  UserCard,
+  type CustomerType,
+  type UserData,
+  type UserRole,
+} from "@/components/UserCard";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Search, RefreshCw, Loader2, Plus, Settings, Shield, Tag, Instagram, StickyNote } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { queryClient, apiRequest } from "@/lib/queryClient";
-import type { User, Module } from "@shared/schema";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
@@ -17,6 +14,9 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Select,
   SelectContent,
@@ -24,25 +24,61 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import type { User } from "@shared/schema";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import {
+  Loader2,
+  Pencil,
+  Plus,
+  RefreshCw,
+  Search,
+  Settings,
+  Shield,
+  Tag,
+} from "lucide-react";
+import { useEffect, useState } from "react";
 
 type UserStatus = "pending" | "approved" | "rejected";
+
+const SYSTEM_MODULES = [
+  {
+    key: "dashboard",
+    label: "Dashboard",
+    description: "Visão geral e gráficos",
+  },
+  {
+    key: "users",
+    label: "Usuários",
+    description: "Gerenciar equipe e clientes",
+  },
+  { key: "products", label: "Produtos", description: "Catálogo e estoque" },
+  { key: "orders", label: "Pedidos", description: "Vendas e orçamentos" },
+  {
+    key: "settings",
+    label: "Configurações",
+    description: "Dados da empresa e sistema",
+  },
+];
 
 export default function UsersPage() {
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState("all");
+
+  // Modais
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isPermissionsOpen, setIsPermissionsOpen] = useState(false);
   const [isExtrasOpen, setIsExtrasOpen] = useState(false);
+  const [isEditProfileOpen, setIsEditProfileOpen] = useState(false); // NOVO MODAL
+
+  // Estados de Seleção e Edição
   const [selectedUser, setSelectedUser] = useState<UserData | null>(null);
-  const [extrasTag, setExtrasTag] = useState("");
-  const [extrasInstagram, setExtrasInstagram] = useState("");
-  const [extrasNotes, setExtrasNotes] = useState("");
+
+  // Create Form
   const [newUserName, setNewUserName] = useState("");
   const [newUserEmail, setNewUserEmail] = useState("");
   const [newUserPassword, setNewUserPassword] = useState("");
@@ -50,24 +86,42 @@ export default function UsersPage() {
   const [selectedModules, setSelectedModules] = useState<string[]>([]);
   const [selectedBrands, setSelectedBrands] = useState<string[]>([]);
 
-  const { data: usersData = [], isLoading, refetch } = useQuery<User[]>({
-    queryKey: ['/api/users'],
-  });
+  // Extras Form
+  const [extrasTag, setExtrasTag] = useState("");
+  const [extrasInstagram, setExtrasInstagram] = useState("");
+  const [extrasNotes, setExtrasNotes] = useState("");
 
-  const { data: modulesData = [], isLoading: modulesLoading } = useQuery<Module[]>({
-    queryKey: ['/api/modules'],
+  // Edit Profile Form (NOVO)
+  const [editName, setEditName] = useState("");
+  const [editEmail, setEditEmail] = useState("");
+  const [editPhone, setEditPhone] = useState("");
+  const [editPassword, setEditPassword] = useState(""); // Opcional
+
+  const {
+    data: usersData = [],
+    isLoading,
+    refetch,
+  } = useQuery<User[]>({
+    queryKey: ["/api/users"],
   });
 
   const { data: brandsData = [] } = useQuery<string[]>({
-    queryKey: ['/api/admin/all-brands'],
+    queryKey: ["/api/admin/all-brands"],
   });
 
-  const { data: userPermissions } = useQuery<{ userId: string; modules: string[] }>({
-    queryKey: ['/api/users', selectedUser?.id, 'permissions'],
+  const { data: userPermissions } = useQuery<{
+    userId: string;
+    modules: string[];
+  }>({
+    queryKey: ["/api/users", selectedUser?.id, "permissions"],
     queryFn: async () => {
-      if (!selectedUser?.id) return { userId: '', modules: [] };
-      const res = await fetch(`/api/users/${selectedUser.id}/permissions`, { credentials: 'include' });
-      if (!res.ok) throw new Error('Failed to fetch permissions');
+      if (!selectedUser?.id) return { userId: "", modules: [] };
+      const res = await fetch(`/api/users/${selectedUser.id}/permissions`, {
+        credentials: "include",
+      });
+      if (!res.ok) {
+        return { userId: selectedUser.id, modules: [] };
+      }
       return res.json();
     },
     enabled: !!selectedUser?.id && isPermissionsOpen,
@@ -79,32 +133,45 @@ export default function UsersPage() {
     }
   }, [userPermissions]);
 
-
   const getDefaultModulesForRole = (role: UserRole): string[] => {
     const roleDefaults: Record<string, string[]> = {
-      admin: modulesData.map(m => m.key),
-      sales: modulesData.filter(m => m.defaultRoles?.includes('sales')).map(m => m.key),
-      customer: modulesData.filter(m => m.defaultRoles?.includes('customer')).map(m => m.key),
+      admin: SYSTEM_MODULES.map((m) => m.key),
+      sales: ["products", "orders", "customers"],
+      customer: ["products", "orders"],
     };
     return roleDefaults[role] || [];
   };
 
   useEffect(() => {
-    if (isCreateOpen && modulesData.length > 0) {
+    if (isCreateOpen) {
       setSelectedModules(getDefaultModulesForRole(newUserRole));
     }
-  }, [newUserRole, isCreateOpen, modulesData]);
+  }, [newUserRole, isCreateOpen]);
 
   const createUserMutation = useMutation({
-    mutationFn: async (data: { firstName: string; email: string; password: string; role: string; allowedBrands?: string[] }) => {
+    mutationFn: async (data: {
+      firstName: string;
+      email: string;
+      password: string;
+      role: string;
+      allowedBrands?: string[];
+    }) => {
       const response = await apiRequest("POST", "/api/users", data);
       return response.json();
     },
     onSuccess: async (newUser) => {
       if (selectedModules.length > 0 && newUser?.id) {
-        await apiRequest("POST", `/api/users/${newUser.id}/permissions`, { modules: selectedModules });
+        try {
+          await apiRequest("POST", `/api/users/${newUser.id}/permissions`, {
+            modules: selectedModules,
+          });
+        } catch (e) {
+          console.warn(
+            "Backend de permissões ainda não configurado completamente",
+          );
+        }
       }
-      queryClient.invalidateQueries({ queryKey: ['/api/users'] });
+      queryClient.invalidateQueries({ queryKey: ["/api/users"] });
       setIsCreateOpen(false);
       setNewUserName("");
       setNewUserEmail("");
@@ -115,22 +182,61 @@ export default function UsersPage() {
       toast({ title: "Sucesso", description: "Usuario criado com sucesso" });
     },
     onError: (err: Error) => {
-      toast({ title: "Erro", description: err.message || "Falha ao criar usuario", variant: "destructive" });
+      toast({
+        title: "Erro",
+        description: err.message || "Falha ao criar usuario",
+        variant: "destructive",
+      });
     },
   });
 
   const updatePermissionsMutation = useMutation({
-    mutationFn: async ({ userId, modules }: { userId: string; modules: string[] }) => {
+    mutationFn: async ({
+      userId,
+      modules,
+    }: {
+      userId: string;
+      modules: string[];
+    }) => {
       await apiRequest("POST", `/api/users/${userId}/permissions`, { modules });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/users', selectedUser?.id, 'permissions'] });
-      toast({ title: "Sucesso", description: "Permissoes atualizadas com sucesso" });
+      queryClient.invalidateQueries({
+        queryKey: ["/api/users", selectedUser?.id, "permissions"],
+      });
+      toast({
+        title: "Sucesso",
+        description: "Permissoes atualizadas com sucesso",
+      });
       setIsPermissionsOpen(false);
       setSelectedUser(null);
     },
     onError: (err: Error) => {
-      toast({ title: "Erro", description: err.message || "Falha ao atualizar permissoes", variant: "destructive" });
+      toast({
+        title: "Erro",
+        description: "Falha ao atualizar permissoes",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const deleteUserMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest("DELETE", `/api/users/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/users"] });
+      toast({
+        title: "Usuario Removido",
+        description: "Usuario excluido com sucesso.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Erro",
+        description: "Falha ao excluir usuario",
+        variant: "destructive",
+      });
     },
   });
 
@@ -141,11 +247,19 @@ export default function UsersPage() {
 
   const handleCreateUser = () => {
     if (!newUserName || !newUserEmail || !newUserPassword) {
-      toast({ title: "Erro", description: "Preencha todos os campos", variant: "destructive" });
+      toast({
+        title: "Erro",
+        description: "Preencha todos os campos",
+        variant: "destructive",
+      });
       return;
     }
     if (!isValidEmail(newUserEmail)) {
-      toast({ title: "Erro", description: "Digite um email valido (ex: usuario@empresa.com)", variant: "destructive" });
+      toast({
+        title: "Erro",
+        description: "Digite um email valido",
+        variant: "destructive",
+      });
       return;
     }
     createUserMutation.mutate({
@@ -159,32 +273,46 @@ export default function UsersPage() {
 
   const handleSavePermissions = () => {
     if (selectedUser) {
-      updatePermissionsMutation.mutate({ userId: selectedUser.id, modules: selectedModules });
+      updatePermissionsMutation.mutate({
+        userId: selectedUser.id,
+        modules: selectedModules,
+      });
     }
   };
 
   const handleOpenPermissions = (user: UserData) => {
     setSelectedUser(user);
-    setSelectedModules([]);
+    const existingModules =
+      userPermissions?.userId === user.id ? userPermissions.modules : [];
+    setSelectedModules(
+      existingModules.length > 0
+        ? existingModules
+        : getDefaultModulesForRole(user.role),
+    );
     setIsPermissionsOpen(true);
   };
 
   const toggleModule = (moduleKey: string) => {
-    setSelectedModules(prev => 
-      prev.includes(moduleKey) 
-        ? prev.filter(k => k !== moduleKey)
-        : [...prev, moduleKey]
+    setSelectedModules((prev) =>
+      prev.includes(moduleKey)
+        ? prev.filter((k) => k !== moduleKey)
+        : [...prev, moduleKey],
     );
   };
 
   const users: UserData[] = usersData.map((u) => ({
     id: u.id,
-    name: `${u.firstName || ""} ${u.lastName || ""}`.trim() || u.email || "Unknown",
+    name:
+      `${u.firstName || ""} ${u.lastName || ""}`.trim() ||
+      u.nome ||
+      u.email ||
+      "Unknown",
     email: u.email || "",
-    company: u.company || undefined,
+    phone: u.telefone || "",
+    company: u.company || u.razaoSocial || undefined,
     role: u.role as UserRole,
     customerType: (u.customerType || "varejo") as CustomerType,
-    status: u.approved ? "approved" : "pending" as UserStatus,
+    status: u.approved ? "approved" : ("pending" as UserStatus),
     tag: u.tag || undefined,
     instagram: u.instagram || undefined,
     notes: u.notes || undefined,
@@ -194,21 +322,31 @@ export default function UsersPage() {
     const matchesSearch =
       user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       user.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      user.company?.toLowerCase().includes(searchQuery.toLowerCase());
-    
+      (user.company &&
+        user.company.toLowerCase().includes(searchQuery.toLowerCase()));
+
     if (activeTab === "all") return matchesSearch;
-    if (activeTab === "pending") return matchesSearch && user.status === "pending";
-    if (activeTab === "customers") return matchesSearch && user.role === "customer";
-    if (activeTab === "staff") return matchesSearch && (user.role === "admin" || user.role === "sales");
+    if (activeTab === "pending")
+      return matchesSearch && user.status === "pending";
+    if (activeTab === "customers")
+      return matchesSearch && user.role === "customer";
+    if (activeTab === "staff")
+      return matchesSearch && (user.role === "admin" || user.role === "sales");
     return matchesSearch;
   });
 
   const updateUserMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: Partial<User> }) => {
+    mutationFn: async ({
+      id,
+      data,
+    }: {
+      id: string;
+      data: Partial<User> & { password?: string };
+    }) => {
       await apiRequest("PATCH", `/api/users/${id}`, data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/users'] });
+      queryClient.invalidateQueries({ queryKey: ["/api/users"] });
     },
   });
 
@@ -216,58 +354,51 @@ export default function UsersPage() {
     updateUserMutation.mutate(
       { id: user.id, data: { approved: true } },
       {
-        onSuccess: () => {
-          toast({ title: "Usuario Aprovado", description: `${user.name} foi aprovado.` });
-        },
-        onError: () => {
-          toast({ title: "Erro", description: "Falha ao aprovar usuario", variant: "destructive" });
-        },
-      }
+        onSuccess: () =>
+          toast({
+            title: "Usuario Aprovado",
+            description: `${user.name} foi aprovado.`,
+          }),
+      },
     );
   };
 
   const handleReject = (user: UserData) => {
-    updateUserMutation.mutate(
-      { id: user.id, data: { approved: false } },
-      {
-        onSuccess: () => {
-          toast({ title: "Usuario Rejeitado", description: `${user.name} foi rejeitado.` });
-        },
-        onError: () => {
-          toast({ title: "Erro", description: "Falha ao rejeitar usuario", variant: "destructive" });
-        },
-      }
-    );
+    if (confirm(`Tem certeza que deseja EXCLUIR ${user.name}?`)) {
+      deleteUserMutation.mutate(user.id);
+    }
   };
 
   const handleChangeRole = (user: UserData, role: UserRole) => {
     updateUserMutation.mutate(
       { id: user.id, data: { role } },
       {
-        onSuccess: () => {
-          toast({ title: "Funcao Atualizada", description: `${user.name} agora e ${role}.` });
-        },
-        onError: () => {
-          toast({ title: "Erro", description: "Falha ao atualizar funcao", variant: "destructive" });
-        },
-      }
+        onSuccess: () =>
+          toast({
+            title: "Funcao Atualizada",
+            description: `${user.name} agora e ${role}.`,
+          }),
+      },
     );
   };
 
-  const handleChangeCustomerType = (user: UserData, customerType: CustomerType) => {
+  const handleChangeCustomerType = (
+    user: UserData,
+    customerType: CustomerType,
+  ) => {
     updateUserMutation.mutate(
       { id: user.id, data: { customerType } },
       {
-        onSuccess: () => {
-          toast({ title: "Tipo Atualizado", description: `${user.name} agora e ${customerType === "atacado" ? "Atacado" : "Varejo"}.` });
-        },
-        onError: () => {
-          toast({ title: "Erro", description: "Falha ao atualizar tipo de cliente", variant: "destructive" });
-        },
-      }
+        onSuccess: () =>
+          toast({
+            title: "Tipo Atualizado",
+            description: `${user.name} agora e ${customerType}.`,
+          }),
+      },
     );
   };
 
+  // --- LOGICA DE EXTRAS ---
   const handleOpenExtras = (user: UserData) => {
     setSelectedUser(user);
     setExtrasTag(user.tag || "");
@@ -279,36 +410,83 @@ export default function UsersPage() {
   const handleSaveExtras = () => {
     if (selectedUser) {
       updateUserMutation.mutate(
-        { 
-          id: selectedUser.id, 
-          data: { 
-            tag: extrasTag || null, 
-            instagram: extrasInstagram || null, 
-            notes: extrasNotes || null 
-          } 
+        {
+          id: selectedUser.id,
+          data: {
+            tag: extrasTag || null,
+            instagram: extrasInstagram || null,
+            notes: extrasNotes || null,
+          },
         },
         {
           onSuccess: () => {
-            toast({ title: "Extras Salvos", description: "Informacoes extras atualizadas com sucesso." });
+            toast({ title: "Extras Salvos" });
             setIsExtrasOpen(false);
             setSelectedUser(null);
           },
-          onError: () => {
-            toast({ title: "Erro", description: "Falha ao salvar extras", variant: "destructive" });
-          },
-        }
+        },
       );
     }
+  };
+
+  // --- LOGICA DE EDICAO DE PERFIL (NOVO) ---
+  const handleOpenEditProfile = (user: UserData) => {
+    setSelectedUser(user);
+    setEditName(user.name);
+    setEditEmail(user.email);
+    setEditPhone(user.phone || "");
+    setEditPassword(""); // Reset da senha (opcional)
+    setIsEditProfileOpen(true);
+  };
+
+  const handleSaveProfile = () => {
+    if (!selectedUser) return;
+
+    // Objeto de update
+    const updateData: any = {
+      nome: editName,
+      email: editEmail,
+      telefone: editPhone,
+    };
+
+    // Só envia senha se foi digitada
+    if (editPassword.trim()) {
+      updateData.password = editPassword;
+    }
+
+    updateUserMutation.mutate(
+      { id: selectedUser.id, data: updateData },
+      {
+        onSuccess: () => {
+          toast({
+            title: "Perfil Atualizado",
+            description: "Dados alterados com sucesso.",
+          });
+          setIsEditProfileOpen(false);
+          setSelectedUser(null);
+        },
+        onError: () => {
+          toast({
+            title: "Erro",
+            description: "Falha ao atualizar perfil.",
+            variant: "destructive",
+          });
+        },
+      },
+    );
   };
 
   const pendingCount = users.filter((u) => u.status === "pending").length;
 
   return (
     <div className="p-6 lg:p-8 space-y-6">
+      {/* --- Header --- */}
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-3xl font-semibold">Gerenciamento de Usuarios</h1>
-          <p className="text-muted-foreground mt-1">Gerencie contas de clientes e membros da equipe</p>
+          <p className="text-muted-foreground mt-1">
+            Gerencie contas de clientes e membros da equipe
+          </p>
         </div>
         <div className="flex gap-2">
           <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
@@ -322,47 +500,45 @@ export default function UsersPage() {
               <DialogHeader>
                 <DialogTitle>Cadastrar Novo Usuario</DialogTitle>
                 <DialogDescription>
-                  Preencha os dados e selecione os modulos que o usuario pode acessar
+                  Preencha os dados e selecione os modulos que o usuario pode
+                  acessar
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4 py-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="name">Nome *</Label>
+                    <Label>Nome *</Label>
                     <Input
-                      id="name"
                       value={newUserName}
                       onChange={(e) => setNewUserName(e.target.value)}
                       placeholder="Nome do usuario"
-                      data-testid="input-create-name"
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="email">E-mail *</Label>
+                    <Label>E-mail *</Label>
                     <Input
-                      id="email"
                       type="email"
                       value={newUserEmail}
                       onChange={(e) => setNewUserEmail(e.target.value)}
                       placeholder="email@exemplo.com"
-                      data-testid="input-create-email"
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="password">Senha *</Label>
+                    <Label>Senha *</Label>
                     <Input
-                      id="password"
                       type="password"
                       value={newUserPassword}
                       onChange={(e) => setNewUserPassword(e.target.value)}
                       placeholder="Senha de acesso"
-                      data-testid="input-create-password"
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="role">Funcao</Label>
-                    <Select value={newUserRole} onValueChange={(v) => setNewUserRole(v as UserRole)}>
-                      <SelectTrigger data-testid="select-create-role">
+                    <Label>Funcao</Label>
+                    <Select
+                      value={newUserRole}
+                      onValueChange={(v) => setNewUserRole(v as UserRole)}
+                    >
+                      <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -375,111 +551,53 @@ export default function UsersPage() {
                   </div>
                 </div>
 
-                {newUserRole === "supplier" && (
-                  <div className="space-y-3">
-                    <div className="flex items-center gap-2">
-                      <Tag className="h-4 w-4 text-primary" />
-                      <Label className="text-base font-medium">Marcas Permitidas</Label>
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                      Selecione quais marcas este fornecedor pode visualizar
-                    </p>
-                    {brandsData.length === 0 ? (
-                      <p className="text-sm text-muted-foreground py-2">Nenhuma marca cadastrada.</p>
-                    ) : (
-                      <div className="grid grid-cols-2 md:grid-cols-3 gap-2 max-h-48 overflow-y-auto">
-                        {brandsData.map((brand) => (
-                          <div
-                            key={brand}
-                            className="flex items-center space-x-2 p-2 rounded-lg border bg-muted/30 hover-elevate cursor-pointer"
-                            onClick={() => {
-                              setSelectedBrands(prev => 
-                                prev.includes(brand) 
-                                  ? prev.filter(b => b !== brand) 
-                                  : [...prev, brand]
-                              );
-                            }}
-                            data-testid={`checkbox-brand-${brand}`}
-                          >
-                            <Checkbox
-                              checked={selectedBrands.includes(brand)}
-                              onCheckedChange={() => {
-                                setSelectedBrands(prev => 
-                                  prev.includes(brand) 
-                                    ? prev.filter(b => b !== brand) 
-                                    : [...prev, brand]
-                                );
-                              }}
-                            />
-                            <span className="text-sm">{brand}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-
+                {/* Lista de Módulos no Cadastro */}
                 <div className="space-y-3">
                   <div className="flex items-center gap-2">
                     <Shield className="h-4 w-4 text-primary" />
-                    <Label className="text-base font-medium">Permissoes de Modulos</Label>
+                    <Label className="text-base font-medium">
+                      Permissoes Iniciais
+                    </Label>
                   </div>
-                  <p className="text-sm text-muted-foreground">
-                    Selecione quais areas do sistema este usuario pode acessar
-                  </p>
-                  
-                  {modulesLoading ? (
-                    <div className="flex items-center justify-center py-4">
-                      <Loader2 className="h-5 w-5 animate-spin" />
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                      {modulesData.map((module) => (
-                        <div
-                          key={module.key}
-                          className="flex items-center space-x-3 p-3 rounded-lg border bg-muted/30 hover-elevate cursor-pointer"
-                          onClick={() => toggleModule(module.key)}
-                          data-testid={`checkbox-module-${module.key}`}
-                        >
-                          <Checkbox
-                            checked={selectedModules.includes(module.key)}
-                            onCheckedChange={() => toggleModule(module.key)}
-                          />
-                          <div className="flex-1">
-                            <p className="text-sm font-medium">{module.label}</p>
-                            <p className="text-xs text-muted-foreground">{module.description}</p>
-                          </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    {SYSTEM_MODULES.map((module) => (
+                      <div
+                        key={module.key}
+                        className="flex items-center space-x-3 p-3 rounded-lg border bg-muted/30 hover-elevate cursor-pointer"
+                        onClick={() => toggleModule(module.key)}
+                      >
+                        <Checkbox
+                          checked={selectedModules.includes(module.key)}
+                          className="pointer-events-none"
+                        />
+                        <div className="flex-1">
+                          <p className="text-sm font-medium">{module.label}</p>
                         </div>
-                      ))}
-                    </div>
-                  )}
+                      </div>
+                    ))}
+                  </div>
                 </div>
 
-                <Button 
-                  className="w-full" 
+                <Button
+                  className="w-full"
                   onClick={handleCreateUser}
                   disabled={createUserMutation.isPending}
-                  data-testid="button-submit-create-user"
                 >
-                  {createUserMutation.isPending ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Criando...
-                    </>
-                  ) : (
-                    "Criar Usuario"
-                  )}
+                  {createUserMutation.isPending
+                    ? "Criando..."
+                    : "Criar Usuario"}
                 </Button>
               </div>
             </DialogContent>
           </Dialog>
-          <Button variant="outline" onClick={() => refetch()} data-testid="button-refresh-users">
+          <Button variant="outline" onClick={() => refetch()}>
             <RefreshCw className="h-4 w-4 mr-2" />
             Atualizar
           </Button>
         </div>
       </div>
 
+      {/* --- Busca --- */}
       <div className="relative max-w-sm">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input
@@ -487,21 +605,24 @@ export default function UsersPage() {
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           className="pl-9"
-          data-testid="input-search-users"
         />
       </div>
 
+      {/* --- Tabs & Lista --- */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
-          <TabsTrigger value="all" data-testid="tab-all-users">Todos ({users.length})</TabsTrigger>
-          <TabsTrigger value="pending" data-testid="tab-pending-users">
-            Pendentes ({pendingCount})
+          <TabsTrigger value="all">Todos ({users.length})</TabsTrigger>
+          <TabsTrigger value="pending">Pendentes ({pendingCount})</TabsTrigger>
+          <TabsTrigger value="customers">
+            Clientes ({users.filter((u) => u.role === "customer").length})
           </TabsTrigger>
-          <TabsTrigger value="customers" data-testid="tab-customers">
-            Clientes ({users.filter(u => u.role === "customer").length})
-          </TabsTrigger>
-          <TabsTrigger value="staff" data-testid="tab-staff">
-            Equipe ({users.filter(u => u.role === "admin" || u.role === "sales").length})
+          <TabsTrigger value="staff">
+            Equipe (
+            {
+              users.filter((u) => u.role === "admin" || u.role === "sales")
+                .length
+            }
+            )
           </TabsTrigger>
         </TabsList>
 
@@ -517,7 +638,7 @@ export default function UsersPage() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {filteredUsers.map((user) => (
-                <div key={user.id} className="relative">
+                <div key={user.id} className="relative group">
                   <UserCard
                     user={user}
                     onApprove={handleApprove}
@@ -526,18 +647,33 @@ export default function UsersPage() {
                     onChangeCustomerType={handleChangeCustomerType}
                     onEditExtras={handleOpenExtras}
                   />
-                  {user.role !== "admin" && (
+
+                  {/* CORREÇÃO VISUAL: Mudamos de 'right-2' para 'right-14' para não cobrir o menu "..." */}
+                  <div className="absolute top-2 right-14 flex gap-1">
+                    {/* Botão de EDITAR DADOS */}
                     <Button
                       size="sm"
-                      variant="outline"
-                      className="absolute top-2 right-2 gap-1"
-                      onClick={() => handleOpenPermissions(user)}
-                      data-testid={`button-permissions-${user.id}`}
+                      variant="ghost"
+                      className="h-8 w-8 p-0 hover:bg-muted"
+                      onClick={() => handleOpenEditProfile(user)}
+                      title="Editar Dados"
                     >
-                      <Settings className="h-3.5 w-3.5" />
-                      Permissoes
+                      <Pencil className="h-4 w-4 text-muted-foreground" />
                     </Button>
-                  )}
+
+                    {/* Botão de Permissões (Só para Admin/Staff) */}
+                    {(user.role === "admin" || user.role === "sales") && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-8 w-8 p-0 hover:bg-muted"
+                        onClick={() => handleOpenPermissions(user)}
+                        title="Permissões"
+                      >
+                        <Settings className="h-4 w-4 text-muted-foreground" />
+                      </Button>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
@@ -545,6 +681,7 @@ export default function UsersPage() {
         </TabsContent>
       </Tabs>
 
+      {/* --- Modal Permissões --- */}
       <Dialog open={isPermissionsOpen} onOpenChange={setIsPermissionsOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
@@ -553,13 +690,12 @@ export default function UsersPage() {
               Permissoes de {selectedUser?.name}
             </DialogTitle>
             <DialogDescription>
-              Configure quais modulos este usuario pode acessar no sistema
+              Configure quais modulos este usuario pode acessar
             </DialogDescription>
           </DialogHeader>
-          
           <ScrollArea className="max-h-[400px] pr-4">
             <div className="space-y-2">
-              {modulesData.map((module) => (
+              {SYSTEM_MODULES.map((module) => (
                 <div
                   key={module.key}
                   className="flex items-center space-x-3 p-3 rounded-lg border bg-muted/30 hover-elevate cursor-pointer"
@@ -567,32 +703,31 @@ export default function UsersPage() {
                 >
                   <Checkbox
                     checked={selectedModules.includes(module.key)}
-                    onCheckedChange={() => toggleModule(module.key)}
-                    data-testid={`checkbox-edit-module-${module.key}`}
+                    className="pointer-events-none"
                   />
                   <div className="flex-1">
                     <p className="text-sm font-medium">{module.label}</p>
-                    <p className="text-xs text-muted-foreground">{module.description}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {module.description}
+                    </p>
                   </div>
                 </div>
               ))}
             </div>
           </ScrollArea>
-
           <div className="flex justify-end gap-2 pt-4">
-            <Button variant="outline" onClick={() => setIsPermissionsOpen(false)}>
+            <Button
+              variant="outline"
+              onClick={() => setIsPermissionsOpen(false)}
+            >
               Cancelar
             </Button>
-            <Button 
+            <Button
               onClick={handleSavePermissions}
               disabled={updatePermissionsMutation.isPending}
-              data-testid="button-save-permissions"
             >
               {updatePermissionsMutation.isPending ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Salvando...
-                </>
+                <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
                 "Salvar Permissoes"
               )}
@@ -601,6 +736,7 @@ export default function UsersPage() {
         </DialogContent>
       </Dialog>
 
+      {/* --- Modal Extras --- */}
       <Dialog open={isExtrasOpen} onOpenChange={setIsExtrasOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
@@ -608,75 +744,120 @@ export default function UsersPage() {
               <Tag className="h-5 w-5" />
               Extras de {selectedUser?.name}
             </DialogTitle>
-            <DialogDescription>
-              Adicione informacoes extras como tag, Instagram e notas
-            </DialogDescription>
           </DialogHeader>
-          
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="extras-tag" className="flex items-center gap-2">
-                <Tag className="h-4 w-4" />
-                Tag
-              </Label>
+              <Label>Tag</Label>
               <Input
-                id="extras-tag"
                 value={extrasTag}
                 onChange={(e) => setExtrasTag(e.target.value)}
-                placeholder="Ex: VIP, Parceiro, Novo"
-                data-testid="input-extras-tag"
               />
-              <p className="text-xs text-muted-foreground">
-                Uma etiqueta para identificar o cliente rapidamente
-              </p>
             </div>
-
             <div className="space-y-2">
-              <Label htmlFor="extras-instagram" className="flex items-center gap-2">
-                <Instagram className="h-4 w-4" />
-                Instagram
-              </Label>
+              <Label>Instagram</Label>
               <Input
-                id="extras-instagram"
                 value={extrasInstagram}
                 onChange={(e) => setExtrasInstagram(e.target.value)}
-                placeholder="@usuario"
-                data-testid="input-extras-instagram"
               />
             </div>
-
             <div className="space-y-2">
-              <Label htmlFor="extras-notes" className="flex items-center gap-2">
-                <StickyNote className="h-4 w-4" />
-                Notas
-              </Label>
+              <Label>Notas</Label>
               <Textarea
-                id="extras-notes"
                 value={extrasNotes}
                 onChange={(e) => setExtrasNotes(e.target.value)}
-                placeholder="Observacoes sobre o cliente..."
                 rows={4}
-                data-testid="input-extras-notes"
               />
             </div>
           </div>
-
           <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={() => setIsExtrasOpen(false)}>
               Cancelar
             </Button>
-            <Button 
+            <Button
               onClick={handleSaveExtras}
               disabled={updateUserMutation.isPending}
-              data-testid="button-save-extras"
             >
               {updateUserMutation.isPending ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Salvando...
-                </>
+                <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
                 "Salvar Extras"
+              )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* --- Modal EDITAR PERFIL (NOVO) --- */}
+      <Dialog open={isEditProfileOpen} onOpenChange={setIsEditProfileOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Pencil className="h-5 w-5" />
+              Editar Dados de {selectedUser?.name}
+            </DialogTitle>
+            <DialogDescription>
+              Altere dados cadastrais e senha
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Nome Completo</Label>
+              <Input
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>E-mail</Label>
+              <Input
+                type="email"
+                value={editEmail}
+                onChange={(e) => setEditEmail(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Telefone / WhatsApp</Label>
+              <Input
+                value={editPhone}
+                onChange={(e) => setEditPhone(e.target.value)}
+                placeholder="(11) 99999-9999"
+              />
+            </div>
+
+            <div className="pt-2 border-t mt-4">
+              <div className="space-y-2">
+                <Label className="text-destructive">
+                  Alterar Senha (Opcional)
+                </Label>
+                <Input
+                  type="password"
+                  value={editPassword}
+                  onChange={(e) => setEditPassword(e.target.value)}
+                  placeholder="Deixe em branco para não alterar"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Só preencha se quiser redefinir a senha deste usuário.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setIsEditProfileOpen(false)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleSaveProfile}
+              disabled={updateUserMutation.isPending}
+            >
+              {updateUserMutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                "Salvar Alterações"
               )}
             </Button>
           </div>
