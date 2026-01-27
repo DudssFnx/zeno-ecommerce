@@ -1,3 +1,14 @@
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -49,6 +60,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import type { Category, Product as SchemaProduct } from "@shared/schema";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
+  AlertCircle,
   ArrowLeft,
   Barcode,
   Boxes,
@@ -97,11 +109,11 @@ interface ProductData {
 }
 
 const productSchema = z.object({
-  name: z.string().min(1, "Nome e obrigatorio"),
-  sku: z.string().min(1, "SKU e obrigatorio"),
+  name: z.string().min(1, "Nome é obrigatório"),
+  sku: z.string().min(1, "SKU é obrigatório"),
   categoryId: z.string().optional(),
   brand: z.string().optional(),
-  price: z.coerce.number().min(0, "Preco deve ser positivo"),
+  price: z.coerce.number().min(0, "Preço não pode ser negativo"),
   cost: z.coerce
     .number()
     .min(0, "Custo deve ser positivo")
@@ -149,6 +161,18 @@ type ProductFormValues = z.infer<typeof productSchema>;
 
 const PRODUCTS_PER_PAGE = 50;
 
+const fieldLabels: Record<string, string> = {
+  name: "Nome do Produto",
+  sku: "Código (SKU)",
+  price: "Preço de Venda",
+  stock: "Estoque",
+  cost: "Custo",
+  weight: "Peso",
+  width: "Largura",
+  height: "Altura",
+  depth: "Profundidade",
+};
+
 export default function ProductsPage() {
   const { toast } = useToast();
   const { isAdmin } = useAuth();
@@ -165,6 +189,14 @@ export default function ProductsPage() {
   const [activeFormTab, setActiveFormTab] = useState("dados");
   const [brandPopoverOpen, setBrandPopoverOpen] = useState(false);
   const [brandSearch, setBrandSearch] = useState("");
+
+  // States for Alert Dialog
+  const [isAlertOpen, setIsAlertOpen] = useState(false);
+  const [alertMessage, setAlertMessage] = useState("");
+  const [pendingData, setPendingData] = useState<ProductFormValues | null>(
+    null,
+  );
+
   const MAX_IMAGES = 5;
 
   const { data: productsResponse, isLoading } = useQuery<{
@@ -210,6 +242,7 @@ export default function ProductsPage() {
     categoryMap[cat.id] = cat.name;
   });
 
+  // Mapeamento dos produtos para o formato local
   const products: ProductData[] = productsData.map((p) => ({
     id: String(p.id),
     name: p.name,
@@ -221,7 +254,8 @@ export default function ProductsPage() {
     brand: p.brand || "",
     price: parseFloat(p.price),
     cost: p.cost ? parseFloat(p.cost) : null,
-    stock: p.stock,
+    // CORREÇÃO CRÍTICA: Garante que o estoque seja 0 se vier null/undefined do banco
+    stock: p.stock ?? 0,
     description: p.description,
     image: p.image,
     images: p.images || null,
@@ -262,13 +296,11 @@ export default function ProductsPage() {
     return matchesSearch && matchesCategory && matchesBrand;
   });
 
-  // Pagination logic
   const totalPages = Math.ceil(filteredProducts.length / PRODUCTS_PER_PAGE);
   const startIndex = (currentPage - 1) * PRODUCTS_PER_PAGE;
   const endIndex = startIndex + PRODUCTS_PER_PAGE;
   const paginatedProducts = filteredProducts.slice(startIndex, endIndex);
 
-  // Reset to page 1 when filters change
   const handleSearchChange = (value: string) => {
     setSearchQuery(value);
     setCurrentPage(1);
@@ -288,7 +320,7 @@ export default function ProductsPage() {
     if (imageUrls.length >= MAX_IMAGES) {
       toast({
         title: "Limite atingido",
-        description: `Maximo de ${MAX_IMAGES} imagens por produto.`,
+        description: `Máximo de ${MAX_IMAGES} imagens por produto.`,
         variant: "destructive",
       });
       return;
@@ -569,7 +601,7 @@ export default function ProductsPage() {
       (p) => p.id === parseInt(product.id),
     );
     form.reset({
-      name: product.name + " (Copia)",
+      name: product.name + " (Cópia)",
       sku: newSku,
       categoryId: product.categoryId ? String(product.categoryId) : "",
       brand: product.brand,
@@ -612,7 +644,7 @@ export default function ProductsPage() {
     setViewMode("form");
   };
 
-  const handleSubmit = (values: ProductFormValues) => {
+  const executeSubmit = (values: ProductFormValues) => {
     if (editingProduct) {
       updateProductMutation.mutate(
         { id: editingProduct.id, data: values },
@@ -620,6 +652,7 @@ export default function ProductsPage() {
           onSuccess: () => {
             toast({ title: "Produto atualizado", description: values.name });
             setViewMode("list");
+            setPendingData(null);
           },
           onError: (error: Error) => {
             const desc = isAdmin
@@ -634,6 +667,7 @@ export default function ProductsPage() {
         onSuccess: () => {
           toast({ title: "Produto criado", description: values.name });
           setViewMode("list");
+          setPendingData(null);
         },
         onError: (error: Error) => {
           const desc = isAdmin
@@ -645,11 +679,41 @@ export default function ProductsPage() {
     }
   };
 
+  const handleSubmit = (values: ProductFormValues) => {
+    const isZeroStock = values.stock === 0;
+    const isZeroPrice = values.price === 0;
+
+    const costValue =
+      typeof values.cost === "number" ? values.cost : Number(values.cost || 0);
+    const isCostHigher = costValue > values.price;
+
+    if (isZeroStock || isZeroPrice || isCostHigher) {
+      const warnings = [];
+
+      if (isZeroPrice) warnings.push("Preço R$ 0,00");
+      if (isZeroStock) warnings.push("Estoque zerado");
+      if (isCostHigher) warnings.push("Custo maior que o Preço de Venda");
+
+      let msg = "";
+      if (warnings.length === 1) {
+        msg = `O produto possui ${warnings[0]}.`;
+      } else {
+        msg = `O produto possui: ${warnings.join(", ")}.`;
+      }
+
+      setAlertMessage(msg);
+      setPendingData(values);
+      setIsAlertOpen(true);
+    } else {
+      executeSubmit(values);
+    }
+  };
+
   const handleDelete = (product: ProductData) => {
     if (!window.confirm(`Excluir "${product.name}"?`)) return;
     deleteProductMutation.mutate(product.id, {
       onSuccess: () => {
-        toast({ title: "Produto excluido", description: product.name });
+        toast({ title: "Produto excluído", description: product.name });
       },
       onError: (error: Error) => {
         const desc = isAdmin
@@ -667,10 +731,48 @@ export default function ProductsPage() {
     }).format(price);
   };
 
+  const getTabErrors = (tabName: string) => {
+    const errors = form.formState.errors;
+    switch (tabName) {
+      case "dados":
+        return (
+          errors.name ||
+          errors.sku ||
+          errors.brand ||
+          errors.categoryId ||
+          errors.description
+        );
+      case "precos":
+        return errors.price || errors.cost;
+      case "estoque":
+        return errors.stock;
+      case "dimensoes":
+        return errors.weight || errors.width || errors.height || errors.depth;
+      case "fiscal":
+        return (
+          errors.ncm ||
+          errors.cest ||
+          errors.taxOrigin ||
+          errors.icmsCst ||
+          errors.icmsAliquota ||
+          errors.ipiCst ||
+          errors.ipiAliquota ||
+          errors.pisCst ||
+          errors.pisAliquota ||
+          errors.cofinsCst ||
+          errors.cofinsAliquota
+        );
+      default:
+        return false;
+    }
+  };
+
   const isPending =
     createProductMutation.isPending || updateProductMutation.isPending;
 
   if (viewMode === "form") {
+    const formErrors = Object.keys(form.formState.errors);
+
     return (
       <div className="h-full flex flex-col bg-background">
         <div className="border-b p-4">
@@ -713,39 +815,78 @@ export default function ProductsPage() {
           <div className="flex-1 overflow-auto p-6">
             <Form {...form}>
               <form className="space-y-6 max-w-4xl">
+                {formErrors.length > 0 && (
+                  <Alert variant="destructive" className="mb-4">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertTitle>Erro de Validação</AlertTitle>
+                    <AlertDescription>
+                      <ul className="list-disc pl-4 mt-2">
+                        {formErrors.map((key) => (
+                          <li key={key}>
+                            {fieldLabels[key] || key}:{" "}
+                            {form.formState.errors[
+                              key as keyof ProductFormValues
+                            ]?.message?.toString()}
+                          </li>
+                        ))}
+                      </ul>
+                    </AlertDescription>
+                  </Alert>
+                )}
+
                 <Tabs value={activeFormTab} onValueChange={setActiveFormTab}>
-                  <TabsList className="mb-4">
-                    <TabsTrigger value="dados" className="gap-2">
-                      <Package className="h-4 w-4" />
-                      Dados
-                    </TabsTrigger>
-                    <TabsTrigger value="precos" className="gap-2">
-                      <DollarSign className="h-4 w-4" />
-                      Precos
-                    </TabsTrigger>
-                    <TabsTrigger value="estoque" className="gap-2">
-                      <Boxes className="h-4 w-4" />
-                      Estoque
-                    </TabsTrigger>
-                    <TabsTrigger value="imagens" className="gap-2">
-                      <ImageIcon className="h-4 w-4" />
-                      Imagens
-                    </TabsTrigger>
-                    <TabsTrigger value="dimensoes" className="gap-2">
-                      <Ruler className="h-4 w-4" />
-                      Dimensoes
-                    </TabsTrigger>
-                    <TabsTrigger value="fiscal" className="gap-2">
-                      <FileText className="h-4 w-4" />
-                      Fiscal
-                    </TabsTrigger>
+                  <TabsList className="mb-4 flex flex-wrap h-auto">
+                    {[
+                      {
+                        value: "dados",
+                        icon: Package,
+                        label: "Dados",
+                      },
+                      {
+                        value: "precos",
+                        icon: DollarSign,
+                        label: "Preços",
+                      },
+                      {
+                        value: "estoque",
+                        icon: Boxes,
+                        label: "Estoque",
+                      },
+                      {
+                        value: "imagens",
+                        icon: ImageIcon,
+                        label: "Imagens",
+                      },
+                      {
+                        value: "dimensoes",
+                        icon: Ruler,
+                        label: "Dimensões",
+                      },
+                      {
+                        value: "fiscal",
+                        icon: FileText,
+                        label: "Fiscal",
+                      },
+                    ].map((tab) => (
+                      <TabsTrigger
+                        key={tab.value}
+                        value={tab.value}
+                        className="gap-2 relative"
+                      >
+                        <tab.icon className="h-4 w-4" />
+                        {tab.label}
+                        {getTabErrors(tab.value) && (
+                          <AlertCircle className="h-3 w-3 text-red-500 absolute -top-1 -right-1 fill-white" />
+                        )}
+                      </TabsTrigger>
+                    ))}
                   </TabsList>
 
                   <TabsContent value="dados" className="space-y-4">
                     <Card>
                       <CardHeader className="pb-4">
                         <CardTitle className="text-base">
-                          Informacoes Basicas
+                          Informações Básicas
                         </CardTitle>
                       </CardHeader>
                       <CardContent className="space-y-4">
@@ -758,6 +899,7 @@ export default function ProductsPage() {
                               <FormControl>
                                 <Input
                                   {...field}
+                                  value={field.value ?? ""}
                                   placeholder="Ex: Camiseta Polo Masculina"
                                   data-testid="input-product-name"
                                 />
@@ -773,10 +915,11 @@ export default function ProductsPage() {
                             name="sku"
                             render={({ field }) => (
                               <FormItem>
-                                <FormLabel>Codigo (SKU) *</FormLabel>
+                                <FormLabel>Código (SKU) *</FormLabel>
                                 <FormControl>
                                   <Input
                                     {...field}
+                                    value={field.value ?? ""}
                                     placeholder="Ex: CAM-001"
                                     data-testid="input-product-sku"
                                   />
@@ -954,11 +1097,12 @@ export default function ProductsPage() {
                           name="description"
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel>Descricao</FormLabel>
+                              <FormLabel>Descrição</FormLabel>
                               <FormControl>
                                 <Textarea
                                   {...field}
-                                  placeholder="Descreva as caracteristicas do produto..."
+                                  value={field.value ?? ""}
+                                  placeholder="Descreva as características do produto..."
                                   className="min-h-[120px]"
                                   data-testid="input-product-description"
                                 />
@@ -976,7 +1120,7 @@ export default function ProductsPage() {
                               <div className="space-y-0.5">
                                 <FormLabel>Produto em Destaque</FormLabel>
                                 <p className="text-sm text-muted-foreground">
-                                  Exibir na secao de destaques do catalogo
+                                  Exibir na seção de destaques do catálogo
                                 </p>
                               </div>
                               <FormControl>
@@ -1005,7 +1149,7 @@ export default function ProductsPage() {
                             name="price"
                             render={({ field }) => (
                               <FormItem>
-                                <FormLabel>Preco de Venda *</FormLabel>
+                                <FormLabel>Preço de Venda *</FormLabel>
                                 <FormControl>
                                   <div className="relative">
                                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
@@ -1013,6 +1157,7 @@ export default function ProductsPage() {
                                     </span>
                                     <Input
                                       {...field}
+                                      value={field.value ?? ""}
                                       type="number"
                                       step="0.01"
                                       min="0"
@@ -1039,6 +1184,7 @@ export default function ProductsPage() {
                                     </span>
                                     <Input
                                       {...field}
+                                      value={field.value ?? ""}
                                       type="number"
                                       step="0.01"
                                       min="0"
@@ -1101,6 +1247,7 @@ export default function ProductsPage() {
                               <FormControl>
                                 <Input
                                   {...field}
+                                  value={field.value ?? ""}
                                   type="number"
                                   min="0"
                                   className="max-w-[200px]"
@@ -1182,8 +1329,8 @@ export default function ProductsPage() {
                         </div>
 
                         <p className="text-xs text-muted-foreground">
-                          Formatos: JPG, PNG, WebP, GIF. Maximo 5 imagens. A
-                          primeira sera a imagem principal.
+                          Formatos: JPG, PNG, WebP, GIF. Máximo 5 imagens. A
+                          primeira será a imagem principal.
                         </p>
                       </CardContent>
                     </Card>
@@ -1196,7 +1343,7 @@ export default function ProductsPage() {
                           Medidas e Peso
                         </CardTitle>
                         <p className="text-sm text-muted-foreground">
-                          Informacoes para calculo de frete e logistica
+                          Informações para cálculo de frete e logística
                         </p>
                       </CardHeader>
                       <CardContent className="space-y-4">
@@ -1209,6 +1356,7 @@ export default function ProductsPage() {
                               <FormControl>
                                 <Input
                                   {...field}
+                                  value={field.value ?? ""}
                                   type="number"
                                   step="0.001"
                                   min="0"
@@ -1234,6 +1382,7 @@ export default function ProductsPage() {
                                 <FormControl>
                                   <Input
                                     {...field}
+                                    value={field.value ?? ""}
                                     type="number"
                                     step="0.01"
                                     min="0"
@@ -1255,6 +1404,7 @@ export default function ProductsPage() {
                                 <FormControl>
                                   <Input
                                     {...field}
+                                    value={field.value ?? ""}
                                     type="number"
                                     step="0.01"
                                     min="0"
@@ -1276,6 +1426,7 @@ export default function ProductsPage() {
                                 <FormControl>
                                   <Input
                                     {...field}
+                                    value={field.value ?? ""}
                                     type="number"
                                     step="0.01"
                                     min="0"
@@ -1297,7 +1448,7 @@ export default function ProductsPage() {
                       <CardHeader className="pb-4">
                         <CardTitle className="text-base flex items-center gap-2">
                           <Barcode className="h-4 w-4" />
-                          Codigos de Barras
+                          Códigos de Barras
                         </CardTitle>
                       </CardHeader>
                       <CardContent className="space-y-4">
@@ -1311,6 +1462,7 @@ export default function ProductsPage() {
                                 <FormControl>
                                   <Input
                                     {...field}
+                                    value={field.value ?? ""}
                                     placeholder="Ex: 7891234567890"
                                     data-testid="input-product-gtin"
                                   />
@@ -1324,10 +1476,11 @@ export default function ProductsPage() {
                             name="gtinTributario"
                             render={({ field }) => (
                               <FormItem>
-                                <FormLabel>GTIN/EAN Tributario</FormLabel>
+                                <FormLabel>GTIN/EAN Tributário</FormLabel>
                                 <FormControl>
                                   <Input
                                     {...field}
+                                    value={field.value ?? ""}
                                     placeholder="Ex: 7891234567890"
                                     data-testid="input-product-gtin-tributario"
                                   />
@@ -1343,7 +1496,7 @@ export default function ProductsPage() {
                     <Card>
                       <CardHeader className="pb-4">
                         <CardTitle className="text-base">
-                          Classificacao Fiscal
+                          Classificação Fiscal
                         </CardTitle>
                       </CardHeader>
                       <CardContent className="space-y-4">
@@ -1357,6 +1510,7 @@ export default function ProductsPage() {
                                 <FormControl>
                                   <Input
                                     {...field}
+                                    value={field.value ?? ""}
                                     placeholder="Ex: 6109.10.00"
                                     data-testid="input-product-ncm"
                                   />
@@ -1374,6 +1528,7 @@ export default function ProductsPage() {
                                 <FormControl>
                                   <Input
                                     {...field}
+                                    value={field.value ?? ""}
                                     placeholder="Ex: 28.038.00"
                                     data-testid="input-product-cest"
                                   />
@@ -1403,7 +1558,7 @@ export default function ProductsPage() {
                                     0 - Nacional
                                   </SelectItem>
                                   <SelectItem value="1">
-                                    1 - Estrangeira - Importacao direta
+                                    1 - Estrangeira - Importação direta
                                   </SelectItem>
                                   <SelectItem value="2">
                                     2 - Estrangeira - Adquirida no mercado
@@ -1411,19 +1566,19 @@ export default function ProductsPage() {
                                   </SelectItem>
                                   <SelectItem value="3">
                                     3 - Nacional - Mercadoria ou bem com
-                                    conteudo de importacao superior a 40%
+                                    conteúdo de importação superior a 40%
                                   </SelectItem>
                                   <SelectItem value="4">
-                                    4 - Nacional - Producao em conformidade com
+                                    4 - Nacional - Produção em conformidade com
                                     PPB
                                   </SelectItem>
                                   <SelectItem value="5">
                                     5 - Nacional - Mercadoria ou bem com
-                                    conteudo de importacao inferior ou igual a
+                                    conteúdo de importação inferior ou igual a
                                     40%
                                   </SelectItem>
                                   <SelectItem value="6">
-                                    6 - Estrangeira - Importacao direta, sem
+                                    6 - Estrangeira - Importação direta, sem
                                     similar nacional, constante em lista da
                                     CAMEX
                                   </SelectItem>
@@ -1434,7 +1589,7 @@ export default function ProductsPage() {
                                   </SelectItem>
                                   <SelectItem value="8">
                                     8 - Nacional - Mercadoria ou bem com
-                                    conteudo de importacao superior a 70%
+                                    conteúdo de importação superior a 70%
                                   </SelectItem>
                                 </SelectContent>
                               </Select>
@@ -1471,23 +1626,23 @@ export default function ProductsPage() {
                                       00 - Tributada integralmente
                                     </SelectItem>
                                     <SelectItem value="10">
-                                      10 - Tributada com cobranca de ICMS por ST
+                                      10 - Tributada com cobrança de ICMS por ST
                                     </SelectItem>
                                     <SelectItem value="20">
-                                      20 - Com reducao de base de calculo
+                                      20 - Com redução de base de cálculo
                                     </SelectItem>
                                     <SelectItem value="30">
-                                      30 - Isenta ou nao tributada com cobranca
+                                      30 - Isenta ou não tributada com cobrança
                                       de ICMS por ST
                                     </SelectItem>
                                     <SelectItem value="40">
                                       40 - Isenta
                                     </SelectItem>
                                     <SelectItem value="41">
-                                      41 - Nao tributada
+                                      41 - Não tributada
                                     </SelectItem>
                                     <SelectItem value="50">
-                                      50 - Suspensao
+                                      50 - Suspensão
                                     </SelectItem>
                                     <SelectItem value="51">
                                       51 - Diferimento
@@ -1496,8 +1651,8 @@ export default function ProductsPage() {
                                       60 - ICMS cobrado anteriormente por ST
                                     </SelectItem>
                                     <SelectItem value="70">
-                                      70 - Com reducao de base de calculo e
-                                      cobranca de ICMS por ST
+                                      70 - Com redução de base de cálculo e
+                                      cobrança de ICMS por ST
                                     </SelectItem>
                                     <SelectItem value="90">
                                       90 - Outras
@@ -1513,10 +1668,11 @@ export default function ProductsPage() {
                             name="icmsAliquota"
                             render={({ field }) => (
                               <FormItem>
-                                <FormLabel>Aliquota ICMS (%)</FormLabel>
+                                <FormLabel>Alíquota ICMS (%)</FormLabel>
                                 <FormControl>
                                   <Input
                                     {...field}
+                                    value={field.value ?? ""}
                                     type="number"
                                     step="0.01"
                                     min="0"
@@ -1555,46 +1711,46 @@ export default function ProductsPage() {
                                   </FormControl>
                                   <SelectContent>
                                     <SelectItem value="00">
-                                      00 - Entrada com recuperacao de credito
+                                      00 - Entrada com recuperação de crédito
                                     </SelectItem>
                                     <SelectItem value="01">
-                                      01 - Entrada tributada com aliquota zero
+                                      01 - Entrada tributada com alíquota zero
                                     </SelectItem>
                                     <SelectItem value="02">
                                       02 - Entrada isenta
                                     </SelectItem>
                                     <SelectItem value="03">
-                                      03 - Entrada nao tributada
+                                      03 - Entrada não tributada
                                     </SelectItem>
                                     <SelectItem value="04">
                                       04 - Entrada imune
                                     </SelectItem>
                                     <SelectItem value="05">
-                                      05 - Entrada com suspensao
+                                      05 - Entrada com suspensão
                                     </SelectItem>
                                     <SelectItem value="49">
                                       49 - Outras entradas
                                     </SelectItem>
                                     <SelectItem value="50">
-                                      50 - Saida tributada
+                                      50 - Saída tributada
                                     </SelectItem>
                                     <SelectItem value="51">
-                                      51 - Saida tributada com aliquota zero
+                                      51 - Saída tributada com alíquota zero
                                     </SelectItem>
                                     <SelectItem value="52">
-                                      52 - Saida isenta
+                                      52 - Saída isenta
                                     </SelectItem>
                                     <SelectItem value="53">
-                                      53 - Saida nao tributada
+                                      53 - Saída não tributada
                                     </SelectItem>
                                     <SelectItem value="54">
-                                      54 - Saida imune
+                                      54 - Saída imune
                                     </SelectItem>
                                     <SelectItem value="55">
-                                      55 - Saida com suspensao
+                                      55 - Saída com suspensão
                                     </SelectItem>
                                     <SelectItem value="99">
-                                      99 - Outras saidas
+                                      99 - Outras saídas
                                     </SelectItem>
                                   </SelectContent>
                                 </Select>
@@ -1607,10 +1763,11 @@ export default function ProductsPage() {
                             name="ipiAliquota"
                             render={({ field }) => (
                               <FormItem>
-                                <FormLabel>Aliquota IPI (%)</FormLabel>
+                                <FormLabel>Alíquota IPI (%)</FormLabel>
                                 <FormControl>
                                   <Input
                                     {...field}
+                                    value={field.value ?? ""}
                                     type="number"
                                     step="0.01"
                                     min="0"
@@ -1649,43 +1806,43 @@ export default function ProductsPage() {
                                   </FormControl>
                                   <SelectContent>
                                     <SelectItem value="01">
-                                      01 - Operacao tributavel com aliquota
-                                      basica
+                                      01 - Operação tributável com alíquota
+                                      básica
                                     </SelectItem>
                                     <SelectItem value="02">
-                                      02 - Operacao tributavel com aliquota
+                                      02 - Operação tributável com alíquota
                                       diferenciada
                                     </SelectItem>
                                     <SelectItem value="03">
-                                      03 - Operacao tributavel com aliquota por
+                                      03 - Operação tributável com alíquota por
                                       unidade de medida de produto
                                     </SelectItem>
                                     <SelectItem value="04">
-                                      04 - Operacao tributavel monofasica -
-                                      revenda a aliquota zero
+                                      04 - Operação tributável monofásica -
+                                      revenda a alíquota zero
                                     </SelectItem>
                                     <SelectItem value="05">
-                                      05 - Operacao tributavel por ST
+                                      05 - Operação tributável por ST
                                     </SelectItem>
                                     <SelectItem value="06">
-                                      06 - Operacao tributavel a aliquota zero
+                                      06 - Operação tributável a alíquota zero
                                     </SelectItem>
                                     <SelectItem value="07">
-                                      07 - Operacao isenta da contribuicao
+                                      07 - Operação isenta da contribuição
                                     </SelectItem>
                                     <SelectItem value="08">
-                                      08 - Operacao sem incidencia da
-                                      contribuicao
+                                      08 - Operação sem incidência da
+                                      contribuição
                                     </SelectItem>
                                     <SelectItem value="09">
-                                      09 - Operacao com suspensao da
-                                      contribuicao
+                                      09 - Operação com suspensão da
+                                      contribuição
                                     </SelectItem>
                                     <SelectItem value="49">
-                                      49 - Outras operacoes de saida
+                                      49 - Outras operações de saída
                                     </SelectItem>
                                     <SelectItem value="99">
-                                      99 - Outras operacoes
+                                      99 - Outras operações
                                     </SelectItem>
                                   </SelectContent>
                                 </Select>
@@ -1698,10 +1855,11 @@ export default function ProductsPage() {
                             name="pisAliquota"
                             render={({ field }) => (
                               <FormItem>
-                                <FormLabel>Aliquota PIS (%)</FormLabel>
+                                <FormLabel>Alíquota PIS (%)</FormLabel>
                                 <FormControl>
                                   <Input
                                     {...field}
+                                    value={field.value ?? ""}
                                     type="number"
                                     step="0.01"
                                     min="0"
@@ -1732,43 +1890,43 @@ export default function ProductsPage() {
                                   </FormControl>
                                   <SelectContent>
                                     <SelectItem value="01">
-                                      01 - Operacao tributavel com aliquota
-                                      basica
+                                      01 - Operação tributável com alíquota
+                                      básica
                                     </SelectItem>
                                     <SelectItem value="02">
-                                      02 - Operacao tributavel com aliquota
+                                      02 - Operação tributável com alíquota
                                       diferenciada
                                     </SelectItem>
                                     <SelectItem value="03">
-                                      03 - Operacao tributavel com aliquota por
+                                      03 - Operação tributável com alíquota por
                                       unidade de medida de produto
                                     </SelectItem>
                                     <SelectItem value="04">
-                                      04 - Operacao tributavel monofasica -
-                                      revenda a aliquota zero
+                                      04 - Operação tributável monofásica -
+                                      revenda a alíquota zero
                                     </SelectItem>
                                     <SelectItem value="05">
-                                      05 - Operacao tributavel por ST
+                                      05 - Operação tributável por ST
                                     </SelectItem>
                                     <SelectItem value="06">
-                                      06 - Operacao tributavel a aliquota zero
+                                      06 - Operação tributável a alíquota zero
                                     </SelectItem>
                                     <SelectItem value="07">
-                                      07 - Operacao isenta da contribuicao
+                                      07 - Operação isenta da contribuição
                                     </SelectItem>
                                     <SelectItem value="08">
-                                      08 - Operacao sem incidencia da
-                                      contribuicao
+                                      08 - Operação sem incidência da
+                                      contribuição
                                     </SelectItem>
                                     <SelectItem value="09">
-                                      09 - Operacao com suspensao da
-                                      contribuicao
+                                      09 - Operação com suspensão da
+                                      contribuição
                                     </SelectItem>
                                     <SelectItem value="49">
-                                      49 - Outras operacoes de saida
+                                      49 - Outras operações de saída
                                     </SelectItem>
                                     <SelectItem value="99">
-                                      99 - Outras operacoes
+                                      99 - Outras operações
                                     </SelectItem>
                                   </SelectContent>
                                 </Select>
@@ -1781,10 +1939,11 @@ export default function ProductsPage() {
                             name="cofinsAliquota"
                             render={({ field }) => (
                               <FormItem>
-                                <FormLabel>Aliquota COFINS (%)</FormLabel>
+                                <FormLabel>Alíquota COFINS (%)</FormLabel>
                                 <FormControl>
                                   <Input
                                     {...field}
+                                    value={field.value ?? ""}
                                     type="number"
                                     step="0.01"
                                     min="0"
@@ -1839,6 +1998,34 @@ export default function ProductsPage() {
             </Card>
           </div>
         </div>
+
+        {/* --- CONFIRMATION DIALOG (NEW) --- */}
+        <AlertDialog open={isAlertOpen} onOpenChange={setIsAlertOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Confirmação de Dados</AlertDialogTitle>
+              <AlertDialogDescription>{alertMessage}</AlertDialogDescription>
+              <AlertDialogDescription>
+                Tem certeza que deseja salvar mesmo assim?
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => {
+                  if (pendingData) {
+                    executeSubmit(pendingData);
+                  }
+                  setIsAlertOpen(false);
+                }}
+                className="bg-orange-500 hover:bg-orange-600"
+              >
+                Confirmar
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+        {/* ---------------------------------- */}
       </div>
     );
   }
@@ -1849,7 +2036,7 @@ export default function ProductsPage() {
         <div>
           <h1 className="text-2xl font-bold">Produtos</h1>
           <p className="text-muted-foreground">
-            Gerencie seu catalogo de produtos
+            Gerencie seu catálogo de produtos
           </p>
         </div>
         <Button
@@ -1866,7 +2053,7 @@ export default function ProductsPage() {
         <div className="relative flex-1 min-w-[200px] max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Buscar por nome ou codigo..."
+            placeholder="Buscar por nome ou código..."
             value={searchQuery}
             onChange={(e) => handleSearchChange(e.target.value)}
             className="pl-9"
@@ -1904,7 +2091,7 @@ export default function ProductsPage() {
         </Select>
         <p className="text-sm text-muted-foreground">
           {filteredProducts.length} produto(s)
-          {totalPages > 1 && ` - Pagina ${currentPage} de ${totalPages}`}
+          {totalPages > 1 && ` - Página ${currentPage} de ${totalPages}`}
         </p>
       </div>
 
@@ -1939,10 +2126,10 @@ export default function ProductsPage() {
             <TableHeader>
               <TableRow className="bg-muted/50">
                 <TableHead className="w-16"></TableHead>
-                <TableHead>Codigo</TableHead>
+                <TableHead>Código</TableHead>
                 <TableHead>Produto</TableHead>
                 <TableHead>Categoria</TableHead>
-                <TableHead className="text-right">Preco</TableHead>
+                <TableHead className="text-right">Preço</TableHead>
                 <TableHead className="text-right">Estoque</TableHead>
                 <TableHead className="w-[120px]"></TableHead>
               </TableRow>
@@ -1993,7 +2180,8 @@ export default function ProductsPage() {
                           : ""
                       }
                     >
-                      {product.stock}
+                      {/* Correção visual para garantir que o 0 apareça */}
+                      {product.stock ?? 0}
                     </span>
                   </TableCell>
                   <TableCell onClick={(e) => e.stopPropagation()}>
@@ -2097,7 +2285,7 @@ export default function ProductsPage() {
               disabled={currentPage === totalPages}
               data-testid="button-next-page"
             >
-              Proxima
+              Próxima
               <ChevronRight className="h-4 w-4 ml-1" />
             </Button>
           </div>

@@ -1,10 +1,34 @@
-import { pgTable, serial, varchar, text, decimal, boolean, timestamp, pgEnum } from "drizzle-orm/pg-core";
+import {
+  decimal,
+  integer,
+  pgEnum,
+  pgTable,
+  serial,
+  text,
+  timestamp,
+  varchar,
+} from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
-export const unidadeMedidaEnum = pgEnum("unidade_medida", ["UN", "CX", "KG", "MT", "PC", "LT"]);
-export const productStatusEnum = pgEnum("product_status", ["ATIVO", "INATIVO", "DESCONTINUADO"]);
-export const disponibilidadeEnum = pgEnum("disponibilidade", ["DISPONIVEL", "INDISPONIVEL", "SOB_CONSULTA"]);
+export const unidadeMedidaEnum = pgEnum("unidade_medida", [
+  "UN",
+  "CX",
+  "KG",
+  "MT",
+  "PC",
+  "LT",
+]);
+export const productStatusEnum = pgEnum("product_status", [
+  "ATIVO",
+  "INATIVO",
+  "DESCONTINUADO",
+]);
+export const disponibilidadeEnum = pgEnum("disponibilidade", [
+  "DISPONIVEL",
+  "INDISPONIVEL",
+  "SOB_CONSULTA",
+]);
 
 export const b2bProducts = pgTable("b2b_products", {
   id: serial("id").primaryKey(),
@@ -13,8 +37,14 @@ export const b2bProducts = pgTable("b2b_products", {
   unidadeMedida: unidadeMedidaEnum("unidade_medida").notNull().default("UN"),
   precoVarejo: decimal("preco_varejo", { precision: 10, scale: 2 }).notNull(),
   precoAtacado: decimal("preco_atacado", { precision: 10, scale: 2 }).notNull(),
+
+  // ADICIONADO: Coluna de estoque que criamos no banco
+  estoque: integer("estoque").default(0),
+
   status: productStatusEnum("status").notNull().default("ATIVO"),
-  disponibilidade: disponibilidadeEnum("disponibilidade").notNull().default("DISPONIVEL"),
+  disponibilidade: disponibilidadeEnum("disponibilidade")
+    .notNull()
+    .default("DISPONIVEL"),
   descricao: text("descricao"),
   imagem: text("imagem"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
