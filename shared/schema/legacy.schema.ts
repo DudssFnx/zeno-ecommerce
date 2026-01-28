@@ -1,5 +1,16 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, decimal, boolean, timestamp, serial, jsonb, index } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  decimal,
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  serial,
+  text,
+  timestamp,
+  varchar,
+} from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -14,27 +25,28 @@ export const sessions = pgTable(
   (table) => [index("IDX_session_expire").on(table.expire)],
 );
 
-// Users table - stores all users with role-based access
-// Includes Replit Auth fields plus custom B2B fields
+// Users table (Legacy)
 export const users = pgTable("users", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  companyId: varchar("company_id"), // Multi-tenant: links user to a company
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id"),
   email: text("email").unique(),
   password: text("password"),
   firstName: text("first_name"),
   lastName: text("last_name"),
   profileImageUrl: text("profile_image_url"),
-  role: text("role").notNull().default("customer"), // admin, sales, customer, supplier
+  role: text("role").notNull().default("customer"),
   allowedBrands: text("allowed_brands").array(),
-  customerType: text("customer_type").notNull().default("varejo"), // atacado, varejo
+  customerType: text("customer_type").notNull().default("varejo"),
   company: text("company"),
   approved: boolean("approved").notNull().default(false),
   phone: text("phone"),
-  personType: text("person_type"), // juridica, fisica
+  personType: text("person_type"),
   cnpj: text("cnpj"),
   cpf: text("cpf"),
-  tradingName: text("trading_name"), // Nome Fantasia
-  stateRegistration: text("state_registration"), // Inscrição Estadual
+  tradingName: text("trading_name"),
+  stateRegistration: text("state_registration"),
   cep: text("cep"),
   address: text("address"),
   addressNumber: text("address_number"),
@@ -60,10 +72,10 @@ export const insertUserSchema = createInsertSchema(users).omit({
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
 
-// Categories table with hierarchy support (parent/child)
+// Categories table
 export const categories = pgTable("categories", {
   id: serial("id").primaryKey(),
-  companyId: varchar("company_id"), // Multi-tenant: links category to a company
+  companyId: varchar("company_id"),
   name: text("name").notNull(),
   slug: text("slug").notNull().unique(),
   parentId: integer("parent_id"),
@@ -78,16 +90,27 @@ export const insertCategorySchema = createInsertSchema(categories).omit({
 export type InsertCategory = z.infer<typeof insertCategorySchema>;
 export type Category = typeof categories.$inferSelect;
 
-// Suppliers table
+// Suppliers table - ATUALIZADO companyId para integer para compatibilidade de filtro
 export const suppliers = pgTable("suppliers", {
   id: serial("id").primaryKey(),
-  companyId: varchar("company_id"), // Multi-tenant: links supplier to a company
+  companyId: integer("company_id"),
   name: text("name").notNull(),
   tradingName: text("trading_name"),
   cnpj: text("cnpj"),
   email: text("email"),
   phone: text("phone"),
-  contact: text("contact"),
+  contact: text("contact"), // Nome do contato principal
+
+  // --- NOVOS CAMPOS ---
+  paymentTerms: text("payment_terms"), // Ex: "30 dias", "15/30/45"
+  minOrderValue: decimal("min_order_value", {
+    precision: 10,
+    scale: 2,
+  }).default("0"),
+  leadTime: integer("lead_time"), // Prazo de entrega em dias
+  bankInfo: text("bank_info"), // Chave Pix ou dados bancários
+  // --------------------
+
   cep: text("cep"),
   address: text("address"),
   addressNumber: text("address_number"),
@@ -108,10 +131,10 @@ export const insertSupplierSchema = createInsertSchema(suppliers).omit({
 export type InsertSupplier = z.infer<typeof insertSupplierSchema>;
 export type Supplier = typeof suppliers.$inferSelect;
 
-// Products table
+// Products table (Legacy)
 export const products = pgTable("products", {
   id: serial("id").primaryKey(),
-  companyId: varchar("company_id"), // Multi-tenant: links product to a company
+  companyId: varchar("company_id"),
   name: text("name").notNull(),
   sku: text("sku").notNull().unique(),
   categoryId: integer("category_id").references(() => categories.id),
@@ -135,7 +158,10 @@ export const products = pgTable("products", {
   ncm: text("ncm"),
   cest: text("cest"),
   tipoItem: text("tipo_item"),
-  percentualTributos: decimal("percentual_tributos", { precision: 5, scale: 2 }),
+  percentualTributos: decimal("percentual_tributos", {
+    precision: 5,
+    scale: 2,
+  }),
   icmsCst: text("icms_cst"),
   icmsAliquota: decimal("icms_aliquota", { precision: 5, scale: 2 }),
   ipiCst: text("ipi_cst"),
@@ -144,9 +170,18 @@ export const products = pgTable("products", {
   pisAliquota: decimal("pis_aliquota", { precision: 5, scale: 2 }),
   cofinsCst: text("cofins_cst"),
   cofinsAliquota: decimal("cofins_aliquota", { precision: 5, scale: 2 }),
-  valorBaseIcmsStRetencao: decimal("valor_base_icms_st_retencao", { precision: 10, scale: 2 }),
-  valorIcmsStRetencao: decimal("valor_icms_st_retencao", { precision: 10, scale: 2 }),
-  valorIcmsProprioSubstituto: decimal("valor_icms_proprio_substituto", { precision: 10, scale: 2 }),
+  valorBaseIcmsStRetencao: decimal("valor_base_icms_st_retencao", {
+    precision: 10,
+    scale: 2,
+  }),
+  valorIcmsStRetencao: decimal("valor_icms_st_retencao", {
+    precision: 10,
+    scale: 2,
+  }),
+  valorIcmsProprioSubstituto: decimal("valor_icms_proprio_substituto", {
+    precision: 10,
+    scale: 2,
+  }),
   codigoExcecaoTipi: text("codigo_excecao_tipi"),
   valorPisFixo: decimal("valor_pis_fixo", { precision: 10, scale: 4 }),
   valorCofinsFixo: decimal("valor_cofins_fixo", { precision: 10, scale: 4 }),
@@ -162,45 +197,26 @@ export type InsertProduct = z.infer<typeof insertProductSchema>;
 export type Product = typeof products.$inferSelect;
 
 // Orders table
-// STATUS (affects stock - situação do pedido):
-// - ORCAMENTO: no stock impact
-// - PEDIDO_GERADO: stock RESERVED
-// - FATURADO: stock DEDUCTED + sent to ERP
-//
-// STAGE (organizational - Kanban interno, NÃO afeta estoque):
-// 1. AGUARDANDO_IMPRESSAO - Inicial
-// 2. PEDIDO_IMPRESSO - Após impressão
-// 3. PEDIDO_SEPARADO - Após separação física  
-// 4. COBRADO - Após cobrança
-// 5. CONFERIR_COMPROVANTE - Aguardando validação
-// 6. EM_CONFERENCIA - Em conferência
-// 7. AGUARDANDO_ENVIO - Pronto para despacho
-// 8. PEDIDO_ENVIADO - Finalizado
 export const orders = pgTable("orders", {
   id: serial("id").primaryKey(),
-  companyId: varchar("company_id"), // Multi-tenant: links order to a company
-  userId: varchar("user_id").references(() => users.id), // nullable for guest orders
+  companyId: varchar("company_id"),
+  userId: varchar("user_id").references(() => users.id),
   orderNumber: text("order_number").notNull().unique(),
   status: text("status").notNull().default("ORCAMENTO"),
   stage: text("stage").notNull().default("AGUARDANDO_IMPRESSAO"),
   subtotal: decimal("subtotal", { precision: 10, scale: 2 }),
   shippingCost: decimal("shipping_cost", { precision: 10, scale: 2 }),
   total: decimal("total", { precision: 10, scale: 2 }).notNull(),
-  // Guest checkout info (when no userId)
   isGuestOrder: boolean("is_guest_order").notNull().default(false),
   guestCpf: text("guest_cpf"),
   guestName: text("guest_name"),
   guestEmail: text("guest_email"),
   guestPhone: text("guest_phone"),
-  // Shipping info
   shippingAddress: text("shipping_address"),
   shippingMethod: text("shipping_method"),
-  // Payment info
   paymentMethod: text("payment_method"),
   paymentTypeId: integer("payment_type_id"),
   paymentNotes: text("payment_notes"),
-  // Fiado (store credit) installment configuration
-  // Format: [{ installment: 1, dueDate: "2024-01-15", amount: 100.00 }, ...]
   fiadoInstallments: jsonb("fiado_installments"),
   notes: text("notes"),
   printed: boolean("printed").notNull().default(false),
@@ -225,8 +241,12 @@ export type Order = typeof orders.$inferSelect;
 // Order Items table
 export const orderItems = pgTable("order_items", {
   id: serial("id").primaryKey(),
-  orderId: integer("order_id").notNull().references(() => orders.id),
-  productId: integer("product_id").notNull().references(() => products.id),
+  orderId: integer("order_id")
+    .notNull()
+    .references(() => orders.id),
+  productId: integer("product_id")
+    .notNull()
+    .references(() => products.id),
   quantity: integer("quantity").notNull(),
   price: decimal("price", { precision: 10, scale: 2 }).notNull(),
 });
@@ -238,12 +258,15 @@ export const insertOrderItemSchema = createInsertSchema(orderItems).omit({
 export type InsertOrderItem = z.infer<typeof insertOrderItemSchema>;
 export type OrderItem = typeof orderItems.$inferSelect;
 
-// Customer Price Tables - Personalized pricing per customer (like Mercos)
+// Price Tables
 export const priceTables = pgTable("price_tables", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   description: text("description"),
-  discountPercent: decimal("discount_percent", { precision: 5, scale: 2 }).default("0"),
+  discountPercent: decimal("discount_percent", {
+    precision: 5,
+    scale: 2,
+  }).default("0"),
   isDefault: boolean("is_default").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
@@ -256,29 +279,38 @@ export const insertPriceTableSchema = createInsertSchema(priceTables).omit({
 export type InsertPriceTable = z.infer<typeof insertPriceTableSchema>;
 export type PriceTable = typeof priceTables.$inferSelect;
 
-// Customer-specific product prices
+// Customer Prices
 export const customerPrices = pgTable("customer_prices", {
   id: serial("id").primaryKey(),
-  userId: varchar("user_id").notNull().references(() => users.id),
-  productId: integer("product_id").notNull().references(() => products.id),
+  userId: varchar("user_id")
+    .notNull()
+    .references(() => users.id),
+  productId: integer("product_id")
+    .notNull()
+    .references(() => products.id),
   customPrice: decimal("custom_price", { precision: 10, scale: 2 }).notNull(),
 });
 
-export const insertCustomerPriceSchema = createInsertSchema(customerPrices).omit({
+export const insertCustomerPriceSchema = createInsertSchema(
+  customerPrices,
+).omit({
   id: true,
 });
 
 export type InsertCustomerPrice = z.infer<typeof insertCustomerPriceSchema>;
 export type CustomerPrice = typeof customerPrices.$inferSelect;
 
-// Coupons and promotions (like Mercos)
+// Coupons
 export const coupons = pgTable("coupons", {
   id: serial("id").primaryKey(),
-  companyId: varchar("company_id"), // Multi-tenant: links coupon to a company
+  companyId: varchar("company_id"),
   code: text("code").notNull().unique(),
   name: text("name").notNull(),
-  discountType: text("discount_type").notNull().default("percent"), // percent, fixed
-  discountValue: decimal("discount_value", { precision: 10, scale: 2 }).notNull(),
+  discountType: text("discount_type").notNull().default("percent"),
+  discountValue: decimal("discount_value", {
+    precision: 10,
+    scale: 2,
+  }).notNull(),
   minOrderValue: decimal("min_order_value", { precision: 10, scale: 2 }),
   maxUses: integer("max_uses"),
   usedCount: integer("used_count").notNull().default(0),
@@ -297,14 +329,14 @@ export const insertCouponSchema = createInsertSchema(coupons).omit({
 export type InsertCoupon = z.infer<typeof insertCouponSchema>;
 export type Coupon = typeof coupons.$inferSelect;
 
-// Agenda/Calendar events for admin panel
+// Agenda Events
 export const agendaEvents = pgTable("agenda_events", {
   id: serial("id").primaryKey(),
   title: text("title").notNull(),
   description: text("description"),
   date: timestamp("date").notNull(),
   time: text("time"),
-  type: text("type").notNull().default("note"), // note, meeting, task, reminder
+  type: text("type").notNull().default("note"),
   completed: boolean("completed").notNull().default(false),
   createdBy: varchar("created_by").references(() => users.id),
   createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -318,10 +350,10 @@ export const insertAgendaEventSchema = createInsertSchema(agendaEvents).omit({
 export type InsertAgendaEvent = z.infer<typeof insertAgendaEventSchema>;
 export type AgendaEvent = typeof agendaEvents.$inferSelect;
 
-// Site settings for global configurations
+// Site Settings
 export const siteSettings = pgTable("site_settings", {
   id: serial("id").primaryKey(),
-  companyId: varchar("company_id"), // Multi-tenant: links settings to a company
+  companyId: varchar("company_id"),
   key: text("key").notNull().unique(),
   value: text("value"),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -329,11 +361,11 @@ export const siteSettings = pgTable("site_settings", {
 
 export type SiteSetting = typeof siteSettings.$inferSelect;
 
-// Catalog banners for customization
+// Catalog Banners
 export const catalogBanners = pgTable("catalog_banners", {
   id: serial("id").primaryKey(),
-  companyId: varchar("company_id"), // Multi-tenant: links banner to a company
-  position: text("position").notNull(), // hero, promo1, promo2, promo3, footer
+  companyId: varchar("company_id"),
+  position: text("position").notNull(),
   title: text("title"),
   subtitle: text("subtitle"),
   buttonText: text("button_text"),
@@ -348,7 +380,9 @@ export const catalogBanners = pgTable("catalog_banners", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-export const insertCatalogBannerSchema = createInsertSchema(catalogBanners).omit({
+export const insertCatalogBannerSchema = createInsertSchema(
+  catalogBanners,
+).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
@@ -357,10 +391,10 @@ export const insertCatalogBannerSchema = createInsertSchema(catalogBanners).omit
 export type InsertCatalogBanner = z.infer<typeof insertCatalogBannerSchema>;
 export type CatalogBanner = typeof catalogBanners.$inferSelect;
 
-// Catalog carousel slides (hero slider)
+// Catalog Slides
 export const catalogSlides = pgTable("catalog_slides", {
   id: serial("id").primaryKey(),
-  companyId: varchar("company_id"), // Multi-tenant: links slide to a company
+  companyId: varchar("company_id"),
   title: text("title"),
   subtitle: text("subtitle"),
   buttonText: text("button_text"),
@@ -380,7 +414,7 @@ export const insertCatalogSlideSchema = createInsertSchema(catalogSlides).omit({
 export type InsertCatalogSlide = z.infer<typeof insertCatalogSlideSchema>;
 export type CatalogSlide = typeof catalogSlides.$inferSelect;
 
-// Catalog customization settings
+// Catalog Config
 export const catalogConfig = pgTable("catalog_config", {
   id: serial("id").primaryKey(),
   key: text("key").notNull().unique(),
@@ -390,33 +424,30 @@ export const catalogConfig = pgTable("catalog_config", {
 
 export type CatalogConfig = typeof catalogConfig.$inferSelect;
 
-// Customer Credit (Fiado) - Store credit transactions
-// TYPE:
-// - DEBITO: Amount added to customer debt (purchase on credit)
-// - CREDITO: Payment received (reduces debt)
-// STATUS:
-// - PENDENTE: Pending payment
-// - PARCIAL: Partially paid
-// - PAGO: Fully paid
-// - VENCIDO: Overdue
-// - CANCELADO: Cancelled
+// Customer Credits
 export const customerCredits = pgTable("customer_credits", {
   id: serial("id").primaryKey(),
-  userId: varchar("user_id").notNull().references(() => users.id),
-  orderId: integer("order_id").references(() => orders.id), // Optional link to order
-  type: text("type").notNull(), // DEBITO, CREDITO
+  userId: varchar("user_id")
+    .notNull()
+    .references(() => users.id),
+  orderId: integer("order_id").references(() => orders.id),
+  type: text("type").notNull(),
   amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
-  paidAmount: decimal("paid_amount", { precision: 10, scale: 2 }).notNull().default("0"),
+  paidAmount: decimal("paid_amount", { precision: 10, scale: 2 })
+    .notNull()
+    .default("0"),
   description: text("description"),
-  status: text("status").notNull().default("PENDENTE"), // PENDENTE, PARCIAL, PAGO, VENCIDO, CANCELADO
-  dueDate: timestamp("due_date"), // Data de vencimento
-  paidAt: timestamp("paid_at"), // Data do pagamento
+  status: text("status").notNull().default("PENDENTE"),
+  dueDate: timestamp("due_date"),
+  paidAt: timestamp("paid_at"),
   createdBy: varchar("created_by").references(() => users.id),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-export const insertCustomerCreditSchema = createInsertSchema(customerCredits).omit({
+export const insertCustomerCreditSchema = createInsertSchema(
+  customerCredits,
+).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
@@ -425,51 +456,53 @@ export const insertCustomerCreditSchema = createInsertSchema(customerCredits).om
 export type InsertCustomerCredit = z.infer<typeof insertCustomerCreditSchema>;
 export type CustomerCredit = typeof customerCredits.$inferSelect;
 
-// Customer credit payments - individual payments for a credit entry
+// Credit Payments
 export const creditPayments = pgTable("credit_payments", {
   id: serial("id").primaryKey(),
-  creditId: integer("credit_id").notNull().references(() => customerCredits.id),
+  creditId: integer("credit_id")
+    .notNull()
+    .references(() => customerCredits.id),
   amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
-  paymentMethod: text("payment_method"), // PIX, DINHEIRO, CARTAO, BOLETO, TRANSFERENCIA
+  paymentMethod: text("payment_method"),
   notes: text("notes"),
   receivedBy: varchar("received_by").references(() => users.id),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
-export const insertCreditPaymentSchema = createInsertSchema(creditPayments).omit({
+export const insertCreditPaymentSchema = createInsertSchema(
+  creditPayments,
+).omit({
   id: true,
-  createdAt: true,
 });
 
 export type InsertCreditPayment = z.infer<typeof insertCreditPaymentSchema>;
 export type CreditPayment = typeof creditPayments.$inferSelect;
 
-// Accounts Payable (Contas a Pagar) - Expenses and supplier debts
-// STATUS:
-// - PENDENTE: Pending payment
-// - PAGO: Paid
-// - VENCIDO: Overdue
-// - CANCELADO: Cancelled
+// Accounts Payable
 export const accountsPayable = pgTable("accounts_payable", {
   id: serial("id").primaryKey(),
-  supplierId: varchar("supplier_id").references(() => users.id), // Optional link to supplier
-  supplierName: text("supplier_name"), // Or manual supplier name
-  category: text("category"), // Tipo: fornecedor, aluguel, salario, imposto, etc.
+  supplierId: varchar("supplier_id").references(() => users.id),
+  supplierName: text("supplier_name"),
+  category: text("category"),
   description: text("description").notNull(),
   amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
-  paidAmount: decimal("paid_amount", { precision: 10, scale: 2 }).notNull().default("0"),
-  status: text("status").notNull().default("PENDENTE"), // PENDENTE, PAGO, VENCIDO, CANCELADO
-  dueDate: timestamp("due_date"), // Data de vencimento
-  paidAt: timestamp("paid_at"), // Data do pagamento
-  paymentMethod: text("payment_method"), // PIX, BOLETO, TRANSFERENCIA, etc.
-  documentNumber: text("document_number"), // Número do documento/NF
+  paidAmount: decimal("paid_amount", { precision: 10, scale: 2 })
+    .notNull()
+    .default("0"),
+  status: text("status").notNull().default("PENDENTE"),
+  dueDate: timestamp("due_date"),
+  paidAt: timestamp("paid_at"),
+  paymentMethod: text("payment_method"),
+  documentNumber: text("document_number"),
   notes: text("notes"),
   createdBy: varchar("created_by").references(() => users.id),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-export const insertAccountPayableSchema = createInsertSchema(accountsPayable).omit({
+export const insertAccountPayableSchema = createInsertSchema(
+  accountsPayable,
+).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
@@ -478,26 +511,29 @@ export const insertAccountPayableSchema = createInsertSchema(accountsPayable).om
 export type InsertAccountPayable = z.infer<typeof insertAccountPayableSchema>;
 export type AccountPayable = typeof accountsPayable.$inferSelect;
 
-// Accounts Payable payments - individual payments
+// Payable Payments
 export const payablePayments = pgTable("payable_payments", {
   id: serial("id").primaryKey(),
-  payableId: integer("payable_id").notNull().references(() => accountsPayable.id),
+  payableId: integer("payable_id")
+    .notNull()
+    .references(() => accountsPayable.id),
   amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
-  paymentMethod: text("payment_method"), // PIX, BOLETO, TRANSFERENCIA, DINHEIRO
+  paymentMethod: text("payment_method"),
   notes: text("notes"),
   paidBy: varchar("paid_by").references(() => users.id),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
-export const insertPayablePaymentSchema = createInsertSchema(payablePayments).omit({
+export const insertPayablePaymentSchema = createInsertSchema(
+  payablePayments,
+).omit({
   id: true,
-  createdAt: true,
 });
 
 export type InsertPayablePayment = z.infer<typeof insertPayablePaymentSchema>;
 export type PayablePayment = typeof payablePayments.$inferSelect;
 
-// Banners for carousel
+// Banners
 export const banners = pgTable("banners", {
   id: serial("id").primaryKey(),
   title: text("title"),
@@ -516,14 +552,14 @@ export const insertBannerSchema = createInsertSchema(banners).omit({
 export type InsertBanner = z.infer<typeof insertBannerSchema>;
 export type Banner = typeof banners.$inferSelect;
 
-// System modules for permission management
+// Modules
 export const modules = pgTable("modules", {
   id: serial("id").primaryKey(),
-  key: text("key").notNull().unique(), // catalog, orders, products, customers, etc.
-  label: text("label").notNull(), // Display name in Portuguese
+  key: text("key").notNull().unique(),
+  label: text("label").notNull(),
   description: text("description"),
-  icon: text("icon"), // lucide icon name
-  defaultRoles: text("default_roles").array(), // roles that have access by default
+  icon: text("icon"),
+  defaultRoles: text("default_roles").array(),
   sortOrder: integer("sort_order").notNull().default(0),
 });
 
@@ -534,28 +570,47 @@ export const insertModuleSchema = createInsertSchema(modules).omit({
 export type InsertModule = z.infer<typeof insertModuleSchema>;
 export type Module = typeof modules.$inferSelect;
 
-// User module permissions - which modules each user can access
+// User Module Permissions
 export const userModulePermissions = pgTable("user_module_permissions", {
   id: serial("id").primaryKey(),
-  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+  userId: varchar("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
   moduleKey: text("module_key").notNull(),
   allowed: boolean("allowed").notNull().default(true),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-export const insertUserModulePermissionSchema = createInsertSchema(userModulePermissions).omit({
+export const insertUserModulePermissionSchema = createInsertSchema(
+  userModulePermissions,
+).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
 });
 
-export type InsertUserModulePermission = z.infer<typeof insertUserModulePermissionSchema>;
+export type InsertUserModulePermission = z.infer<
+  typeof insertUserModulePermissionSchema
+>;
 export type UserModulePermission = typeof userModulePermissions.$inferSelect;
 
-// Bling OAuth tokens - persisted storage for API tokens
+// Bling Credentials
+export const blingCredentials = pgTable("bling_credentials", {
+  id: serial("id").primaryKey(),
+  clientId: text("client_id"),
+  clientSecret: text("client_secret"),
+  code: text("code"),
+  companyId: varchar("company_id"),
+  redirectUri: text("redirect_uri"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Bling Tokens
 export const blingTokens = pgTable("bling_tokens", {
   id: serial("id").primaryKey(),
+  companyId: varchar("company_id"),
   accessToken: text("access_token").notNull(),
   refreshToken: text("refresh_token").notNull(),
   expiresAt: timestamp("expires_at").notNull(),

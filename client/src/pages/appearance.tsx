@@ -1,25 +1,40 @@
-import { useState, useEffect } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
-import { Separator } from "@/components/ui/separator";
-import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Separator } from "@/components/ui/separator";
+import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
-import { Slider } from "@/components/ui/slider";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useToast } from "@/hooks/use-toast";
-import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { 
-  Palette, Image, Layout, Store, Layers, Check, Plus, Trash2, Edit, GripVertical, 
-  Building2, Sparkles, Moon, Sun, Monitor, Type, Circle, Square, 
-  Sidebar, PaintBucket, Wand2
-} from "lucide-react";
 import type { CatalogSlide } from "@shared/schema";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import {
+  Building2,
+  Check,
+  Circle,
+  Edit, GripVertical,
+  Image,
+  Layers,
+  Layout,
+  Moon,
+  PaintBucket,
+  Palette,
+  Plus,
+  Sidebar,
+  Sparkles,
+  Square,
+  Store,
+  Sun,
+  Trash2,
+  Type,
+  Wand2
+} from "lucide-react";
+import { useEffect, useState } from "react";
 
 const colorThemes = [
   { id: "orange", name: "Laranja", primary: "25 95% 53%", description: "Vibrante e energico" },

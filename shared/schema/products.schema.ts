@@ -32,6 +32,11 @@ export const disponibilidadeEnum = pgEnum("disponibilidade", [
 
 export const b2bProducts = pgTable("b2b_products", {
   id: serial("id").primaryKey(),
+
+  // --- CORREÇÃO: Mudado de integer para varchar para bater com o banco ---
+  companyId: varchar("company_id"),
+  // ---------------------------------------------------------------------
+
   nome: text("nome").notNull(),
   sku: varchar("sku", { length: 50 }).unique().notNull(),
   unidadeMedida: unidadeMedidaEnum("unidade_medida").notNull().default("UN"),

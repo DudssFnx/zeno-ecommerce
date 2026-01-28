@@ -20,6 +20,10 @@ export const b2bUsers = pgTable("b2b_users", {
   ativo: boolean("ativo").notNull().default(true),
   role: text("role").default("customer"),
 
+  // --- NOVO CAMPO (ESSENCIAL PARA PERMISSÕES) ---
+  modules: text("modules"),
+  // ----------------------------------------------
+
   // === DADOS DO CLIENTE ===
   razaoSocial: text("razao_social"),
   nomeFantasia: text("nome_fantasia"),

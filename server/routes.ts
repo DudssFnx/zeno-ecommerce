@@ -1,7 +1,7 @@
-import { b2bUsers } from "@shared/schema";
+import { b2bUsers, suppliers } from "@shared/schema";
 import { b2bProducts } from "@shared/schema/products.schema";
 import bcrypt from "bcryptjs";
-import { eq, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { type Express } from "express";
 import { type Server } from "http";
 import multer from "multer";
@@ -31,7 +31,7 @@ export async function registerRoutes(
     limits: { fileSize: 5 * 1024 * 1024 },
   });
 
-  // --- AUTH ENDPOINTS (Login/Register/Logout) ---
+  // --- AUTH ENDPOINTS ---
   app.post("/api/auth/login", async (req: any, res) => {
     try {
       const { email, password } = req.body;
@@ -114,7 +114,8 @@ export async function registerRoutes(
     req.logout(() => res.json({ message: "Logout efetuado" }));
   });
 
-  // --- USUÁRIOS ---
+  // --- ROTAS DE USUÁRIOS (CRUD) ---
+
   app.get("/api/users", async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).send();
     try {
@@ -122,6 +123,23 @@ export async function registerRoutes(
       res.json(users);
     } catch (error) {
       res.status(500).json({ message: "Erro ao buscar usuários" });
+    }
+  });
+
+  app.post("/api/users", async (req: any, res) => {
+    if (!req.isAuthenticated()) return res.status(401).send();
+    try {
+      const { email } = req.body;
+      const existingUser = await storage.getUserByEmail(email);
+      if (existingUser)
+        return res.status(400).json({ message: "Email já cadastrado" });
+
+      const userData = { ...req.body, approved: true };
+      const newUser = await storage.createUser(userData);
+      res.status(201).json(newUser);
+    } catch (error) {
+      console.error("[CREATE USER ERROR]", error);
+      res.status(500).json({ message: "Erro ao criar usuário" });
     }
   });
 
@@ -145,6 +163,40 @@ export async function registerRoutes(
     }
   });
 
+  // --- PERMISSÕES ---
+  app.get("/api/users/:id/permissions", async (req: any, res) => {
+    if (!req.isAuthenticated()) return res.status(401).send();
+    try {
+      const user = await storage.getUser(req.params.id);
+      if (!user)
+        return res.status(404).json({ message: "Usuário não encontrado" });
+
+      let modules = [];
+      try {
+        modules = user.modules ? JSON.parse(user.modules) : [];
+      } catch (e) {
+        modules = [];
+      }
+      res.json({ userId: user.id, modules });
+    } catch (error) {
+      console.error("[GET PERMISSIONS ERROR]", error);
+      res.status(500).json({ message: "Erro ao buscar permissões" });
+    }
+  });
+
+  app.post("/api/users/:id/permissions", async (req: any, res) => {
+    if (!req.isAuthenticated()) return res.status(401).send();
+    try {
+      const { modules } = req.body;
+      const modulesString = JSON.stringify(modules || []);
+      await storage.updateUser(req.params.id, { modules: modulesString });
+      res.json({ message: "Permissões atualizadas" });
+    } catch (error) {
+      console.error("[UPDATE PERMISSIONS ERROR]", error);
+      res.status(500).json({ message: "Erro ao atualizar permissões" });
+    }
+  });
+
   // --- PRODUTOS ---
   app.get("/api/products", async (req, res) => {
     try {
@@ -163,7 +215,6 @@ export async function registerRoutes(
     if (!req.isAuthenticated()) return res.status(401).send();
     const { name, sku, price, stock } = req.body;
 
-    // Mapeamento
     const productData = {
       ...req.body,
       nome: name,
@@ -208,7 +259,7 @@ export async function registerRoutes(
     res.json({ message: "Produto excluído" });
   });
 
-  // --- PEDIDOS (NOVAS ROTAS) ---
+  // --- PEDIDOS ---
   app.get("/api/orders", async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).send();
     try {
@@ -246,6 +297,139 @@ export async function registerRoutes(
   app.get("/api/categories", async (req, res) => {
     const cats = await storage.getCategories();
     res.json(cats);
+  });
+
+  // ==========================================
+  // --- ROTAS DE FORNECEDORES (CRUD) ---
+  // ==========================================
+
+  app.get("/api/suppliers", async (req: any, res) => {
+    if (!req.isAuthenticated()) return res.status(401).send();
+    try {
+      const result = await db
+        .select()
+        .from(suppliers)
+        .where(eq(suppliers.companyId, req.user.companyId))
+        .orderBy(desc(suppliers.id));
+      res.json(result);
+    } catch (error) {
+      console.error("Erro ao listar fornecedores:", error);
+      res.status(500).json({ message: "Erro ao buscar fornecedores" });
+    }
+  });
+
+  app.post("/api/suppliers", async (req: any, res) => {
+    if (!req.isAuthenticated()) return res.status(401).send();
+    try {
+      const newSupplierData = {
+        ...req.body,
+        companyId: req.user.companyId,
+      };
+
+      const [supplier] = await db
+        .insert(suppliers)
+        .values(newSupplierData)
+        .returning();
+      res.status(201).json(supplier);
+    } catch (error) {
+      console.error("Erro ao criar fornecedor:", error);
+      res.status(500).json({ message: "Erro ao criar fornecedor" });
+    }
+  });
+
+  app.patch("/api/suppliers/:id", async (req: any, res) => {
+    if (!req.isAuthenticated()) return res.status(401).send();
+    try {
+      const [updated] = await db
+        .update(suppliers)
+        .set(req.body)
+        .where(
+          and(
+            eq(suppliers.id, parseInt(req.params.id)),
+            eq(suppliers.companyId, req.user.companyId),
+          ),
+        )
+        .returning();
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ message: "Erro ao atualizar fornecedor" });
+    }
+  });
+
+  app.delete("/api/suppliers/:id", async (req: any, res) => {
+    if (!req.isAuthenticated()) return res.status(401).send();
+    try {
+      await db
+        .delete(suppliers)
+        .where(
+          and(
+            eq(suppliers.id, parseInt(req.params.id)),
+            eq(suppliers.companyId, req.user.companyId),
+          ),
+        );
+      res.json({ message: "Fornecedor excluído" });
+    } catch (error) {
+      res.status(500).json({ message: "Erro ao excluir fornecedor" });
+    }
+  });
+
+  app.get("/api/suppliers", async (req: any, res) => {
+    if (!req.isAuthenticated()) return res.status(401).send();
+    try {
+      const result = await db
+        .select()
+        .from(suppliers)
+        // Comentamos o filtro para garantir que você veja QUALQUER fornecedor salvo
+        // .where(eq(suppliers.companyId, Number(req.user.companyId)))
+        .orderBy(desc(suppliers.id));
+
+      console.log("Fornecedores encontrados:", result.length);
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ message: "Erro ao buscar fornecedores" });
+    }
+  });
+
+  // 2. Rota de Criação (Forçando ID numérico)
+  app.post("/api/suppliers", async (req: any, res) => {
+    if (!req.isAuthenticated()) return res.status(401).send();
+    try {
+      const newSupplierData = {
+        ...req.body,
+        // Se req.user.companyId for null ou string, convertemos para número 1 para teste
+        companyId: Number(req.user.companyId) || 1,
+      };
+
+      const [supplier] = await db
+        .insert(suppliers)
+        .values(newSupplierData)
+        .returning();
+
+      console.log("Fornecedor gravado com sucesso no Banco ID:", supplier.id);
+      res.status(201).json(supplier);
+    } catch (error: any) {
+      console.error("ERRO DE GRAVAÇÃO:", error.message);
+      res
+        .status(500)
+        .json({ message: "Erro ao salvar no banco: " + error.message });
+    }
+  });
+
+  app.post("/api/suppliers", async (req: any, res) => {
+    if (!req.isAuthenticated()) return res.status(401).send();
+    try {
+      const newSupplierData = {
+        ...req.body,
+        companyId: req.user.companyId, // <--- GARANTE O SALVAMENTO NA SUA EMPRESA
+      };
+      const [supplier] = await db
+        .insert(suppliers)
+        .values(newSupplierData)
+        .returning();
+      res.status(201).json(supplier);
+    } catch (error: any) {
+      res.status(500).json({ message: "Erro ao criar: " + error.message });
+    }
   });
 
   return httpServer;

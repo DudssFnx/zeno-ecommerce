@@ -1,8 +1,17 @@
-import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, decimal, timestamp, serial } from "drizzle-orm/pg-core";
+import {
+  decimal,
+  integer,
+  pgTable,
+  serial,
+  text,
+  timestamp,
+} from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
-import { suppliers, products } from "./legacy.schema";
+// ✅ CORREÇÃO: Buscando cada tabela de seu respectivo lugar
+import { products } from "./legacy.schema"; // products continua aqui
+
+import { suppliers } from "./legacy.schema";
 
 // Purchase Order Status:
 // - DRAFT: Rascunho - pode editar itens e fornecedor
@@ -15,7 +24,9 @@ export const purchaseOrders = pgTable("purchase_orders", {
   status: text("status").notNull().default("DRAFT"), // DRAFT, FINALIZED, STOCK_POSTED, STOCK_REVERSED
   supplierId: integer("supplier_id").references(() => suppliers.id),
   notes: text("notes"),
-  totalValue: decimal("total_value", { precision: 10, scale: 2 }).notNull().default("0"),
+  totalValue: decimal("total_value", { precision: 10, scale: 2 })
+    .notNull()
+    .default("0"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
   finalizedAt: timestamp("finalized_at"),
@@ -23,7 +34,9 @@ export const purchaseOrders = pgTable("purchase_orders", {
   reversedAt: timestamp("reversed_at"),
 });
 
-export const insertPurchaseOrderSchema = createInsertSchema(purchaseOrders).omit({
+export const insertPurchaseOrderSchema = createInsertSchema(
+  purchaseOrders,
+).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
@@ -38,8 +51,12 @@ export type PurchaseOrder = typeof purchaseOrders.$inferSelect;
 // Purchase Order Items - produtos do pedido de compra
 export const purchaseOrderItems = pgTable("purchase_order_items", {
   id: serial("id").primaryKey(),
-  purchaseOrderId: integer("purchase_order_id").notNull().references(() => purchaseOrders.id, { onDelete: 'cascade' }),
-  productId: integer("product_id").notNull().references(() => products.id),
+  purchaseOrderId: integer("purchase_order_id")
+    .notNull()
+    .references(() => purchaseOrders.id, { onDelete: "cascade" }),
+  productId: integer("product_id")
+    .notNull()
+    .references(() => products.id),
   descriptionSnapshot: text("description_snapshot"), // Nome do produto no momento da compra
   skuSnapshot: text("sku_snapshot"), // SKU no momento da compra
   qty: decimal("qty", { precision: 10, scale: 3 }).notNull(), // Quantidade
@@ -47,11 +64,15 @@ export const purchaseOrderItems = pgTable("purchase_order_items", {
   lineTotal: decimal("line_total", { precision: 10, scale: 2 }).notNull(), // qty * unitCost
 });
 
-export const insertPurchaseOrderItemSchema = createInsertSchema(purchaseOrderItems).omit({
+export const insertPurchaseOrderItemSchema = createInsertSchema(
+  purchaseOrderItems,
+).omit({
   id: true,
 });
 
-export type InsertPurchaseOrderItem = z.infer<typeof insertPurchaseOrderItemSchema>;
+export type InsertPurchaseOrderItem = z.infer<
+  typeof insertPurchaseOrderItemSchema
+>;
 export type PurchaseOrderItem = typeof purchaseOrderItems.$inferSelect;
 
 // Stock Movement - registro de movimentacoes de estoque (ledger)
@@ -64,14 +85,18 @@ export const stockMovements = pgTable("stock_movements", {
   reason: text("reason").notNull(), // PURCHASE_POST, PURCHASE_REVERSE, SALE, ADJUSTMENT
   refType: text("ref_type").notNull(), // PURCHASE_ORDER, ORDER, MANUAL
   refId: integer("ref_id"), // ID do documento de referencia
-  productId: integer("product_id").notNull().references(() => products.id),
+  productId: integer("product_id")
+    .notNull()
+    .references(() => products.id),
   qty: decimal("qty", { precision: 10, scale: 3 }).notNull(),
   unitCost: decimal("unit_cost", { precision: 10, scale: 2 }),
   notes: text("notes"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
-export const insertStockMovementSchema = createInsertSchema(stockMovements).omit({
+export const insertStockMovementSchema = createInsertSchema(
+  stockMovements,
+).omit({
   id: true,
   createdAt: true,
 });

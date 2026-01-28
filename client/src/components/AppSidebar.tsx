@@ -1,54 +1,61 @@
-import { Link, useLocation } from "wouter";
-import { useQuery } from "@tanstack/react-query";
 import { CompanySelector } from "@/components/CompanySelector";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import {
   Sidebar,
   SidebarContent,
+  SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
   SidebarGroupLabel,
+  SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuSkeleton,
   SidebarMenuSub,
-  SidebarMenuSubItem,
   SidebarMenuSubButton,
-  SidebarHeader,
-  SidebarFooter,
+  SidebarMenuSubItem,
 } from "@/components/ui/sidebar";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { useAuth } from "@/contexts/AuthContext";
+import { useQuery } from "@tanstack/react-query";
 import {
-  LayoutDashboard,
-  Package,
-  ClipboardList,
-  Users,
-  UserCheck,
-  Settings,
-  LogOut,
-  Grid3X3,
-  Link2,
-  Ticket,
-  BarChart3,
-  TrendingUp,
-  ChevronRight,
-  ExternalLink,
-  ShoppingCart,
-  ShoppingBag,
-  Calendar,
-  Palette,
-  Banknote,
-  ArrowUpRight,
   ArrowDownRight,
-  Truck,
-  Sparkles,
-  Tag,
+  ArrowUpRight,
+  Banknote,
+  BarChart3,
+  Calendar,
+  ChevronRight,
+  ClipboardList,
   CreditCard,
+  ExternalLink,
+  Grid3X3,
+  LayoutDashboard,
+  Link2,
+  LogOut,
+  Package,
+  Palette,
+  Settings,
+  ShoppingBag,
+  ShoppingCart,
+  Sparkles,
+  Store, // <--- NOVO IMPORT
+  Tag,
+  Ticket,
+  TrendingUp,
+  Truck,
+  UserCheck,
+  Users,
 } from "lucide-react";
+import { Link, useLocation } from "wouter";
 
-type UserRole = "admin" | "sales" | "customer" | "supplier";
+type UserRole = "admin" | "sales" | "customer" | "supplier" | "employee";
 
 interface MenuItem {
   title: string;
@@ -56,131 +63,301 @@ interface MenuItem {
   icon: any;
   moduleKey?: string;
   badge?: string;
-  subItems?: { title: string; url: string; icon: any; moduleKey?: string; badge?: string }[];
+  subItems?: {
+    title: string;
+    url: string;
+    icon: any;
+    moduleKey?: string;
+    badge?: string;
+  }[];
 }
 
 interface AppSidebarProps {
-  userRole?: UserRole;
-  userName?: string;
   onLogout?: () => void;
 }
 
+// --- CONFIGURAÇÃO DOS MENUS ---
 const allMenuItems: MenuItem[] = [
-  { 
-    title: "Painel", 
+  {
+    title: "Painel",
     icon: LayoutDashboard,
-    moduleKey: "reports",
+    moduleKey: "dashboard",
     subItems: [
-      { title: "Visao Geral", url: "/", icon: LayoutDashboard, moduleKey: "reports" },
-      { title: "Analise de Clientes", url: "/customer-analytics", icon: BarChart3, moduleKey: "reports" },
-      { title: "Analise de Produtos", url: "/product-analytics", icon: TrendingUp, moduleKey: "reports" },
-      { title: "Analise de Funcionarios", url: "/employee-analytics", icon: Users, moduleKey: "reports" },
-      { title: "Analise de Compras", url: "/purchases-dashboard", icon: ShoppingCart, moduleKey: "reports" },
-      { title: "Marcas", url: "/brand-analytics", icon: Tag, moduleKey: "brands" },
-    ]
+      {
+        title: "Visao Geral",
+        url: "/",
+        icon: LayoutDashboard,
+        moduleKey: "dashboard",
+      },
+      {
+        title: "Analise de Clientes",
+        url: "/customer-analytics",
+        icon: BarChart3,
+        moduleKey: "dashboard",
+      },
+      {
+        title: "Analise de Produtos",
+        url: "/product-analytics",
+        icon: TrendingUp,
+        moduleKey: "dashboard",
+      },
+      {
+        title: "Analise de Funcionarios",
+        url: "/employee-analytics",
+        icon: Users,
+        moduleKey: "dashboard",
+      },
+      {
+        title: "Analise de Compras",
+        url: "/purchases-dashboard",
+        icon: ShoppingCart,
+        moduleKey: "dashboard",
+      },
+      {
+        title: "Marcas",
+        url: "/brand-analytics",
+        icon: Tag,
+        moduleKey: "brands",
+      },
+    ],
   },
-  { title: "Categorias", url: "/categories", icon: Grid3X3, moduleKey: "catalog" },
-  { title: "Catalogo", url: "/catalog", icon: Package, moduleKey: "catalog" },
-  { title: "Pedido de Vendas", url: "/orders", icon: ClipboardList, moduleKey: "orders" },
-  { title: "Produtos", url: "/products", icon: Package, moduleKey: "products" },
-  { title: "Clientes", url: "/customers", icon: UserCheck, moduleKey: "customers" },
-  { title: "Usuarios", url: "/users", icon: Users, moduleKey: "customers" },
-  { title: "Fornecedores", url: "/suppliers", icon: Truck, moduleKey: "products" },
-  { title: "Pedidos de Compra", url: "/purchase-orders", icon: ShoppingBag, moduleKey: "products" },
+  {
+    title: "Categorias",
+    url: "/categories",
+    icon: Grid3X3,
+    moduleKey: "products", // Pode manter products ou criar um key especifico se quiser
+  },
+
+  // --- ALTERAÇÃO AQUI: Catálogo separado para Vendas ---
+  {
+    title: "Catálogo",
+    url: "/catalog",
+    icon: Store, // Ícone de loja para diferenciar
+    moduleKey: "sales_catalog", // <--- A NOVA CHAVE QUE CRIAMOS NO BANCO
+  },
+
+  {
+    title: "Pedido de Vendas",
+    url: "/orders",
+    icon: ClipboardList,
+    moduleKey: "orders",
+  },
+
+  // --- ALTERAÇÃO AQUI: Gestão Restrita ---
+  {
+    title: "Gestão de Produtos", // Nome mais claro
+    url: "/products",
+    icon: Package,
+    moduleKey: "products", // <--- A CHAVE ANTIGA (Restrita a Admins)
+  },
+
+  { title: "Clientes", url: "/customers", icon: UserCheck, moduleKey: "users" },
+  { title: "Usuarios", url: "/users", icon: Users, moduleKey: "users" },
+  {
+    title: "Fornecedores",
+    url: "/suppliers",
+    icon: Truck,
+    moduleKey: "products",
+  },
+  {
+    title: "Pedidos de Compra",
+    url: "/purchase-orders",
+    icon: ShoppingBag,
+    moduleKey: "products",
+  },
   { title: "Cupons", url: "/coupons", icon: Ticket, moduleKey: "products" },
-  { 
-    title: "Financeiro", 
+  {
+    title: "Financeiro",
     icon: Banknote,
+    moduleKey: "settings",
     subItems: [
-      { title: "Contas a Receber", url: "/contas-receber", icon: ArrowUpRight, moduleKey: "financial_receivables" },
-      { title: "Contas a Pagar", url: "/contas-pagar", icon: ArrowDownRight, moduleKey: "financial_payables" },
-      { title: "Pagamentos", url: "/payments", icon: CreditCard, moduleKey: "payments" },
-    ]
+      {
+        title: "Contas a Receber",
+        url: "/contas-receber",
+        icon: ArrowUpRight,
+        moduleKey: "settings",
+      },
+      {
+        title: "Contas a Pagar",
+        url: "/contas-pagar",
+        icon: ArrowDownRight,
+        moduleKey: "settings",
+      },
+      {
+        title: "Pagamentos",
+        url: "/payments",
+        icon: CreditCard,
+        moduleKey: "settings",
+      },
+    ],
   },
   { title: "Agenda", url: "/agenda", icon: Calendar, moduleKey: "agenda" },
   { title: "Bling", url: "/bling", icon: Link2, moduleKey: "settings" },
-  { title: "Aparencia", url: "/appearance", icon: Palette, moduleKey: "appearance" },
-  { title: "Configuracoes", url: "/settings", icon: Settings, moduleKey: "settings" },
+  {
+    title: "Aparencia",
+    url: "/appearance",
+    icon: Palette,
+    moduleKey: "settings",
+  },
+  {
+    title: "Configuracoes",
+    url: "/settings",
+    icon: Settings,
+    moduleKey: "settings",
+  },
 ];
 
 const customerMenuItems: MenuItem[] = [
   { title: "Painel", url: "/", icon: LayoutDashboard, moduleKey: "catalog" },
-  { title: "Categorias", url: "/categories", icon: Grid3X3, moduleKey: "catalog" },
+  {
+    title: "Categorias",
+    url: "/categories",
+    icon: Grid3X3,
+    moduleKey: "catalog",
+  },
   { title: "Catalogo", url: "/catalog", icon: Package, moduleKey: "catalog" },
-  { title: "Meus Pedidos", url: "/orders", icon: ClipboardList, moduleKey: "orders" },
+  {
+    title: "Meus Pedidos",
+    url: "/orders",
+    icon: ClipboardList,
+    moduleKey: "orders",
+  },
 ];
 
 const supplierMenuItems: MenuItem[] = [
   { title: "Marcas", url: "/brand-analytics", icon: Tag, moduleKey: "brands" },
 ];
 
-export function AppSidebar({ userRole = "customer", userName = "User", onLogout }: AppSidebarProps) {
+export function AppSidebar({ onLogout }: AppSidebarProps) {
   const [location] = useLocation();
+  const { user: contextUser, isLoading, logout } = useAuth();
 
-  const { data: permissionsData } = useQuery<{ modules: string[]; role: string }>({
-    queryKey: ['/api/auth/permissions'],
-    staleTime: 1000 * 60 * 5,
+  // 1. Busca dados frescos do usuário para garantir que temos os módulos
+  const { data: userData } = useQuery<any>({
+    queryKey: ["/api/auth/user"],
+    staleTime: 0, // Sempre pega dados frescos
+    enabled: !!contextUser, // Só busca se estiver logado
   });
 
-  const userModules = permissionsData?.modules || [];
-  const isAdmin = userRole === "admin";
+  if (isLoading) {
+    return (
+      <Sidebar className="border-r-0">
+        <SidebarContent>
+          <div className="p-4 space-y-4">
+            <SidebarMenuSkeleton />
+            <SidebarMenuSkeleton />
+            <SidebarMenuSkeleton />
+          </div>
+        </SidebarContent>
+      </Sidebar>
+    );
+  }
 
+  // Define qual objeto de usuário usar (o da query fresca ou do contexto)
+  const user = userData || contextUser;
+  const role = (user?.role as UserRole) || "customer";
+  const name = user?.firstName || user?.email || "User";
+  const isAdmin = role === "admin";
+
+  // 2. Processamento robusto dos módulos
+  let userModules: string[] = [];
+  try {
+    if (user?.modules) {
+      userModules =
+        typeof user.modules === "string"
+          ? JSON.parse(user.modules)
+          : user.modules;
+    }
+  } catch (e) {
+    console.error("Erro ao processar módulos:", e);
+    userModules = [];
+  }
+
+  // --- DEBUG: Veja isso no Console do navegador (F12) ---
+  console.log("DEBUG SIDEBAR:", { role, userModules, isAdmin });
+
+  // 3. Função de Filtro
   const filterMenuItems = (items: MenuItem[]): MenuItem[] => {
     if (isAdmin) return items;
 
     return items
-      .filter(item => {
-        if (item.subItems) {
-          const filteredSubItems = item.subItems.filter(sub => 
-            !sub.moduleKey || userModules.includes(sub.moduleKey)
-          );
-          return filteredSubItems.length > 0;
+      .filter((item) => {
+        // Se não tem moduleKey, mostra sempre (ex: links públicos se houver)
+        // Se tem moduleKey, checa se está na lista do usuário
+        if (item.moduleKey && !userModules.includes(item.moduleKey)) {
+          return false;
         }
-        return !item.moduleKey || userModules.includes(item.moduleKey);
+
+        // Verifica subitens
+        if (item.subItems) {
+          const visibleSubItems = item.subItems.filter(
+            (sub) => !sub.moduleKey || userModules.includes(sub.moduleKey),
+          );
+          return visibleSubItems.length > 0;
+        }
+
+        return true;
       })
-      .map(item => {
+      .map((item) => {
         if (item.subItems) {
           return {
             ...item,
-            subItems: item.subItems.filter(sub => 
-              !sub.moduleKey || userModules.includes(sub.moduleKey)
-            )
+            subItems: item.subItems.filter(
+              (sub) => !sub.moduleKey || userModules.includes(sub.moduleKey),
+            ),
           };
         }
         return item;
       });
   };
 
-  const baseItems = userRole === "customer" 
-    ? customerMenuItems 
-    : userRole === "supplier" 
-      ? supplierMenuItems 
-      : allMenuItems;
+  const baseItems =
+    role === "customer"
+      ? customerMenuItems
+      : role === "supplier"
+        ? supplierMenuItems
+        : allMenuItems;
+
   const items = filterMenuItems(baseItems);
 
-  const initials = userName
+  const initials = name
     .split(" ")
-    .map((n) => n[0])
+    .map((n: string) => n[0])
     .join("")
     .toUpperCase()
     .slice(0, 2);
 
-  const getRoleBadgeVariant = (role: UserRole) => {
-    switch (role) {
-      case "admin": return "default";
-      case "sales": return "secondary";
-      case "supplier": return "secondary";
-      default: return "outline";
+  const getRoleBadgeVariant = (r: UserRole) => {
+    switch (r) {
+      case "admin":
+        return "default";
+      case "sales":
+        return "secondary";
+      case "supplier":
+        return "secondary";
+      default:
+        return "outline";
     }
   };
 
-  const getRoleLabel = (role: UserRole) => {
-    switch (role) {
-      case "admin": return "Administrador";
-      case "sales": return "Vendedor";
-      case "supplier": return "Fornecedor";
-      default: return "Cliente";
+  const getRoleLabel = (r: UserRole) => {
+    switch (r) {
+      case "admin":
+        return "Administrador";
+      case "sales":
+        return "Vendedor";
+      case "employee":
+        return "Funcionário";
+      case "supplier":
+        return "Fornecedor";
+      default:
+        return "Cliente";
     }
+  };
+
+  const handleLogout = () => {
+    if (onLogout) onLogout();
+    logout();
   };
 
   return (
@@ -189,32 +366,42 @@ export function AppSidebar({ userRole = "customer", userName = "User", onLogout 
         <div className="bg-gradient-to-br from-emerald-500/10 via-emerald-500/5 to-transparent p-4">
           <div className="flex items-center gap-3">
             <div className="relative flex items-center justify-center h-11 w-11 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600 shadow-lg shadow-emerald-500/20">
-              <span className="text-xl font-black text-white tracking-tighter">Z</span>
+              <span className="text-xl font-black text-white tracking-tighter">
+                Z
+              </span>
               <div className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full bg-green-400 ring-2 ring-sidebar" />
             </div>
             <div className="flex-1 min-w-0">
-              <h2 className="font-black text-lg tracking-tight truncate bg-gradient-to-r from-emerald-600 to-emerald-500 dark:from-emerald-400 dark:to-emerald-300 bg-clip-text text-transparent">Zeno</h2>
+              <h2 className="font-black text-lg tracking-tight truncate bg-gradient-to-r from-emerald-600 to-emerald-500 dark:from-emerald-400 dark:to-emerald-300 bg-clip-text text-transparent">
+                Zeno
+              </h2>
               <div className="flex items-center gap-1.5 mt-0.5">
                 <Sparkles className="h-3 w-3 text-emerald-500" />
-                <span className="text-xs text-muted-foreground">B2B Platform</span>
+                <span className="text-xs text-muted-foreground">
+                  B2B Platform
+                </span>
               </div>
             </div>
           </div>
         </div>
-        
+
         <div className="px-4 pb-4 pt-2">
-          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium mb-2">Empresa</p>
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium mb-2">
+            Empresa
+          </p>
           <CompanySelector />
         </div>
 
         <div className="px-4 pb-4 pt-2">
-          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium mb-2">Visualizar como</p>
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium mb-2">
+            Visualizar como
+          </p>
           <div className="flex gap-2">
             <Button
               variant="outline"
               size="sm"
               className="flex-1 h-8 text-xs"
-              onClick={() => window.open('/', '_blank')}
+              onClick={() => window.open("/", "_blank")}
               data-testid="button-ver-varejo"
             >
               <ExternalLink className="h-3 w-3 mr-1.5" />
@@ -224,7 +411,7 @@ export function AppSidebar({ userRole = "customer", userName = "User", onLogout 
               variant="outline"
               size="sm"
               className="flex-1 h-8 text-xs"
-              onClick={() => window.open('/catalog', '_blank')}
+              onClick={() => window.open("/catalog", "_blank")}
               data-testid="button-ver-atacado"
             >
               <ExternalLink className="h-3 w-3 mr-1.5" />
@@ -241,9 +428,13 @@ export function AppSidebar({ userRole = "customer", userName = "User", onLogout 
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {items.map((item) => (
+              {items.map((item) =>
                 item.subItems ? (
-                  <Collapsible key={item.title} defaultOpen className="group/collapsible">
+                  <Collapsible
+                    key={item.title}
+                    defaultOpen
+                    className="group/collapsible"
+                  >
                     <SidebarMenuItem>
                       <CollapsibleTrigger asChild>
                         <SidebarMenuButton
@@ -255,7 +446,10 @@ export function AppSidebar({ userRole = "customer", userName = "User", onLogout 
                           </div>
                           <span className="font-medium">{item.title}</span>
                           {item.badge && (
-                            <Badge variant="secondary" className="ml-auto mr-2 h-5 text-[10px]">
+                            <Badge
+                              variant="secondary"
+                              className="ml-auto mr-2 h-5 text-[10px]"
+                            >
                               {item.badge}
                             </Badge>
                           )}
@@ -274,9 +468,14 @@ export function AppSidebar({ userRole = "customer", userName = "User", onLogout 
                               >
                                 <Link href={subItem.url}>
                                   <subItem.icon className="h-3.5 w-3.5" />
-                                  <span className="text-[13px]">{subItem.title}</span>
+                                  <span className="text-[13px]">
+                                    {subItem.title}
+                                  </span>
                                   {subItem.badge && (
-                                    <Badge variant="secondary" className="ml-auto h-4 text-[9px] px-1.5">
+                                    <Badge
+                                      variant="secondary"
+                                      className="ml-auto h-4 text-[9px] px-1.5"
+                                    >
                                       {subItem.badge}
                                     </Badge>
                                   )}
@@ -290,8 +489,8 @@ export function AppSidebar({ userRole = "customer", userName = "User", onLogout 
                   </Collapsible>
                 ) : (
                   <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton 
-                      asChild 
+                    <SidebarMenuButton
+                      asChild
                       isActive={location === item.url}
                       className="group/btn rounded-lg"
                       data-testid={`link-nav-${item.title.toLowerCase().replace(/\s+/g, "-")}`}
@@ -302,15 +501,18 @@ export function AppSidebar({ userRole = "customer", userName = "User", onLogout 
                         </div>
                         <span className="font-medium">{item.title}</span>
                         {item.badge && (
-                          <Badge variant="secondary" className="ml-auto h-5 text-[10px]">
+                          <Badge
+                            variant="secondary"
+                            className="ml-auto h-5 text-[10px]"
+                          >
                             {item.badge}
                           </Badge>
                         )}
                       </Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
-                )
-              ))}
+                ),
+              )}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
@@ -324,16 +526,19 @@ export function AppSidebar({ userRole = "customer", userName = "User", onLogout 
             </AvatarFallback>
           </Avatar>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold truncate">{userName}</p>
-            <Badge variant={getRoleBadgeVariant(userRole)} className="h-4 text-[9px] px-1.5 mt-0.5">
-              {getRoleLabel(userRole)}
+            <p className="text-sm font-semibold truncate">{name}</p>
+            <Badge
+              variant={getRoleBadgeVariant(role)}
+              className="h-4 text-[9px] px-1.5 mt-0.5"
+            >
+              {getRoleLabel(role)}
             </Badge>
           </div>
-          <Button 
-            variant="ghost" 
+          <Button
+            variant="ghost"
             size="icon"
             className="h-8 w-8 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-            onClick={onLogout}
+            onClick={handleLogout}
             data-testid="button-logout"
           >
             <LogOut className="h-4 w-4" />
