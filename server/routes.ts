@@ -193,7 +193,6 @@ export async function registerRoutes(
     }
   });
 
-  // PATCH: Atualizar minha empresa
   // PATCH: Atualizar minha empresa (VERSÃO CORRIGIDA JSON)
   app.patch("/api/company/me", async (req: any, res) => {
     // 1. Correção: Retornar JSON se não estiver logado
@@ -351,19 +350,104 @@ export async function registerRoutes(
   });
 
   // ==========================================
-  // --- 🛒 PEDIDOS E PRODUTOS ---
+  // --- 🛒 PEDIDOS E PRODUTOS (V3 - CORREÇÃO FINAL) ---
   // ==========================================
 
+  // 1. LISTAR PRODUTOS (Direto do Banco - Sem Tradução)
   app.get("/api/products", async (req, res) => {
     try {
-      const result = await storage.getProducts(req.query);
-      res.json(
-        Array.isArray(result)
-          ? { products: result, total: result.length }
-          : result,
-      );
+      // O banco já está em inglês (name, description, etc)
+      const result = await db
+        .select()
+        .from(products)
+        .orderBy(desc(products.id));
+
+      res.json({
+        products: result,
+        total: result.length,
+      });
     } catch (error) {
+      console.error("Erro ao listar produtos:", error);
       res.status(500).send("Erro ao listar produtos");
+    }
+  });
+
+  // 2. CRIAR PRODUTO (Correção: Enviar 'name' direto, sem mudar para 'nome')
+  app.post("/api/products", async (req: any, res) => {
+    if (!req.isAuthenticated()) return res.status(401).send();
+
+    try {
+      // Monta o objeto exatamente como o banco espera (em inglês)
+      const newProductData: any = {
+        companyId: req.user.companyId || 1,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+
+        // Campos de texto (direto do frontend)
+        name: req.body.name,
+        description: req.body.description,
+        sku: req.body.sku,
+
+        // Conversão de números/decimais
+        stock: req.body.stock ? Number(req.body.stock) : 0,
+        price: req.body.price ? String(req.body.price) : "0.00",
+        cost: req.body.cost ? String(req.body.cost) : "0.00",
+      };
+
+      const [product] = await db
+        .insert(products)
+        .values(newProductData)
+        .returning();
+
+      console.log("✅ Produto criado:", product.name);
+      res.status(201).json(product);
+    } catch (error: any) {
+      console.error("Erro ao criar produto:", error);
+      res
+        .status(500)
+        .json({ message: "Erro ao criar produto: " + error.message });
+    }
+  });
+
+  // 3. ATUALIZAR PRODUTO (Correção: Atualizar 'name' direto)
+  app.patch("/api/products/:id", async (req: any, res) => {
+    if (!req.isAuthenticated())
+      return res.status(401).json({ message: "Não autenticado" });
+
+    const id = parseInt(req.params.id);
+    console.log(`📝 Atualizando produto ID ${id}...`);
+
+    try {
+      const updateData: any = { updatedAt: new Date() };
+
+      // Mapeamento direto (Inglês -> Inglês)
+      if (req.body.name !== undefined) updateData.name = req.body.name;
+      if (req.body.description !== undefined)
+        updateData.description = req.body.description;
+      if (req.body.sku !== undefined) updateData.sku = req.body.sku;
+
+      // Conversões
+      if (req.body.stock !== undefined)
+        updateData.stock = Number(req.body.stock);
+      if (req.body.price !== undefined)
+        updateData.price = String(req.body.price);
+      if (req.body.cost !== undefined) updateData.cost = String(req.body.cost);
+
+      const [updated] = await db
+        .update(products)
+        .set(updateData)
+        .where(eq(products.id, id))
+        .returning();
+
+      if (!updated) {
+        return res.status(404).json({ message: "Produto não encontrado" });
+      }
+
+      console.log("✅ Produto atualizado com sucesso:", updated.name);
+      res.json(updated);
+    } catch (error: any) {
+      console.error("❌ Erro ao atualizar produto:", error);
+      res.status(500).json({ message: "Erro interno ao atualizar produto" });
     }
   });
 
@@ -477,9 +561,6 @@ export async function registerRoutes(
     const cats = await storage.getCategories();
     res.json(cats);
   });
-
-  // Removido: /api/user/companies fixo
-  // Agora usamos /api/company/me para pegar a real
 
   return httpServer;
 }

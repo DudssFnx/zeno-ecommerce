@@ -12,6 +12,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Command,
   CommandEmpty,
@@ -81,6 +82,8 @@ import {
   Search,
   Star,
   Trash2,
+  TrendingDown,
+  TrendingUp,
   Upload,
   X,
 } from "lucide-react";
@@ -197,6 +200,9 @@ export default function ProductsPage() {
     null,
   );
 
+  // ✅ Estado para Seleção em Massa
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+
   const MAX_IMAGES = 5;
 
   const { data: productsResponse, isLoading } = useQuery<{
@@ -242,7 +248,6 @@ export default function ProductsPage() {
     categoryMap[cat.id] = cat.name;
   });
 
-  // Mapeamento dos produtos para o formato local
   const products: ProductData[] = productsData.map((p) => ({
     id: String(p.id),
     name: p.name,
@@ -254,7 +259,6 @@ export default function ProductsPage() {
     brand: p.brand || "",
     price: parseFloat(p.price),
     cost: p.cost ? parseFloat(p.cost) : null,
-    // CORREÇÃO CRÍTICA: Garante que o estoque seja 0 se vier null/undefined do banco
     stock: p.stock ?? 0,
     description: p.description,
     image: p.image,
@@ -300,6 +304,23 @@ export default function ProductsPage() {
   const startIndex = (currentPage - 1) * PRODUCTS_PER_PAGE;
   const endIndex = startIndex + PRODUCTS_PER_PAGE;
   const paginatedProducts = filteredProducts.slice(startIndex, endIndex);
+
+  // ✅ Lógica de Seleção em Massa
+  const toggleSelectAll = () => {
+    if (selectedIds.length === paginatedProducts.length) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(paginatedProducts.map((p) => p.id));
+    }
+  };
+
+  const toggleSelect = (id: string) => {
+    if (selectedIds.includes(id)) {
+      setSelectedIds(selectedIds.filter((item) => item !== id));
+    } else {
+      setSelectedIds([...selectedIds, id]);
+    }
+  };
 
   const handleSearchChange = (value: string) => {
     setSearchQuery(value);
@@ -474,6 +495,44 @@ export default function ProductsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/products"] });
+    },
+  });
+
+  // ✅ Mutation para exclusão em massa
+  const bulkDeleteMutation = useMutation({
+    mutationFn: async (ids: string[]) => {
+      // Deletar um por um
+      await Promise.all(
+        ids.map((id) => apiRequest("DELETE", `/api/products/${id}`)),
+      );
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/products"] });
+      setSelectedIds([]); // Limpar seleção
+      toast({ title: "Produtos excluídos com sucesso" });
+    },
+    onError: () => {
+      toast({ title: "Erro ao excluir produtos", variant: "destructive" });
+    },
+  });
+
+  // ✅ Mutation para destacar em massa (NOVO)
+  const bulkToggleFeaturedMutation = useMutation({
+    mutationFn: async (ids: string[]) => {
+      // Alternar destaque um por um
+      await Promise.all(
+        ids.map((id) =>
+          apiRequest("PATCH", `/api/products/${id}/toggle-featured`),
+        ),
+      );
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/products"] });
+      setSelectedIds([]); // Limpar seleção
+      toast({ title: "Destaques atualizados com sucesso" });
+    },
+    onError: () => {
+      toast({ title: "Erro ao atualizar destaques", variant: "destructive" });
     },
   });
 
@@ -730,6 +789,33 @@ export default function ProductsPage() {
       currency: "BRL",
     }).format(price);
   };
+
+  // ✅ Lógica de cálculo de margem para o form
+  const watchPrice = form.watch("price") || 0;
+  const watchCostRaw = form.watch("cost");
+  const watchCost =
+    typeof watchCostRaw === "number" ? watchCostRaw : Number(watchCostRaw || 0);
+
+  const profitValue = watchPrice - watchCost;
+  const marginPercentage =
+    watchPrice > 0 ? (profitValue / watchPrice) * 100 : 0;
+
+  // Definição de cores da margem
+  let marginColorClass = "text-muted-foreground";
+  let MarginIcon = AlertCircle;
+
+  if (watchPrice > 0) {
+    if (marginPercentage < 0) {
+      marginColorClass = "text-red-600";
+      MarginIcon = TrendingDown;
+    } else if (marginPercentage < 20) {
+      marginColorClass = "text-amber-600";
+      MarginIcon = TrendingUp;
+    } else {
+      marginColorClass = "text-emerald-600";
+      MarginIcon = TrendingUp;
+    }
+  }
 
   const getTabErrors = (tabName: string) => {
     const errors = form.formState.errors;
@@ -1200,32 +1286,33 @@ export default function ProductsPage() {
                           />
                         </div>
 
-                        {form.watch("price") > 0 &&
-                          form.watch("cost") &&
-                          typeof form.watch("cost") === "number" &&
-                          (form.watch("cost") as number) > 0 && (
-                            <div className="rounded-lg bg-muted/50 p-4">
-                              <p className="text-sm text-muted-foreground">
-                                Margem de Lucro
-                              </p>
-                              <p className="text-2xl font-bold text-green-600">
-                                {(
-                                  ((form.watch("price") -
-                                    (form.watch("cost") as number)) /
-                                    form.watch("price")) *
-                                  100
-                                ).toFixed(1)}
-                                %
-                              </p>
-                              <p className="text-sm text-muted-foreground">
-                                Lucro:{" "}
-                                {formatPrice(
-                                  form.watch("price") -
-                                    (form.watch("cost") as number),
-                                )}
-                              </p>
-                            </div>
-                          )}
+                        {/* ✅ VISUALIZAÇÃO DE LUCRO (FEATURE NOVA) */}
+                        <div className="rounded-lg bg-muted/50 p-4 border flex items-center justify-between">
+                          <div>
+                            <p className="text-sm text-muted-foreground mb-1">
+                              Lucro Bruto
+                            </p>
+                            <p
+                              className={`text-lg font-bold ${profitValue >= 0 ? "text-emerald-600" : "text-red-600"}`}
+                            >
+                              {formatPrice(profitValue)}
+                            </p>
+                          </div>
+
+                          <div className="text-right">
+                            <p className="text-sm text-muted-foreground mb-1 flex items-center justify-end gap-1">
+                              Margem
+                              <MarginIcon
+                                className={`h-4 w-4 ${marginColorClass}`}
+                              />
+                            </p>
+                            <p
+                              className={`text-2xl font-bold ${marginColorClass}`}
+                            >
+                              {marginPercentage.toFixed(1)}%
+                            </p>
+                          </div>
+                        </div>
                       </CardContent>
                     </Card>
                   </TabsContent>
@@ -2039,14 +2126,45 @@ export default function ProductsPage() {
             Gerencie seu catálogo de produtos
           </p>
         </div>
-        <Button
-          onClick={openAddForm}
-          className="bg-orange-500 hover:bg-orange-600"
-          data-testid="button-add-product"
-        >
-          <Plus className="h-4 w-4 mr-2" />
-          Novo Produto
-        </Button>
+        <div className="flex gap-2">
+          {selectedIds.length > 0 && (
+            <>
+              {/* ✅ BOTÃO DE DESTACAR EM MASSA */}
+              <Button
+                variant="outline"
+                className="border-yellow-500 text-yellow-600 hover:bg-yellow-50"
+                onClick={() => bulkToggleFeaturedMutation.mutate(selectedIds)}
+              >
+                <Star className="h-4 w-4 mr-2 fill-yellow-500" />
+                Destacar ({selectedIds.length})
+              </Button>
+
+              <Button
+                variant="destructive"
+                onClick={() => {
+                  if (
+                    window.confirm(
+                      `Tem certeza que deseja excluir ${selectedIds.length} produtos?`,
+                    )
+                  ) {
+                    bulkDeleteMutation.mutate(selectedIds);
+                  }
+                }}
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                Excluir ({selectedIds.length})
+              </Button>
+            </>
+          )}
+          <Button
+            onClick={openAddForm}
+            className="bg-orange-500 hover:bg-orange-600"
+            data-testid="button-add-product"
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            Novo Produto
+          </Button>
+        </div>
       </div>
 
       <div className="flex items-center gap-4 flex-wrap">
@@ -2125,6 +2243,16 @@ export default function ProductsPage() {
           <Table>
             <TableHeader>
               <TableRow className="bg-muted/50">
+                <TableHead className="w-[40px]">
+                  <Checkbox
+                    checked={
+                      selectedIds.length === paginatedProducts.length &&
+                      paginatedProducts.length > 0
+                    }
+                    onCheckedChange={toggleSelectAll}
+                    aria-label="Select all"
+                  />
+                </TableHead>
                 <TableHead className="w-16"></TableHead>
                 <TableHead>Código</TableHead>
                 <TableHead>Produto</TableHead>
@@ -2142,6 +2270,13 @@ export default function ProductsPage() {
                   onClick={() => openEditForm(product)}
                   data-testid={`row-product-${product.id}`}
                 >
+                  <TableCell onClick={(e) => e.stopPropagation()}>
+                    <Checkbox
+                      checked={selectedIds.includes(product.id)}
+                      onCheckedChange={() => toggleSelect(product.id)}
+                      aria-label={`Select ${product.name}`}
+                    />
+                  </TableCell>
                   <TableCell onClick={(e) => e.stopPropagation()}>
                     <div className="w-10 h-10 rounded bg-muted flex items-center justify-center overflow-hidden">
                       {product.image ? (
@@ -2180,7 +2315,6 @@ export default function ProductsPage() {
                           : ""
                       }
                     >
-                      {/* Correção visual para garantir que o 0 apareça */}
                       {product.stock ?? 0}
                     </span>
                   </TableCell>
