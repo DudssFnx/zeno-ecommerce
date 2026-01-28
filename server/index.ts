@@ -16,15 +16,17 @@ declare module "http" {
   }
 }
 
+// ✅ CORREÇÃO AQUI: Aumentamos o limite para 50MB para aceitar fotos
 app.use(
   express.json({
+    limit: "50mb", // Permite JSONs grandes (fotos em Base64)
     verify: (req, _res, buf) => {
       req.rawBody = buf;
     },
-  })
+  }),
 );
 
-app.use(express.urlencoded({ extended: false }));
+app.use(express.urlencoded({ extended: false, limit: "50mb" })); // Limite aqui também
 
 app.get("/health/db", async (_req, res) => {
   try {
@@ -66,7 +68,12 @@ app.use((req, res, next) => {
     if (path.startsWith("/api")) {
       let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
       if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
+        // Evita logar o base64 gigante da imagem para não poluir o terminal
+        const logData = { ...capturedJsonResponse };
+        if (logData.logoUrl && logData.logoUrl.length > 100) {
+          logData.logoUrl = "[BASE64 IMAGE HIDDEN]";
+        }
+        logLine += ` :: ${JSON.stringify(logData)}`;
       }
       log(logLine);
     }
@@ -122,6 +129,6 @@ app.use((req, res, next) => {
     },
     () => {
       log(`serving on port ${port}`);
-    }
+    },
   );
 })();

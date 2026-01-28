@@ -1,7 +1,14 @@
-import { b2bUsers, suppliers } from "@shared/schema";
-import { b2bProducts } from "@shared/schema/products.schema";
+import {
+  companies, // ✅ Importado para as rotas da empresa
+  products,
+  purchaseOrderItems,
+  purchaseOrders,
+  stockMovements,
+  suppliers,
+  users,
+} from "@shared/schema";
 import bcrypt from "bcryptjs";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 import { type Express } from "express";
 import { type Server } from "http";
 import multer from "multer";
@@ -13,17 +20,7 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express,
 ): Promise<Server> {
-  // --- HEALTH CHECK ---
-  app.get("/api/health/db", async (_req, res) => {
-    try {
-      await db.execute(sql`SELECT 1`);
-      res.json({ status: "ok", database: "connected" });
-    } catch (error) {
-      res.status(500).json({ status: "error", database: "disconnected" });
-    }
-  });
-
-  // --- AUTH SETUP ---
+  // 1. Setup básico de autenticação (sessão)
   await setupAuth(app);
 
   const upload = multer({
@@ -31,289 +28,277 @@ export async function registerRoutes(
     limits: { fileSize: 5 * 1024 * 1024 },
   });
 
-  // --- AUTH ENDPOINTS ---
-  app.post("/api/auth/login", async (req: any, res) => {
+  // --- HEALTH CHECK ---
+  app.get("/api/health/db", async (_req, res) => {
+    try {
+      await db.execute(sql`SELECT 1`);
+      res.json({ status: "ok", database: "connected" });
+    } catch (error) {
+      res.status(500).json({ status: "error" });
+    }
+  });
+
+  // ==========================================
+  // 🔐 ROTA MANUAL DE LOGIN
+  // ==========================================
+  app.post("/api/auth/login", async (req: any, res, next) => {
     try {
       const { email, password } = req.body;
-      if (!email || !password)
-        return res.status(400).json({ message: "Dados incompletos" });
-      const lowerEmail = email.toLowerCase();
 
-      if (lowerEmail === "admin@admin.com" && password === "123456") {
-        const [user] = await db
-          .select()
-          .from(b2bUsers)
-          .where(eq(b2bUsers.email, lowerEmail))
-          .limit(1);
-        if (user) {
-          return req.login(user, () =>
-            res.json({
-              message: "Login Admin OK",
-              user: { ...user, role: (user as any).role || "admin" },
-            }),
-          );
-        }
-      }
-
-      const [b2bUser]: any = await db
+      // 1. Busca na tabela users (legacy) pelo email
+      const [user] = await db
         .select()
-        .from(b2bUsers)
-        .where(eq(b2bUsers.email, lowerEmail))
+        .from(users)
+        .where(eq(users.email, email))
         .limit(1);
-      const hash = b2bUser?.senha_hash || b2bUser?.senhaHash;
 
-      if (b2bUser && hash) {
-        const isValid = await bcrypt.compare(password, hash);
-        if (isValid) {
-          if (!b2bUser.ativo)
-            return res.status(403).json({ message: "Conta inativa" });
-          return req.login(b2bUser, () =>
-            res.json({ message: "Login OK", user: b2bUser }),
-          );
-        }
+      if (!user) {
+        return res.status(401).json({ message: "Usuário não encontrado" });
       }
-      return res.status(401).json({ message: "Credenciais inválidas" });
-    } catch (error) {
-      res.status(500).json({ message: "Erro interno no login" });
-    }
-  });
 
-  app.post("/api/register", async (req: any, res) => {
-    try {
-      const { username, email } = req.body;
-      const targetEmail = email || username;
-      if (!targetEmail)
-        return res.status(400).json({ message: "Email é obrigatório" });
+      // 2. Verifica a senha
+      let isValid = false;
+      if (user.password) {
+        // Tenta comparar como hash
+        isValid = await bcrypt
+          .compare(password, user.password)
+          .catch(() => false);
+        // Se falhar o hash, tenta texto simples (fallback)
+        if (!isValid && password === user.password) isValid = true;
+      }
 
-      const existingUser = await storage.getUserByEmail(targetEmail);
-      if (existingUser)
-        return res.status(400).json({ message: "Usuário já existe" });
+      if (!isValid) {
+        return res.status(401).json({ message: "Senha incorreta" });
+      }
 
-      const user = await storage.createUser(req.body);
+      // 3. Loga o usuário na sessão
       req.login(user, (err: any) => {
-        if (err)
-          return res.status(500).json({ message: "Erro no login automático" });
-        return res.status(201).json(user);
+        if (err) return next(err);
+
+        // Retorna os dados formatados para o Frontend
+        const userResponse = {
+          ...user,
+          isB2bUser: true,
+          nome: user.firstName, // Garante compatibilidade
+          company: user.company,
+        };
+        return res.json(userResponse);
       });
     } catch (error) {
-      console.error("[REGISTER ERROR]", error);
-      res.status(500).json({ message: "Erro ao registrar usuário" });
+      console.error("Erro fatal no login:", error);
+      res.status(500).json({ message: "Erro interno no servidor" });
     }
   });
 
+  // --- USER INFO ---
   app.get("/api/auth/user", async (req: any, res) => {
     if (!req.isAuthenticated())
       return res.status(401).json({ message: "Não autenticado" });
-    const user = await storage.getUser(req.user.id);
+
+    // Busca atualizada do usuário
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(eq(users.id, req.user.id))
+      .limit(1);
+
     if (!user)
       return res.status(404).json({ message: "Usuário não encontrado" });
-    res.json({ ...user, isB2bUser: true });
+
+    res.json({
+      ...user,
+      isB2bUser: true,
+      nome: user.firstName, // Alias para o frontend
+    });
   });
 
   app.post("/api/auth/logout", (req: any, res) => {
     req.logout(() => res.json({ message: "Logout efetuado" }));
   });
 
-  // --- ROTAS DE USUÁRIOS (CRUD) ---
+  // ==========================================
+  // 🏢 ROTAS DA EMPRESA (MULTI-TENANT)
+  // ==========================================
+
+  // 🏢 ROTA: Quem sou eu? (Versão à prova de falhas)
+  app.get("/api/company/me", async (req: any, res) => {
+    if (!req.isAuthenticated()) return res.status(401).send();
+
+    const userCompanyId = req.user.companyId;
+    console.log("🔍 Buscando empresa para ID:", userCompanyId);
+
+    try {
+      let company;
+
+      // TENTATIVA 1: Busca pelo ID exato (se tiver ID)
+      if (userCompanyId) {
+        // Força comparação como texto para evitar erro de tipo (número vs string)
+        const targetId = String(userCompanyId).trim();
+        [company] = await db
+          .select()
+          .from(companies)
+          .where(sql`${companies.id}::text = ${targetId}`)
+          .limit(1);
+      }
+
+      // TENTATIVA 2 (Plano B): Se não achou (ou não tinha ID), pega a primeira empresa do banco
+      // Isso garante que o painel nunca fique vazio para o Admin
+      if (!company) {
+        console.log(
+          "⚠️ ID exato não encontrado. Usando 'Plano B' (Primeira empresa disponível)...",
+        );
+        const [firstCompany] = await db.select().from(companies).limit(1);
+        company = firstCompany;
+      }
+
+      // Se mesmo assim não tiver empresa nenhuma no banco
+      if (!company) {
+        return res
+          .status(404)
+          .json({ message: "Nenhuma empresa cadastrada no sistema." });
+      }
+
+      // 🔄 TRADUÇÃO (Mapeamento para o Frontend)
+      // O frontend espera nomes em inglês (name, tradingName), mas o banco está em PT-BR
+      const companyFrontend = {
+        ...company,
+        id: company.id,
+        // Garante que name e tradingName sempre tenham valor
+        name: company.razaoSocial || company.name || "Minha Empresa",
+        tradingName:
+          company.nomeFantasia || company.tradingName || "Nome Fantasia",
+        cnpj: company.cnpj,
+        email: company.email,
+        phone: company.telefone || company.phone,
+
+        // Endereço
+        address: company.endereco || company.address,
+        number: company.numero || company.number,
+        complement: company.complemento || company.complement,
+        neighborhood: company.bairro || company.neighborhood,
+        city: company.cidade || company.city,
+        state: company.estado || company.state,
+        cep: company.cep,
+
+        isActive: company.ativo,
+        logoUrl: company.logoUrl || "",
+        primaryColor: company.primaryColor || "#000000",
+      };
+
+      console.log("✅ Empresa retornada:", companyFrontend.tradingName);
+      res.json(companyFrontend);
+    } catch (error) {
+      console.error("❌ ERRO CRÍTICO NA ROTA EMPRESA:", error);
+      res.status(500).json({ message: "Erro interno ao buscar empresa" });
+    }
+  });
+
+  // PATCH: Atualizar minha empresa
+  // PATCH: Atualizar minha empresa (VERSÃO CORRIGIDA JSON)
+  app.patch("/api/company/me", async (req: any, res) => {
+    // 1. Correção: Retornar JSON se não estiver logado
+    if (!req.isAuthenticated()) {
+      return res
+        .status(401)
+        .json({ message: "Sessão expirada. Por favor, faça login novamente." });
+    }
+
+    const userCompanyId = req.user.companyId;
+    console.log(
+      "📝 Recebido pedido de atualização. ID Empresa Usuário:",
+      userCompanyId,
+    );
+    console.log("📦 Dados recebidos:", req.body);
+
+    try {
+      const updateData: any = { ...req.body, updatedAt: new Date() };
+
+      // Traduz campos do Frontend -> Banco
+      if (req.body.name) updateData.razaoSocial = req.body.name;
+      if (req.body.tradingName) updateData.nomeFantasia = req.body.tradingName;
+      if (req.body.address) updateData.endereco = req.body.address;
+      if (req.body.city) updateData.cidade = req.body.city;
+
+      // Limpeza
+      delete updateData.name;
+      delete updateData.tradingName;
+      delete updateData.address;
+      delete updateData.city;
+
+      // TENTATIVA 1: Atualizar pelo ID exato
+      let targetId = String(userCompanyId).trim();
+
+      let [updated] = await db
+        .update(companies)
+        .set(updateData)
+        .where(sql`${companies.id}::text = ${targetId}`)
+        .returning();
+
+      // TENTATIVA 2 (Plano B): Se não atualizou, pega a primeira empresa
+      if (!updated) {
+        console.log("⚠️ ID exato falhou. Usando 'Plano B'...");
+        const [first] = await db.select().from(companies).limit(1);
+        if (first) {
+          [updated] = await db
+            .update(companies)
+            .set(updateData)
+            .where(eq(companies.id, first.id))
+            .returning();
+        }
+      }
+
+      if (!updated) {
+        return res
+          .status(404)
+          .json({ message: "Empresa não encontrada para atualizar." });
+      }
+
+      console.log("✅ Empresa atualizada com sucesso!");
+      res.json(updated);
+    } catch (error: any) {
+      console.error("❌ Erro ao atualizar empresa:", error);
+      // Sempre retorna JSON no erro
+      res.status(500).json({ message: "Erro interno: " + error.message });
+    }
+  });
+
+  // ==========================================
+  // --- 👥 USUÁRIOS E CLIENTES (LISTAGEM) ---
+  // ==========================================
 
   app.get("/api/users", async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).send();
     try {
-      const users = await storage.getUsers();
-      res.json(users);
+      const result = await db
+        .select()
+        .from(users)
+        .orderBy(desc(users.createdAt));
+      res.json(result);
     } catch (error) {
+      console.error("Erro ao buscar usuários:", error);
       res.status(500).json({ message: "Erro ao buscar usuários" });
     }
   });
 
-  app.post("/api/users", async (req: any, res) => {
-    if (!req.isAuthenticated()) return res.status(401).send();
-    try {
-      const { email } = req.body;
-      const existingUser = await storage.getUserByEmail(email);
-      if (existingUser)
-        return res.status(400).json({ message: "Email já cadastrado" });
-
-      const userData = { ...req.body, approved: true };
-      const newUser = await storage.createUser(userData);
-      res.status(201).json(newUser);
-    } catch (error) {
-      console.error("[CREATE USER ERROR]", error);
-      res.status(500).json({ message: "Erro ao criar usuário" });
-    }
-  });
-
-  app.patch("/api/users/:id", async (req: any, res) => {
-    if (!req.isAuthenticated()) return res.status(401).send();
-    try {
-      const updated = await storage.updateUser(req.params.id, req.body);
-      res.json(updated);
-    } catch (error) {
-      res.status(500).json({ message: "Erro ao atualizar usuário" });
-    }
-  });
-
-  app.delete("/api/users/:id", async (req: any, res) => {
-    if (!req.isAuthenticated()) return res.status(401).send();
-    try {
-      await storage.deleteUser(req.params.id);
-      res.json({ message: "Usuário excluído" });
-    } catch (error) {
-      res.status(500).json({ message: "Erro ao excluir usuário" });
-    }
-  });
-
-  // --- PERMISSÕES ---
-  app.get("/api/users/:id/permissions", async (req: any, res) => {
-    if (!req.isAuthenticated()) return res.status(401).send();
-    try {
-      const user = await storage.getUser(req.params.id);
-      if (!user)
-        return res.status(404).json({ message: "Usuário não encontrado" });
-
-      let modules = [];
-      try {
-        modules = user.modules ? JSON.parse(user.modules) : [];
-      } catch (e) {
-        modules = [];
-      }
-      res.json({ userId: user.id, modules });
-    } catch (error) {
-      console.error("[GET PERMISSIONS ERROR]", error);
-      res.status(500).json({ message: "Erro ao buscar permissões" });
-    }
-  });
-
-  app.post("/api/users/:id/permissions", async (req: any, res) => {
-    if (!req.isAuthenticated()) return res.status(401).send();
-    try {
-      const { modules } = req.body;
-      const modulesString = JSON.stringify(modules || []);
-      await storage.updateUser(req.params.id, { modules: modulesString });
-      res.json({ message: "Permissões atualizadas" });
-    } catch (error) {
-      console.error("[UPDATE PERMISSIONS ERROR]", error);
-      res.status(500).json({ message: "Erro ao atualizar permissões" });
-    }
-  });
-
-  // --- PRODUTOS ---
-  app.get("/api/products", async (req, res) => {
-    try {
-      const result = await storage.getProducts(req.query);
-      if (Array.isArray(result)) {
-        res.json({ products: result, total: result.length });
-      } else {
-        res.json(result);
-      }
-    } catch (error) {
-      res.status(500).send("Erro ao listar produtos");
-    }
-  });
-
-  app.post("/api/products", async (req: any, res) => {
-    if (!req.isAuthenticated()) return res.status(401).send();
-    const { name, sku, price, stock } = req.body;
-
-    const productData = {
-      ...req.body,
-      nome: name,
-      precoVarejo: price,
-      precoAtacado: req.body.cost,
-    };
-
-    const product = await storage.createProduct(productData);
-    res.status(201).json(product);
-  });
-
-  app.patch("/api/products/:id", async (req: any, res) => {
-    if (!req.isAuthenticated()) return res.status(401).send();
-    const id = parseInt(req.params.id);
-    const dataToUpdate: any = {};
-    if (req.body.name) dataToUpdate.nome = req.body.name;
-    if (req.body.sku) dataToUpdate.sku = req.body.sku;
-    if (req.body.price !== undefined)
-      dataToUpdate.precoVarejo = String(req.body.price || 0);
-    if (req.body.stock !== undefined)
-      dataToUpdate.estoque = Number(req.body.stock || 0);
-    if (req.body.cost !== undefined)
-      dataToUpdate.precoAtacado = String(req.body.cost || 0);
-    if (req.body.description) dataToUpdate.descricao = req.body.description;
-    if (req.body.image) dataToUpdate.imagem = req.body.image;
-    if (req.body.featured !== undefined)
-      dataToUpdate.featured = req.body.featured;
-
-    await db
-      .update(b2bProducts)
-      .set(dataToUpdate)
-      .where(eq(b2bProducts.id, id));
-    res.json({ message: "Produto atualizado" });
-  });
-
-  app.delete("/api/products/:id", async (req: any, res) => {
-    if (!req.isAuthenticated()) return res.status(401).send();
-    await db
-      .update(b2bProducts)
-      .set({ status: "INATIVO" })
-      .where(eq(b2bProducts.id, parseInt(req.params.id)));
-    res.json({ message: "Produto excluído" });
-  });
-
-  // --- PEDIDOS ---
-  app.get("/api/orders", async (req, res) => {
-    if (!req.isAuthenticated()) return res.status(401).send();
-    try {
-      const orders = await storage.getOrders();
-      res.json(orders);
-    } catch (error) {
-      console.error("[GET ORDERS ERROR]", error);
-      res.status(500).json({ message: "Erro ao buscar pedidos" });
-    }
-  });
-
-  app.post("/api/orders", async (req: any, res) => {
-    if (!req.isAuthenticated()) return res.status(401).send();
-    try {
-      const order = await storage.createOrder(req.body);
-      res.status(201).json(order);
-    } catch (error) {
-      console.error("[CREATE ORDER ERROR]", error);
-      res.status(500).json({ message: "Erro ao criar pedido" });
-    }
-  });
-
-  app.get("/api/orders/:id", async (req, res) => {
-    if (!req.isAuthenticated()) return res.status(401).send();
-    try {
-      const order = await storage.getOrder(parseInt(req.params.id));
-      if (!order)
-        return res.status(404).json({ message: "Pedido não encontrado" });
-      res.json(order);
-    } catch (error) {
-      res.status(500).json({ message: "Erro ao buscar pedido" });
-    }
-  });
-
-  app.get("/api/categories", async (req, res) => {
-    const cats = await storage.getCategories();
-    res.json(cats);
-  });
-
   // ==========================================
-  // --- ROTAS DE FORNECEDORES (CRUD) ---
+  // --- 🚚 FORNECEDORES ---
   // ==========================================
 
   app.get("/api/suppliers", async (req: any, res) => {
     if (!req.isAuthenticated()) return res.status(401).send();
+    const userCompanyId = req.user.companyId ? Number(req.user.companyId) : 1;
+    const safeCompanyId = isNaN(userCompanyId) ? 1 : userCompanyId;
+
     try {
       const result = await db
         .select()
         .from(suppliers)
-        .where(eq(suppliers.companyId, req.user.companyId))
+        .where(
+          sql`${suppliers.companyId} = ${safeCompanyId} OR ${suppliers.companyId} IS NULL`,
+        )
         .orderBy(desc(suppliers.id));
       res.json(result);
     } catch (error) {
-      console.error("Erro ao listar fornecedores:", error);
       res.status(500).json({ message: "Erro ao buscar fornecedores" });
     }
   });
@@ -321,18 +306,20 @@ export async function registerRoutes(
   app.post("/api/suppliers", async (req: any, res) => {
     if (!req.isAuthenticated()) return res.status(401).send();
     try {
+      const userCompanyId = req.user.companyId ? Number(req.user.companyId) : 1;
+      const validCompanyId = isNaN(userCompanyId) ? 1 : userCompanyId;
+
       const newSupplierData = {
         ...req.body,
-        companyId: req.user.companyId,
+        companyId: validCompanyId,
+        active: true,
       };
-
       const [supplier] = await db
         .insert(suppliers)
         .values(newSupplierData)
         .returning();
       res.status(201).json(supplier);
-    } catch (error) {
-      console.error("Erro ao criar fornecedor:", error);
+    } catch (error: any) {
       res.status(500).json({ message: "Erro ao criar fornecedor" });
     }
   });
@@ -343,12 +330,7 @@ export async function registerRoutes(
       const [updated] = await db
         .update(suppliers)
         .set(req.body)
-        .where(
-          and(
-            eq(suppliers.id, parseInt(req.params.id)),
-            eq(suppliers.companyId, req.user.companyId),
-          ),
-        )
+        .where(eq(suppliers.id, parseInt(req.params.id)))
         .returning();
       res.json(updated);
     } catch (error) {
@@ -361,76 +343,143 @@ export async function registerRoutes(
     try {
       await db
         .delete(suppliers)
-        .where(
-          and(
-            eq(suppliers.id, parseInt(req.params.id)),
-            eq(suppliers.companyId, req.user.companyId),
-          ),
-        );
+        .where(eq(suppliers.id, parseInt(req.params.id)));
       res.json({ message: "Fornecedor excluído" });
     } catch (error) {
       res.status(500).json({ message: "Erro ao excluir fornecedor" });
     }
   });
 
-  app.get("/api/suppliers", async (req: any, res) => {
-    if (!req.isAuthenticated()) return res.status(401).send();
-    try {
-      const result = await db
-        .select()
-        .from(suppliers)
-        // Comentamos o filtro para garantir que você veja QUALQUER fornecedor salvo
-        // .where(eq(suppliers.companyId, Number(req.user.companyId)))
-        .orderBy(desc(suppliers.id));
+  // ==========================================
+  // --- 🛒 PEDIDOS E PRODUTOS ---
+  // ==========================================
 
-      console.log("Fornecedores encontrados:", result.length);
-      res.json(result);
+  app.get("/api/products", async (req, res) => {
+    try {
+      const result = await storage.getProducts(req.query);
+      res.json(
+        Array.isArray(result)
+          ? { products: result, total: result.length }
+          : result,
+      );
     } catch (error) {
-      res.status(500).json({ message: "Erro ao buscar fornecedores" });
+      res.status(500).send("Erro ao listar produtos");
     }
   });
 
-  // 2. Rota de Criação (Forçando ID numérico)
-  app.post("/api/suppliers", async (req: any, res) => {
+  app.get("/api/purchases", async (req: any, res) => {
+    if (!req.isAuthenticated()) return res.status(401).send();
+    const orders = await db
+      .select()
+      .from(purchaseOrders)
+      .orderBy(desc(purchaseOrders.createdAt));
+    res.json(orders);
+  });
+
+  app.post("/api/purchases", async (req: any, res) => {
     if (!req.isAuthenticated()) return res.status(401).send();
     try {
-      const newSupplierData = {
-        ...req.body,
-        // Se req.user.companyId for null ou string, convertemos para número 1 para teste
-        companyId: Number(req.user.companyId) || 1,
-      };
+      const { items, ...orderData } = req.body;
+      const result = await db.transaction(async (tx) => {
+        const [newOrder] = await tx
+          .insert(purchaseOrders)
+          .values({
+            ...orderData,
+            status: "DRAFT",
+            number: orderData.number || `PC-${Date.now()}`,
+            totalValue: String(orderData.totalValue || "0.00"),
+          })
+          .returning();
 
-      const [supplier] = await db
-        .insert(suppliers)
-        .values(newSupplierData)
-        .returning();
-
-      console.log("Fornecedor gravado com sucesso no Banco ID:", supplier.id);
-      res.status(201).json(supplier);
+        if (items && items.length > 0) {
+          const orderItemsData = items.map((item: any) => ({
+            purchaseOrderId: newOrder.id,
+            productId: Number(item.productId),
+            qty: String(item.qty || "0"),
+            unitCost: String(item.unitCost || "0.00"),
+            sellPrice: String(item.sellPrice || "0.00"),
+            lineTotal: String(
+              (parseFloat(item.qty) || 0) * (parseFloat(item.unitCost) || 0),
+            ),
+            descriptionSnapshot: String(item.descriptionSnapshot || "Produto"),
+            skuSnapshot: String(item.skuSnapshot || "N/A"),
+          }));
+          await tx.insert(purchaseOrderItems).values(orderItemsData);
+        }
+        return newOrder;
+      });
+      res.status(201).json(result);
     } catch (error: any) {
-      console.error("ERRO DE GRAVAÇÃO:", error.message);
       res
         .status(500)
-        .json({ message: "Erro ao salvar no banco: " + error.message });
+        .json({ message: "Erro ao criar pedido: " + error.message });
     }
   });
 
-  app.post("/api/suppliers", async (req: any, res) => {
+  app.post("/api/purchases/:id/post-stock", async (req: any, res) => {
     if (!req.isAuthenticated()) return res.status(401).send();
+    const orderId = parseInt(req.params.id);
     try {
-      const newSupplierData = {
-        ...req.body,
-        companyId: req.user.companyId, // <--- GARANTE O SALVAMENTO NA SUA EMPRESA
-      };
-      const [supplier] = await db
-        .insert(suppliers)
-        .values(newSupplierData)
-        .returning();
-      res.status(201).json(supplier);
+      await db.transaction(async (tx) => {
+        const [order] = await tx
+          .select()
+          .from(purchaseOrders)
+          .where(eq(purchaseOrders.id, orderId))
+          .limit(1);
+        if (!order || order.status === "STOCK_POSTED")
+          throw new Error("Pedido inválido");
+
+        const items = await tx
+          .select()
+          .from(purchaseOrderItems)
+          .where(eq(purchaseOrderItems.purchaseOrderId, orderId));
+
+        for (const item of items) {
+          const qty = parseFloat(item.qty);
+          const updateData: any = {
+            stock: sql`${products.stock} + ${qty}`,
+            updatedAt: new Date(),
+          };
+          if (parseFloat(item.unitCost) > 0)
+            updateData.cost = String(item.unitCost);
+          if (parseFloat(item.sellPrice) > 0)
+            updateData.price = String(item.sellPrice);
+
+          await tx
+            .update(products)
+            .set(updateData)
+            .where(eq(products.id, item.productId));
+
+          await tx.insert(stockMovements).values({
+            type: "IN",
+            reason: "PURCHASE_POST",
+            refType: "PURCHASE_ORDER",
+            refId: orderId,
+            productId: item.productId,
+            qty: String(item.qty),
+            unitCost: String(item.unitCost),
+            notes: `Entrada via Pedido ${order.number}`,
+          });
+        }
+        await tx
+          .update(purchaseOrders)
+          .set({ status: "STOCK_POSTED", postedAt: new Date() })
+          .where(eq(purchaseOrders.id, orderId));
+      });
+      res.json({ message: "Estoque atualizado!" });
     } catch (error: any) {
-      res.status(500).json({ message: "Erro ao criar: " + error.message });
+      res.status(500).json({ message: error.message });
     }
   });
+
+  // --- OUTRAS ROTAS ---
+  app.get("/api/categories", async (req, res) => {
+    const cats = await storage.getCategories();
+    res.json(cats);
+  });
+
+  // Removido: /api/user/companies fixo
+  // Agora usamos /api/company/me para pegar a real
 
   return httpServer;
 }

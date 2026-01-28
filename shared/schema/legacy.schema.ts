@@ -14,7 +14,7 @@ import {
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
-// Session storage table - mandatory for Replit Auth
+// Session storage
 export const sessions = pgTable(
   "sessions",
   {
@@ -25,7 +25,7 @@ export const sessions = pgTable(
   (table) => [index("IDX_session_expire").on(table.expire)],
 );
 
-// Users table (Legacy)
+// --- USERS (Inglês) ---
 export const users = pgTable("users", {
   id: varchar("id")
     .primaryKey()
@@ -63,16 +63,14 @@ export const users = pgTable("users", {
 
 export type UpsertUser = typeof users.$inferInsert;
 export type User = typeof users.$inferSelect;
-
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
 });
-
 export type InsertUser = z.infer<typeof insertUserSchema>;
 
-// Categories table
+// Categories
 export const categories = pgTable("categories", {
   id: serial("id").primaryKey(),
   companyId: varchar("company_id"),
@@ -82,15 +80,13 @@ export const categories = pgTable("categories", {
   hideFromVarejo: boolean("hide_from_varejo").notNull().default(false),
   blingId: integer("bling_id"),
 });
-
 export const insertCategorySchema = createInsertSchema(categories).omit({
   id: true,
 });
-
 export type InsertCategory = z.infer<typeof insertCategorySchema>;
 export type Category = typeof categories.$inferSelect;
 
-// Suppliers table - ATUALIZADO companyId para integer para compatibilidade de filtro
+// Suppliers
 export const suppliers = pgTable("suppliers", {
   id: serial("id").primaryKey(),
   companyId: integer("company_id"),
@@ -99,18 +95,14 @@ export const suppliers = pgTable("suppliers", {
   cnpj: text("cnpj"),
   email: text("email"),
   phone: text("phone"),
-  contact: text("contact"), // Nome do contato principal
-
-  // --- NOVOS CAMPOS ---
-  paymentTerms: text("payment_terms"), // Ex: "30 dias", "15/30/45"
+  contact: text("contact"),
+  paymentTerms: text("payment_terms"),
   minOrderValue: decimal("min_order_value", {
     precision: 10,
     scale: 2,
   }).default("0"),
-  leadTime: integer("lead_time"), // Prazo de entrega em dias
-  bankInfo: text("bank_info"), // Chave Pix ou dados bancários
-  // --------------------
-
+  leadTime: integer("lead_time"),
+  bankInfo: text("bank_info"),
   cep: text("cep"),
   address: text("address"),
   addressNumber: text("address_number"),
@@ -122,16 +114,14 @@ export const suppliers = pgTable("suppliers", {
   active: boolean("active").notNull().default(true),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
-
 export const insertSupplierSchema = createInsertSchema(suppliers).omit({
   id: true,
   createdAt: true,
 });
-
 export type InsertSupplier = z.infer<typeof insertSupplierSchema>;
 export type Supplier = typeof suppliers.$inferSelect;
 
-// Products table (Legacy)
+// Products
 export const products = pgTable("products", {
   id: serial("id").primaryKey(),
   companyId: varchar("company_id"),
@@ -187,16 +177,14 @@ export const products = pgTable("products", {
   valorCofinsFixo: decimal("valor_cofins_fixo", { precision: 10, scale: 4 }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
-
 export const insertProductSchema = createInsertSchema(products).omit({
   id: true,
   createdAt: true,
 });
-
 export type InsertProduct = z.infer<typeof insertProductSchema>;
 export type Product = typeof products.$inferSelect;
 
-// Orders table
+// Orders
 export const orders = pgTable("orders", {
   id: serial("id").primaryKey(),
   companyId: varchar("company_id"),
@@ -229,16 +217,14 @@ export const orders = pgTable("orders", {
   blingOrderId: text("bling_order_id"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
-
 export const insertOrderSchema = createInsertSchema(orders).omit({
   id: true,
   createdAt: true,
 });
-
 export type InsertOrder = z.infer<typeof insertOrderSchema>;
 export type Order = typeof orders.$inferSelect;
 
-// Order Items table
+// Order Items
 export const orderItems = pgTable("order_items", {
   id: serial("id").primaryKey(),
   orderId: integer("order_id")
@@ -250,15 +236,166 @@ export const orderItems = pgTable("order_items", {
   quantity: integer("quantity").notNull(),
   price: decimal("price", { precision: 10, scale: 2 }).notNull(),
 });
-
 export const insertOrderItemSchema = createInsertSchema(orderItems).omit({
   id: true,
 });
-
 export type InsertOrderItem = z.infer<typeof insertOrderItemSchema>;
 export type OrderItem = typeof orderItems.$inferSelect;
 
-// Price Tables
+// Stock Movements
+export const stockMovements = pgTable("stock_movements", {
+  id: serial("id").primaryKey(),
+  type: text("type").notNull(),
+  reason: text("reason").notNull(),
+  refType: text("ref_type"),
+  refId: integer("ref_id"),
+  productId: integer("product_id")
+    .notNull()
+    .references(() => products.id),
+  qty: decimal("qty", { precision: 10, scale: 2 }).notNull(),
+  unitCost: decimal("unit_cost", { precision: 10, scale: 2 }),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+export const insertStockMovementSchema = createInsertSchema(
+  stockMovements,
+).omit({ id: true, createdAt: true });
+export type InsertStockMovement = z.infer<typeof insertStockMovementSchema>;
+export type StockMovement = typeof stockMovements.$inferSelect;
+
+// Purchase Orders
+export const purchaseOrders = pgTable("purchase_orders", {
+  id: serial("id").primaryKey(),
+  supplierId: integer("supplier_id").references(() => suppliers.id),
+  status: text("status").notNull().default("DRAFT"),
+  number: text("number"),
+  issueDate: timestamp("issue_date"),
+  deliveryDate: timestamp("delivery_date"),
+  totalValue: decimal("total_value", { precision: 10, scale: 2 }),
+  notes: text("notes"),
+  postedAt: timestamp("posted_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+export const insertPurchaseOrderSchema = createInsertSchema(
+  purchaseOrders,
+).omit({ id: true, createdAt: true });
+export type InsertPurchaseOrder = z.infer<typeof insertPurchaseOrderSchema>;
+export type PurchaseOrder = typeof purchaseOrders.$inferSelect;
+
+// Purchase Order Items
+export const purchaseOrderItems = pgTable("purchase_order_items", {
+  id: serial("id").primaryKey(),
+  purchaseOrderId: integer("purchase_order_id")
+    .notNull()
+    .references(() => purchaseOrders.id),
+  productId: integer("product_id")
+    .notNull()
+    .references(() => products.id),
+  qty: decimal("qty", { precision: 10, scale: 2 }).notNull(),
+  unitCost: decimal("unit_cost", { precision: 10, scale: 2 }),
+  sellPrice: decimal("sell_price", { precision: 10, scale: 2 }),
+  lineTotal: decimal("line_total", { precision: 10, scale: 2 }),
+  descriptionSnapshot: text("description_snapshot"),
+  skuSnapshot: text("sku_snapshot"),
+});
+export const insertPurchaseOrderItemSchema = createInsertSchema(
+  purchaseOrderItems,
+).omit({ id: true });
+export type InsertPurchaseOrderItem = z.infer<
+  typeof insertPurchaseOrderItemSchema
+>;
+export type PurchaseOrderItem = typeof purchaseOrderItems.$inferSelect;
+
+// Bling
+export const blingCredentials = pgTable("bling_credentials", {
+  id: serial("id").primaryKey(),
+  clientId: text("client_id"),
+  clientSecret: text("client_secret"),
+  code: text("code"),
+  companyId: varchar("company_id"),
+  redirectUri: text("redirect_uri"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const blingTokens = pgTable("bling_tokens", {
+  id: serial("id").primaryKey(),
+  companyId: varchar("company_id"),
+  accessToken: text("access_token").notNull(),
+  refreshToken: text("refresh_token").notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+  tokenType: text("token_type").notNull().default("Bearer"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+export const insertBlingTokensSchema = createInsertSchema(blingTokens).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertBlingTokens = z.infer<typeof insertBlingTokensSchema>;
+export type BlingTokens = typeof blingTokens.$inferSelect;
+
+// ✅ TABELAS CRÍTICAS QUE FALTAVAM
+export const siteSettings = pgTable("site_settings", {
+  id: serial("id").primaryKey(),
+  companyId: varchar("company_id"),
+  key: text("key").notNull().unique(),
+  value: text("value"),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+export type SiteSetting = typeof siteSettings.$inferSelect;
+
+export const banners = pgTable("banners", {
+  id: serial("id").primaryKey(),
+  title: text("title"),
+  imageUrl: text("image_url").notNull(),
+  linkUrl: text("link_url"),
+  active: boolean("active").notNull().default(true),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+export const insertBannerSchema = createInsertSchema(banners).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertBanner = z.infer<typeof insertBannerSchema>;
+export type Banner = typeof banners.$inferSelect;
+
+export const modules = pgTable("modules", {
+  id: serial("id").primaryKey(),
+  key: text("key").notNull().unique(),
+  label: text("label").notNull(),
+  description: text("description"),
+  icon: text("icon"),
+  defaultRoles: text("default_roles").array(),
+  sortOrder: integer("sort_order").notNull().default(0),
+});
+export const insertModuleSchema = createInsertSchema(modules).omit({
+  id: true,
+});
+export type InsertModule = z.infer<typeof insertModuleSchema>;
+export type Module = typeof modules.$inferSelect;
+
+export const userModulePermissions = pgTable("user_module_permissions", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  moduleKey: text("module_key").notNull(),
+  allowed: boolean("allowed").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+export const insertUserModulePermissionSchema = createInsertSchema(
+  userModulePermissions,
+).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertUserModulePermission = z.infer<
+  typeof insertUserModulePermissionSchema
+>;
+export type UserModulePermission = typeof userModulePermissions.$inferSelect;
+
+// Price Tables e Customer Prices
 export const priceTables = pgTable("price_tables", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
@@ -270,16 +407,13 @@ export const priceTables = pgTable("price_tables", {
   isDefault: boolean("is_default").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
-
 export const insertPriceTableSchema = createInsertSchema(priceTables).omit({
   id: true,
   createdAt: true,
 });
-
 export type InsertPriceTable = z.infer<typeof insertPriceTableSchema>;
 export type PriceTable = typeof priceTables.$inferSelect;
 
-// Customer Prices
 export const customerPrices = pgTable("customer_prices", {
   id: serial("id").primaryKey(),
   userId: varchar("user_id")
@@ -290,13 +424,9 @@ export const customerPrices = pgTable("customer_prices", {
     .references(() => products.id),
   customPrice: decimal("custom_price", { precision: 10, scale: 2 }).notNull(),
 });
-
 export const insertCustomerPriceSchema = createInsertSchema(
   customerPrices,
-).omit({
-  id: true,
-});
-
+).omit({ id: true });
 export type InsertCustomerPrice = z.infer<typeof insertCustomerPriceSchema>;
 export type CustomerPrice = typeof customerPrices.$inferSelect;
 
@@ -319,13 +449,11 @@ export const coupons = pgTable("coupons", {
   active: boolean("active").notNull().default(true),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
-
 export const insertCouponSchema = createInsertSchema(coupons).omit({
   id: true,
   usedCount: true,
   createdAt: true,
 });
-
 export type InsertCoupon = z.infer<typeof insertCouponSchema>;
 export type Coupon = typeof coupons.$inferSelect;
 
@@ -341,25 +469,12 @@ export const agendaEvents = pgTable("agenda_events", {
   createdBy: varchar("created_by").references(() => users.id),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
-
 export const insertAgendaEventSchema = createInsertSchema(agendaEvents).omit({
   id: true,
   createdAt: true,
 });
-
 export type InsertAgendaEvent = z.infer<typeof insertAgendaEventSchema>;
 export type AgendaEvent = typeof agendaEvents.$inferSelect;
-
-// Site Settings
-export const siteSettings = pgTable("site_settings", {
-  id: serial("id").primaryKey(),
-  companyId: varchar("company_id"),
-  key: text("key").notNull().unique(),
-  value: text("value"),
-  updatedAt: timestamp("updated_at").defaultNow(),
-});
-
-export type SiteSetting = typeof siteSettings.$inferSelect;
 
 // Catalog Banners
 export const catalogBanners = pgTable("catalog_banners", {
@@ -379,15 +494,9 @@ export const catalogBanners = pgTable("catalog_banners", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
-
 export const insertCatalogBannerSchema = createInsertSchema(
   catalogBanners,
-).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
-});
-
+).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertCatalogBanner = z.infer<typeof insertCatalogBannerSchema>;
 export type CatalogBanner = typeof catalogBanners.$inferSelect;
 
@@ -405,12 +514,10 @@ export const catalogSlides = pgTable("catalog_slides", {
   active: boolean("active").notNull().default(true),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
-
 export const insertCatalogSlideSchema = createInsertSchema(catalogSlides).omit({
   id: true,
   createdAt: true,
 });
-
 export type InsertCatalogSlide = z.infer<typeof insertCatalogSlideSchema>;
 export type CatalogSlide = typeof catalogSlides.$inferSelect;
 
@@ -421,7 +528,6 @@ export const catalogConfig = pgTable("catalog_config", {
   value: text("value"),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
-
 export type CatalogConfig = typeof catalogConfig.$inferSelect;
 
 // Customer Credits
@@ -444,15 +550,9 @@ export const customerCredits = pgTable("customer_credits", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
-
 export const insertCustomerCreditSchema = createInsertSchema(
   customerCredits,
-).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
-});
-
+).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertCustomerCredit = z.infer<typeof insertCustomerCreditSchema>;
 export type CustomerCredit = typeof customerCredits.$inferSelect;
 
@@ -468,13 +568,9 @@ export const creditPayments = pgTable("credit_payments", {
   receivedBy: varchar("received_by").references(() => users.id),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
-
 export const insertCreditPaymentSchema = createInsertSchema(
   creditPayments,
-).omit({
-  id: true,
-});
-
+).omit({ id: true });
 export type InsertCreditPayment = z.infer<typeof insertCreditPaymentSchema>;
 export type CreditPayment = typeof creditPayments.$inferSelect;
 
@@ -499,15 +595,9 @@ export const accountsPayable = pgTable("accounts_payable", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
-
 export const insertAccountPayableSchema = createInsertSchema(
   accountsPayable,
-).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
-});
-
+).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertAccountPayable = z.infer<typeof insertAccountPayableSchema>;
 export type AccountPayable = typeof accountsPayable.$inferSelect;
 
@@ -523,107 +613,8 @@ export const payablePayments = pgTable("payable_payments", {
   paidBy: varchar("paid_by").references(() => users.id),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
-
 export const insertPayablePaymentSchema = createInsertSchema(
   payablePayments,
-).omit({
-  id: true,
-});
-
+).omit({ id: true });
 export type InsertPayablePayment = z.infer<typeof insertPayablePaymentSchema>;
 export type PayablePayment = typeof payablePayments.$inferSelect;
-
-// Banners
-export const banners = pgTable("banners", {
-  id: serial("id").primaryKey(),
-  title: text("title"),
-  imageUrl: text("image_url").notNull(),
-  linkUrl: text("link_url"),
-  active: boolean("active").notNull().default(true),
-  sortOrder: integer("sort_order").notNull().default(0),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-});
-
-export const insertBannerSchema = createInsertSchema(banners).omit({
-  id: true,
-  createdAt: true,
-});
-
-export type InsertBanner = z.infer<typeof insertBannerSchema>;
-export type Banner = typeof banners.$inferSelect;
-
-// Modules
-export const modules = pgTable("modules", {
-  id: serial("id").primaryKey(),
-  key: text("key").notNull().unique(),
-  label: text("label").notNull(),
-  description: text("description"),
-  icon: text("icon"),
-  defaultRoles: text("default_roles").array(),
-  sortOrder: integer("sort_order").notNull().default(0),
-});
-
-export const insertModuleSchema = createInsertSchema(modules).omit({
-  id: true,
-});
-
-export type InsertModule = z.infer<typeof insertModuleSchema>;
-export type Module = typeof modules.$inferSelect;
-
-// User Module Permissions
-export const userModulePermissions = pgTable("user_module_permissions", {
-  id: serial("id").primaryKey(),
-  userId: varchar("user_id")
-    .notNull()
-    .references(() => users.id, { onDelete: "cascade" }),
-  moduleKey: text("module_key").notNull(),
-  allowed: boolean("allowed").notNull().default(true),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow(),
-});
-
-export const insertUserModulePermissionSchema = createInsertSchema(
-  userModulePermissions,
-).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
-});
-
-export type InsertUserModulePermission = z.infer<
-  typeof insertUserModulePermissionSchema
->;
-export type UserModulePermission = typeof userModulePermissions.$inferSelect;
-
-// Bling Credentials
-export const blingCredentials = pgTable("bling_credentials", {
-  id: serial("id").primaryKey(),
-  clientId: text("client_id"),
-  clientSecret: text("client_secret"),
-  code: text("code"),
-  companyId: varchar("company_id"),
-  redirectUri: text("redirect_uri"),
-  createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow(),
-});
-
-// Bling Tokens
-export const blingTokens = pgTable("bling_tokens", {
-  id: serial("id").primaryKey(),
-  companyId: varchar("company_id"),
-  accessToken: text("access_token").notNull(),
-  refreshToken: text("refresh_token").notNull(),
-  expiresAt: timestamp("expires_at").notNull(),
-  tokenType: text("token_type").notNull().default("Bearer"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow(),
-});
-
-export const insertBlingTokensSchema = createInsertSchema(blingTokens).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
-});
-
-export type InsertBlingTokens = z.infer<typeof insertBlingTokensSchema>;
-export type BlingTokens = typeof blingTokens.$inferSelect;

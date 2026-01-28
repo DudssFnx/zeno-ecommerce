@@ -1,8 +1,9 @@
-// Re-export legacy schema for backwards compatibility
+// ✅ Re-exporta TUDO do legado (Users, SiteSettings, Suppliers, Products antigos)
 export * from "./legacy.schema";
 
-// Export new B2B schemas - companies (no conflict with legacy)
+// Export new B2B schemas - companies
 export * from "./companies.schema";
+
 // Export new B2B schemas with b2b prefix to avoid conflicts
 export {
   b2bUsers,

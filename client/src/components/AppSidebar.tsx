@@ -30,6 +30,7 @@ import {
   ArrowUpRight,
   Banknote,
   BarChart3,
+  Building2,
   Calendar,
   ChevronRight,
   ClipboardList,
@@ -45,7 +46,7 @@ import {
   ShoppingBag,
   ShoppingCart,
   Sparkles,
-  Store, // <--- NOVO IMPORT
+  Store,
   Tag,
   Ticket,
   TrendingUp,
@@ -125,32 +126,26 @@ const allMenuItems: MenuItem[] = [
     title: "Categorias",
     url: "/categories",
     icon: Grid3X3,
-    moduleKey: "products", // Pode manter products ou criar um key especifico se quiser
+    moduleKey: "products",
   },
-
-  // --- ALTERAÇÃO AQUI: Catálogo separado para Vendas ---
   {
     title: "Catálogo",
     url: "/catalog",
-    icon: Store, // Ícone de loja para diferenciar
-    moduleKey: "sales_catalog", // <--- A NOVA CHAVE QUE CRIAMOS NO BANCO
+    icon: Store,
+    moduleKey: "sales_catalog",
   },
-
   {
     title: "Pedido de Vendas",
     url: "/orders",
     icon: ClipboardList,
     moduleKey: "orders",
   },
-
-  // --- ALTERAÇÃO AQUI: Gestão Restrita ---
   {
-    title: "Gestão de Produtos", // Nome mais claro
+    title: "Gestão de Produtos",
     url: "/products",
     icon: Package,
-    moduleKey: "products", // <--- A CHAVE ANTIGA (Restrita a Admins)
+    moduleKey: "products",
   },
-
   { title: "Clientes", url: "/customers", icon: UserCheck, moduleKey: "users" },
   { title: "Usuarios", url: "/users", icon: Users, moduleKey: "users" },
   {
@@ -199,6 +194,13 @@ const allMenuItems: MenuItem[] = [
     icon: Palette,
     moduleKey: "settings",
   },
+  // --- ✅ NOVO ITEM: MINHA EMPRESA ---
+  {
+    title: "Minha Empresa",
+    url: "/settings/company",
+    icon: Building2,
+    moduleKey: "settings",
+  },
   {
     title: "Configuracoes",
     url: "/settings",
@@ -232,11 +234,11 @@ export function AppSidebar({ onLogout }: AppSidebarProps) {
   const [location] = useLocation();
   const { user: contextUser, isLoading, logout } = useAuth();
 
-  // 1. Busca dados frescos do usuário para garantir que temos os módulos
+  // 1. Busca dados frescos do usuário
   const { data: userData } = useQuery<any>({
     queryKey: ["/api/auth/user"],
-    staleTime: 0, // Sempre pega dados frescos
-    enabled: !!contextUser, // Só busca se estiver logado
+    staleTime: 0,
+    enabled: !!contextUser,
   });
 
   if (isLoading) {
@@ -253,13 +255,11 @@ export function AppSidebar({ onLogout }: AppSidebarProps) {
     );
   }
 
-  // Define qual objeto de usuário usar (o da query fresca ou do contexto)
   const user = userData || contextUser;
   const role = (user?.role as UserRole) || "customer";
   const name = user?.firstName || user?.email || "User";
   const isAdmin = role === "admin";
 
-  // 2. Processamento robusto dos módulos
   let userModules: string[] = [];
   try {
     if (user?.modules) {
@@ -273,22 +273,15 @@ export function AppSidebar({ onLogout }: AppSidebarProps) {
     userModules = [];
   }
 
-  // --- DEBUG: Veja isso no Console do navegador (F12) ---
-  console.log("DEBUG SIDEBAR:", { role, userModules, isAdmin });
-
-  // 3. Função de Filtro
   const filterMenuItems = (items: MenuItem[]): MenuItem[] => {
     if (isAdmin) return items;
 
     return items
       .filter((item) => {
-        // Se não tem moduleKey, mostra sempre (ex: links públicos se houver)
-        // Se tem moduleKey, checa se está na lista do usuário
         if (item.moduleKey && !userModules.includes(item.moduleKey)) {
           return false;
         }
 
-        // Verifica subitens
         if (item.subItems) {
           const visibleSubItems = item.subItems.filter(
             (sub) => !sub.moduleKey || userModules.includes(sub.moduleKey),
@@ -365,12 +358,14 @@ export function AppSidebar({ onLogout }: AppSidebarProps) {
       <SidebarHeader className="p-0">
         <div className="bg-gradient-to-br from-emerald-500/10 via-emerald-500/5 to-transparent p-4">
           <div className="flex items-center gap-3">
+            {/* ✅ LOGO ORIGINAL (CSS) RESTAURADO */}
             <div className="relative flex items-center justify-center h-11 w-11 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600 shadow-lg shadow-emerald-500/20">
               <span className="text-xl font-black text-white tracking-tighter">
                 Z
               </span>
               <div className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full bg-green-400 ring-2 ring-sidebar" />
             </div>
+
             <div className="flex-1 min-w-0">
               <h2 className="font-black text-lg tracking-tight truncate bg-gradient-to-r from-emerald-600 to-emerald-500 dark:from-emerald-400 dark:to-emerald-300 bg-clip-text text-transparent">
                 Zeno
@@ -439,7 +434,9 @@ export function AppSidebar({ onLogout }: AppSidebarProps) {
                       <CollapsibleTrigger asChild>
                         <SidebarMenuButton
                           className="group/btn rounded-lg"
-                          data-testid={`link-nav-${item.title.toLowerCase().replace(/\s+/g, "-")}`}
+                          data-testid={`link-nav-${item.title
+                            .toLowerCase()
+                            .replace(/\s+/g, "-")}`}
                         >
                           <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-muted/50 group-hover/btn:bg-primary/10 transition-colors">
                             <item.icon className="h-4 w-4 text-muted-foreground group-hover/btn:text-primary transition-colors" />
@@ -464,7 +461,9 @@ export function AppSidebar({ onLogout }: AppSidebarProps) {
                                 asChild
                                 isActive={location === subItem.url}
                                 className="rounded-md"
-                                data-testid={`link-nav-${subItem.title.toLowerCase().replace(/\s+/g, "-")}`}
+                                data-testid={`link-nav-${subItem.title
+                                  .toLowerCase()
+                                  .replace(/\s+/g, "-")}`}
                               >
                                 <Link href={subItem.url}>
                                   <subItem.icon className="h-3.5 w-3.5" />
@@ -493,7 +492,9 @@ export function AppSidebar({ onLogout }: AppSidebarProps) {
                       asChild
                       isActive={location === item.url}
                       className="group/btn rounded-lg"
-                      data-testid={`link-nav-${item.title.toLowerCase().replace(/\s+/g, "-")}`}
+                      data-testid={`link-nav-${item.title
+                        .toLowerCase()
+                        .replace(/\s+/g, "-")}`}
                     >
                       <Link href={item.url!}>
                         <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-muted/50 group-hover/btn:bg-primary/10 data-[active=true]:bg-primary/15 transition-colors">
