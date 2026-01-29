@@ -1,3 +1,4 @@
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -33,10 +34,12 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { Supplier } from "@shared/schema";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
+  AlertCircle,
   Building2,
   CheckCircle2,
   Contact,
   Loader2,
+  Mail,
   MapPin,
   MoreHorizontal,
   Pencil,
@@ -48,12 +51,45 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 
+// MÁSCARAS DE FORMATAÇÃO
+const masks = {
+  cnpj: (v: string) =>
+    v
+      .replace(/\D/g, "")
+      .replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, "$1.$2.$3/$4-$5")
+      .substring(0, 18),
+  cep: (v: string) =>
+    v
+      .replace(/\D/g, "")
+      .replace(/^(\d{5})(\d{3})/, "$1-$2")
+      .substring(0, 9),
+  phone: (v: string) =>
+    v
+      .replace(/\D/g, "")
+      .replace(/^(\d{2})(\d{5})(\d{4})/, "($1) $2-$3")
+      .substring(0, 15),
+  currency: (v: string) => {
+    const numbers = v.replace(/\D/g, "");
+    const amount = parseFloat(numbers) / 100;
+    return isNaN(amount)
+      ? ""
+      : amount.toLocaleString("pt-BR", { minimumFractionDigits: 2 });
+  },
+  unmaskCurrency: (v: string) => {
+    if (!v) return "0";
+    return v.replace(/\./g, "").replace(",", ".");
+  },
+};
+
 export default function SuppliersPage() {
   const { toast } = useToast();
   const [search, setSearch] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
+
+  // Estado para erros visuais (Box Vermelho)
+  const [validationErrors, setValidationErrors] = useState<string[]>([]);
 
   const [loadingCnpj, setLoadingCnpj] = useState(false);
   const [loadingCep, setLoadingCep] = useState(false);
@@ -93,7 +129,6 @@ export default function SuppliersPage() {
       )
     : [];
 
-  // --- LÓGICA DE SELEÇÃO ---
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
       setSelectedIds(filteredSuppliers.map((s) => s.id));
@@ -110,7 +145,6 @@ export default function SuppliersPage() {
     }
   };
 
-  // --- API FUNCTIONS ---
   const fetchCnpj = async () => {
     const cleanCnpj = formData.cnpj.replace(/\D/g, "");
     if (cleanCnpj.length !== 14) {
@@ -122,6 +156,7 @@ export default function SuppliersPage() {
       return;
     }
     setLoadingCnpj(true);
+    setValidationErrors([]);
     try {
       const res = await fetch(
         `https://brasilapi.com.br/api/cnpj/v1/${cleanCnpj}`,
@@ -133,8 +168,10 @@ export default function SuppliersPage() {
         name: data.razao_social,
         tradingName: data.nome_fantasia || data.razao_social,
         email: data.email || prev.email,
-        phone: data.ddd_telefone_1 || prev.phone,
-        cep: data.cep || prev.cep,
+        phone: data.ddd_telefone_1
+          ? masks.phone(data.ddd_telefone_1)
+          : prev.phone,
+        cep: data.cep ? masks.cep(data.cep) : prev.cep,
         address: data.logradouro || prev.address,
         addressNumber: data.numero || prev.addressNumber,
         neighborhood: data.bairro || prev.neighborhood,
@@ -144,12 +181,12 @@ export default function SuppliersPage() {
       }));
       toast({
         title: "Dados encontrados!",
-        description: "Informações da empresa preenchidas.",
+        description: "Informações preenchidas.",
       });
     } catch (error) {
       toast({
         title: "Erro",
-        description: "Não foi possível buscar o CNPJ.",
+        description: "CNPJ não encontrado na base.",
         variant: "destructive",
       });
     } finally {
@@ -175,35 +212,57 @@ export default function SuppliersPage() {
         state: data.state,
       }));
     } catch (error) {
-      // ignore
     } finally {
       setLoadingCep(false);
     }
   };
 
-  // --- MUTATIONS ---
+  // ✅ HELPER PARA LIMPAR A MENSAGEM DE ERRO
+  const parseErrorMessage = (error: Error) => {
+    let msg = error.message;
+    // Remove prefixos comuns como "Error: 500: " ou "409: "
+    if (msg.includes(": ")) {
+      // Pega o que vem depois do status code
+      const parts = msg.split(": ");
+      if (parts.length > 1) {
+        try {
+          // Tenta ver se é um JSON
+          const json = JSON.parse(parts.slice(1).join(": "));
+          if (json.message) return json.message;
+        } catch {
+          // Se não for JSON, retorna o texto puro
+          return parts.slice(1).join(": ");
+        }
+      }
+    }
+    // Tenta parsear direto caso seja só o JSON
+    try {
+      const json = JSON.parse(msg);
+      if (json.message) return json.message;
+    } catch {}
+
+    return msg;
+  };
+
   const createMutation = useMutation({
     mutationFn: async (data: typeof formData) => {
       const payload = {
         ...data,
         leadTime: data.leadTime ? parseInt(data.leadTime) : 0,
-        minOrderValue: data.minOrderValue
-          ? data.minOrderValue.replace(",", ".")
-          : "0",
+        minOrderValue: masks.unmaskCurrency(data.minOrderValue),
       };
-      await apiRequest("POST", "/api/suppliers", payload);
+      const res = await apiRequest("POST", "/api/suppliers", payload);
+      return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/suppliers"] });
       toast({ title: "Sucesso", description: "Fornecedor cadastrado!" });
       handleCloseDialog();
     },
-    onError: () =>
-      toast({
-        title: "Erro",
-        description: "Falha ao criar fornecedor",
-        variant: "destructive",
-      }),
+    // ✅ TRATAMENTO DE ERRO CORRIGIDO
+    onError: (error: Error) => {
+      setValidationErrors([parseErrorMessage(error)]);
+    },
   });
 
   const updateMutation = useMutation({
@@ -211,9 +270,7 @@ export default function SuppliersPage() {
       const payload = {
         ...data,
         leadTime: data.leadTime ? parseInt(data.leadTime) : 0,
-        minOrderValue: data.minOrderValue
-          ? data.minOrderValue.replace(",", ".")
-          : "0",
+        minOrderValue: masks.unmaskCurrency(data.minOrderValue),
       };
       await apiRequest("PATCH", `/api/suppliers/${data.id}`, payload);
     },
@@ -222,12 +279,9 @@ export default function SuppliersPage() {
       toast({ title: "Atualizado", description: "Dados salvos." });
       handleCloseDialog();
     },
-    onError: () =>
-      toast({
-        title: "Erro",
-        description: "Falha ao atualizar",
-        variant: "destructive",
-      }),
+    onError: (error: Error) => {
+      setValidationErrors([parseErrorMessage(error)]);
+    },
   });
 
   const deleteMutation = useMutation({
@@ -254,17 +308,11 @@ export default function SuppliersPage() {
       });
       setSelectedIds([]);
     },
-    onError: () =>
-      toast({
-        title: "Erro",
-        description: "Falha ao excluir alguns itens.",
-        variant: "destructive",
-      }),
   });
 
-  // --- HANDLERS ---
   const handleOpenCreate = () => {
     setFormData(initialFormState);
+    setValidationErrors([]);
     setIsEditing(false);
     setIsDialogOpen(true);
   };
@@ -280,7 +328,9 @@ export default function SuppliersPage() {
       contact: supplier.contact || "",
       paymentTerms: supplier.paymentTerms || "",
       leadTime: supplier.leadTime?.toString() || "",
-      minOrderValue: supplier.minOrderValue?.toString() || "",
+      minOrderValue: supplier.minOrderValue
+        ? masks.currency(supplier.minOrderValue.replace(".", ""))
+        : "",
       cep: supplier.cep || "",
       address: supplier.address || "",
       addressNumber: supplier.addressNumber || "",
@@ -289,6 +339,7 @@ export default function SuppliersPage() {
       city: supplier.city || "",
       state: supplier.state || "",
     });
+    setValidationErrors([]);
     setIsEditing(true);
     setIsDialogOpen(true);
   };
@@ -296,25 +347,27 @@ export default function SuppliersPage() {
   const handleCloseDialog = () => {
     setIsDialogOpen(false);
     setFormData(initialFormState);
+    setValidationErrors([]);
   };
 
   const handleSave = () => {
-    if (!formData.name || !formData.cnpj) {
-      toast({
-        title: "Campos Obrigatórios",
-        description: "Preencha Razão Social e CNPJ.",
-        variant: "destructive",
-      });
+    const errors = [];
+    if (!formData.name) errors.push("Razão Social é obrigatória");
+    if (!formData.cnpj) errors.push("CNPJ é obrigatório");
+
+    if (errors.length > 0) {
+      setValidationErrors(errors);
       return;
     }
+
+    setValidationErrors([]);
     if (isEditing) updateMutation.mutate(formData);
     else createMutation.mutate(formData);
   };
 
   const handleDelete = (id: number) => {
-    if (confirm("Tem certeza que deseja excluir este fornecedor?")) {
+    if (confirm("Tem certeza que deseja excluir este fornecedor?"))
       deleteMutation.mutate(id);
-    }
   };
 
   const handleBulkDelete = () => {
@@ -329,7 +382,6 @@ export default function SuppliersPage() {
 
   return (
     <div className="p-6 space-y-6 relative min-h-screen pb-24">
-      {/* HEADER */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">
@@ -348,7 +400,6 @@ export default function SuppliersPage() {
         </Button>
       </div>
 
-      {/* FILTROS */}
       <Card className="border-l-4 border-l-primary">
         <CardHeader className="pb-3">
           <div className="flex items-center gap-2">
@@ -446,6 +497,11 @@ export default function SuppliersPage() {
                               {s.phone}
                             </div>
                           )}
+                          {s.email && (
+                            <div className="text-muted-foreground text-xs flex items-center gap-1">
+                              <Mail className="h-3 w-3" /> {s.email}
+                            </div>
+                          )}
                         </div>
                       </TableCell>
                       <TableCell>
@@ -464,14 +520,17 @@ export default function SuppliersPage() {
                         <div className="flex flex-wrap gap-2">
                           {s.leadTime ? (
                             <div className="flex items-center gap-1 text-[10px] font-bold uppercase border px-2 py-1 rounded bg-blue-50 text-blue-700 border-blue-200">
-                              {" "}
-                              {s.leadTime}d{" "}
+                              {s.leadTime}d
                             </div>
                           ) : null}
                           {s.minOrderValue &&
                             parseFloat(s.minOrderValue) > 0 && (
                               <div className="flex items-center gap-1 text-[10px] font-bold uppercase border px-2 py-1 rounded bg-green-50 text-green-700 border-green-200">
-                                Min: {s.minOrderValue}
+                                Min:{" "}
+                                {parseFloat(s.minOrderValue).toLocaleString(
+                                  "pt-BR",
+                                  { style: "currency", currency: "BRL" },
+                                )}
                               </div>
                             )}
                         </div>
@@ -510,7 +569,6 @@ export default function SuppliersPage() {
         </CardContent>
       </Card>
 
-      {/* ✅ BARRA DE AÇÕES EM MASSA (REDESENHADA) */}
       {selectedIds.length > 0 && (
         <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 animate-in slide-in-from-bottom-5">
           <Card className="flex items-center gap-6 p-2 pl-4 pr-2 shadow-2xl border-primary/20 bg-card/90 backdrop-blur-sm rounded-xl">
@@ -522,9 +580,7 @@ export default function SuppliersPage() {
                 selecionados
               </span>
             </div>
-
             <Separator orientation="vertical" className="h-6" />
-
             <div className="flex items-center gap-2">
               <Button
                 variant="destructive"
@@ -537,7 +593,7 @@ export default function SuppliersPage() {
                   <Loader2 className="h-3.5 w-3.5 animate-spin mr-2" />
                 ) : (
                   <Trash2 className="h-3.5 w-3.5 mr-2" />
-                )}
+                )}{" "}
                 Excluir
               </Button>
               <Button
@@ -553,18 +609,15 @@ export default function SuppliersPage() {
         </div>
       )}
 
-      {/* FORMULÁRIO MODAL (Mantido) */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-          {/* ... (Mesmo código do formulário anterior) ... */}
-          {/* Para economizar espaço na resposta, o formulário é igual ao da versão anterior */}
-          <DialogHeader className="bg-muted/30 -mx-6 -mt-6 p-6 border-b mb-4">
+        <DialogContent className="max-w-4xl h-[90vh] flex flex-col p-0 gap-0">
+          <DialogHeader className="p-6 pb-4 border-b">
             <DialogTitle className="text-2xl flex items-center gap-2">
               {isEditing ? (
                 <Pencil className="h-5 w-5" />
               ) : (
                 <Plus className="h-6 w-6" />
-              )}
+              )}{" "}
               {isEditing ? "Editar Fornecedor" : "Cadastrar Novo Fornecedor"}
             </DialogTitle>
             <DialogDescription>
@@ -573,192 +626,257 @@ export default function SuppliersPage() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="grid gap-8 py-2">
-            <div className="space-y-4 border rounded-lg p-4 bg-muted/10">
-              <h4 className="text-sm font-bold uppercase tracking-widest text-primary flex items-center gap-2">
-                <Building2 className="h-4 w-4" /> Dados Empresariais
-              </h4>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label className="flex justify-between">
-                    CNPJ <span className="text-red-500">*</span>
-                  </Label>
-                  <div className="flex gap-2">
+          <div className="flex-1 overflow-y-auto p-6">
+            <div className="grid gap-8">
+              {/* ✅ BOX DE ERRO CORRIGIDO */}
+              {validationErrors.length > 0 && (
+                <Alert variant="destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertTitle>Erro de Validação</AlertTitle>
+                  <AlertDescription>
+                    <ul className="list-disc pl-4 mt-1">
+                      {validationErrors.map((err, i) => (
+                        <li key={i}>{err}</li>
+                      ))}
+                    </ul>
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              <div className="space-y-4 border rounded-lg p-4 bg-muted/10">
+                <h4 className="text-sm font-bold uppercase tracking-widest text-primary flex items-center gap-2">
+                  <Building2 className="h-4 w-4" /> Dados Empresariais
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label className="flex justify-between">
+                      CNPJ <span className="text-red-500">*</span>
+                    </Label>
+                    <div className="flex gap-2">
+                      <Input
+                        value={formData.cnpj}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            cnpj: masks.cnpj(e.target.value),
+                          })
+                        }
+                        placeholder="00.000.000/0001-00"
+                        className="font-mono"
+                        maxLength={18}
+                      />
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        onClick={fetchCnpj}
+                        disabled={loadingCnpj}
+                        className="bg-blue-50 border-blue-200 text-blue-700"
+                      >
+                        {loadingCnpj ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Search className="h-4 w-4" />
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>
+                      Razão Social <span className="text-red-500">*</span>
+                    </Label>
                     <Input
-                      value={formData.cnpj}
+                      value={formData.name}
                       onChange={(e) =>
-                        setFormData({ ...formData, cnpj: e.target.value })
+                        setFormData({ ...formData, name: e.target.value })
                       }
-                      placeholder="00.000.000/0001-00"
-                      className="font-mono"
                     />
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      onClick={fetchCnpj}
-                      disabled={loadingCnpj}
-                      className="bg-blue-50 border-blue-200 text-blue-700"
-                    >
-                      {loadingCnpj ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Search className="h-4 w-4" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Nome Fantasia</Label>
+                    <Input
+                      value={formData.tradingName}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          tradingName: e.target.value,
+                        })
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Contato Principal (Nome)</Label>
+                    <Input
+                      value={formData.contact}
+                      onChange={(e) =>
+                        setFormData({ ...formData, contact: e.target.value })
+                      }
+                      placeholder="Ex: João Silva"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-4 border rounded-lg p-4 bg-muted/10">
+                <h4 className="text-sm font-bold uppercase tracking-widest text-primary flex items-center gap-2">
+                  <MapPin className="h-4 w-4" /> Endereço & Contato
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div className="space-y-2">
+                    <Label>CEP</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        value={formData.cep}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            cep: masks.cep(e.target.value),
+                          })
+                        }
+                        onBlur={fetchCep}
+                        maxLength={9}
+                        placeholder="00000-000"
+                      />
+                      {loadingCep && (
+                        <Loader2 className="h-8 w-8 animate-spin" />
                       )}
-                    </Button>
+                    </div>
                   </div>
-                </div>
-                <div className="space-y-2">
-                  <Label>
-                    Razão Social <span className="text-red-500">*</span>
-                  </Label>
-                  <Input
-                    value={formData.name}
-                    onChange={(e) =>
-                      setFormData({ ...formData, name: e.target.value })
-                    }
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Nome Fantasia</Label>
-                  <Input
-                    value={formData.tradingName}
-                    onChange={(e) =>
-                      setFormData({ ...formData, tradingName: e.target.value })
-                    }
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Contato Principal</Label>
-                  <Input
-                    value={formData.contact}
-                    onChange={(e) =>
-                      setFormData({ ...formData, contact: e.target.value })
-                    }
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-4 border rounded-lg p-4 bg-muted/10">
-              <h4 className="text-sm font-bold uppercase tracking-widest text-primary flex items-center gap-2">
-                <MapPin className="h-4 w-4" /> Endereço & Contato
-              </h4>
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div className="space-y-2">
-                  <Label>CEP</Label>
-                  <div className="flex gap-2">
+                  <div className="space-y-2 md:col-span-2">
+                    <Label>Rua</Label>
                     <Input
-                      value={formData.cep}
+                      value={formData.address}
                       onChange={(e) =>
-                        setFormData({ ...formData, cep: e.target.value })
+                        setFormData({ ...formData, address: e.target.value })
                       }
-                      onBlur={fetchCep}
                     />
-                    {loadingCep && <Loader2 className="h-8 w-8 animate-spin" />}
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Número</Label>
+                    <Input
+                      value={formData.addressNumber}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          addressNumber: e.target.value,
+                        })
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Bairro</Label>
+                    <Input
+                      value={formData.neighborhood}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          neighborhood: e.target.value,
+                        })
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Cidade</Label>
+                    <Input
+                      value={formData.city}
+                      onChange={(e) =>
+                        setFormData({ ...formData, city: e.target.value })
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>UF</Label>
+                    <Input
+                      value={formData.state}
+                      onChange={(e) =>
+                        setFormData({ ...formData, state: e.target.value })
+                      }
+                      maxLength={2}
+                    />
+                  </div>
+                  <div className="space-y-2 md:col-span-2">
+                    <Label>Complemento</Label>
+                    <Input
+                      value={formData.complement}
+                      onChange={(e) =>
+                        setFormData({ ...formData, complement: e.target.value })
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2 md:col-span-2">
+                    <Label>Email de Contato</Label>
+                    <Input
+                      type="email"
+                      value={formData.email}
+                      onChange={(e) =>
+                        setFormData({ ...formData, email: e.target.value })
+                      }
+                      placeholder="contato@empresa.com"
+                    />
+                  </div>
+                  <div className="space-y-2 md:col-span-2">
+                    <Label>Telefone / WhatsApp</Label>
+                    <Input
+                      value={formData.phone}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          phone: masks.phone(e.target.value),
+                        })
+                      }
+                      placeholder="(00) 00000-0000"
+                      maxLength={15}
+                    />
                   </div>
                 </div>
-                <div className="space-y-2 md:col-span-2">
-                  <Label>Rua</Label>
-                  <Input
-                    value={formData.address}
-                    onChange={(e) =>
-                      setFormData({ ...formData, address: e.target.value })
-                    }
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Número</Label>
-                  <Input
-                    value={formData.addressNumber}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        addressNumber: e.target.value,
-                      })
-                    }
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Bairro</Label>
-                  <Input
-                    value={formData.neighborhood}
-                    onChange={(e) =>
-                      setFormData({ ...formData, neighborhood: e.target.value })
-                    }
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Cidade</Label>
-                  <Input
-                    value={formData.city}
-                    onChange={(e) =>
-                      setFormData({ ...formData, city: e.target.value })
-                    }
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>UF</Label>
-                  <Input
-                    value={formData.state}
-                    onChange={(e) =>
-                      setFormData({ ...formData, state: e.target.value })
-                    }
-                    maxLength={2}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Email</Label>
-                  <Input
-                    value={formData.email}
-                    onChange={(e) =>
-                      setFormData({ ...formData, email: e.target.value })
-                    }
-                  />
-                </div>
               </div>
-            </div>
 
-            <div className="space-y-4 border rounded-lg p-4 bg-muted/10">
-              <h4 className="text-sm font-bold uppercase tracking-widest text-primary flex items-center gap-2">
-                <Truck className="h-4 w-4" /> Condições Comerciais
-              </h4>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="space-y-2">
-                  <Label>Lead Time (Dias)</Label>
-                  <Input
-                    type="number"
-                    value={formData.leadTime}
-                    onChange={(e) =>
-                      setFormData({ ...formData, leadTime: e.target.value })
-                    }
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Pedido Mínimo (R$)</Label>
-                  <Input
-                    value={formData.minOrderValue}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        minOrderValue: e.target.value,
-                      })
-                    }
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Prazo Pagamento</Label>
-                  <Input
-                    value={formData.paymentTerms}
-                    onChange={(e) =>
-                      setFormData({ ...formData, paymentTerms: e.target.value })
-                    }
-                  />
+              <div className="space-y-4 border rounded-lg p-4 bg-muted/10">
+                <h4 className="text-sm font-bold uppercase tracking-widest text-primary flex items-center gap-2">
+                  <Truck className="h-4 w-4" /> Condições Comerciais
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <Label>Lead Time (Dias)</Label>
+                    <Input
+                      type="number"
+                      value={formData.leadTime}
+                      onChange={(e) =>
+                        setFormData({ ...formData, leadTime: e.target.value })
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Pedido Mínimo (R$)</Label>
+                    <Input
+                      value={formData.minOrderValue}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          minOrderValue: masks.currency(e.target.value),
+                        })
+                      }
+                      placeholder="0,00"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Prazo Pagamento</Label>
+                    <Input
+                      value={formData.paymentTerms}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          paymentTerms: e.target.value,
+                        })
+                      }
+                      placeholder="Ex: 30/60/90 dias"
+                    />
+                  </div>
                 </div>
               </div>
             </div>
           </div>
 
-          <DialogFooter className="sticky bottom-0 bg-background pt-4 border-t">
+          <DialogFooter className="p-6 pt-4 border-t bg-background mt-auto">
             <Button
               variant="outline"
               onClick={handleCloseDialog}
