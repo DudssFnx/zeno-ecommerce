@@ -19,25 +19,31 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { User } from "@shared/schema";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
+  Ban,
+  CheckCircle2,
   Loader2,
   Mail,
+  MapPin,
   Pencil,
+  Phone,
   Plus,
   RefreshCw,
   Search,
   Trash2,
   UserCheck,
-  Users,
   UserX,
+  Users,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 
-// ✅ 1. HELPERS DE MÁSCARA (FORMATO BRASILEIRO)
+// --- MÁSCARAS ---
 const masks = {
   cnpj: (v: string) =>
     v
@@ -66,36 +72,313 @@ type CustomerType = User & {
   tradingName?: string | null;
 };
 
+// Interface do estado do formulário
+interface CustomerFormState {
+  personType: string;
+  cnpj: string;
+  cpf: string;
+  company: string;
+  tradingName: string;
+  stateRegistration: string;
+  firstName: string;
+  email: string;
+  phone: string;
+  password?: string;
+  cep: string;
+  address: string;
+  addressNumber: string;
+  complement: string;
+  neighborhood: string;
+  city: string;
+  state: string;
+}
+
+const initialFormState: CustomerFormState = {
+  personType: "juridica",
+  cnpj: "",
+  cpf: "",
+  company: "",
+  tradingName: "",
+  stateRegistration: "",
+  firstName: "",
+  email: "",
+  phone: "",
+  password: "",
+  cep: "",
+  address: "",
+  addressNumber: "",
+  complement: "",
+  neighborhood: "",
+  city: "",
+  state: "",
+};
+
+// ✅ COMPONENTE DE FORMULÁRIO (AGORA FORA DO COMPONENTE PRINCIPAL)
+// Isso resolve o bug de perder o foco ao digitar
+function CustomerFormContent({
+  formData,
+  setFormData,
+  isEdit = false,
+  formLoading,
+  onSearchCNPJ,
+  onSearchCEP,
+}: {
+  formData: CustomerFormState;
+  setFormData: (data: CustomerFormState) => void;
+  isEdit?: boolean;
+  formLoading: boolean;
+  onSearchCNPJ: (cnpj: string) => void;
+  onSearchCEP: (cep: string) => void;
+}) {
+  return (
+    <div className="py-4 space-y-6">
+      <div className="space-y-3">
+        <Label className="text-base font-semibold">Tipo de Pessoa</Label>
+        <RadioGroup
+          value={formData.personType}
+          onValueChange={(v) => setFormData({ ...formData, personType: v })}
+          className="flex gap-4"
+        >
+          <div className="flex items-center space-x-2 border p-3 rounded-lg w-full cursor-pointer hover:bg-muted/50">
+            <RadioGroupItem
+              value="juridica"
+              id={`pj${isEdit ? "-edit" : ""}`}
+            />
+            <Label
+              htmlFor={`pj${isEdit ? "-edit" : ""}`}
+              className="cursor-pointer flex-1"
+            >
+              Pessoa Jurídica (CNPJ)
+            </Label>
+          </div>
+          <div className="flex items-center space-x-2 border p-3 rounded-lg w-full cursor-pointer hover:bg-muted/50">
+            <RadioGroupItem value="fisica" id={`pf${isEdit ? "-edit" : ""}`} />
+            <Label
+              htmlFor={`pf${isEdit ? "-edit" : ""}`}
+              className="cursor-pointer flex-1"
+            >
+              Pessoa Física (CPF)
+            </Label>
+          </div>
+        </RadioGroup>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {formData.personType === "juridica" && (
+          <>
+            <div className="md:col-span-2 space-y-2">
+              <Label>CNPJ *</Label>
+              <div className="flex gap-2">
+                <Input
+                  value={formData.cnpj}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      cnpj: masks.cnpj(e.target.value),
+                    })
+                  }
+                  placeholder="00.000.000/0000-00"
+                  maxLength={18}
+                />
+                <Button
+                  type="button"
+                  onClick={() => onSearchCNPJ(formData.cnpj)}
+                  disabled={formLoading}
+                  variant="secondary"
+                >
+                  {formLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    "Buscar"
+                  )}
+                </Button>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Razão Social *</Label>
+              <Input
+                value={formData.company}
+                onChange={(e) =>
+                  setFormData({ ...formData, company: e.target.value })
+                }
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Nome Fantasia</Label>
+              <Input
+                value={formData.tradingName}
+                onChange={(e) =>
+                  setFormData({ ...formData, tradingName: e.target.value })
+                }
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Inscrição Estadual</Label>
+              <Input
+                value={formData.stateRegistration}
+                onChange={(e) =>
+                  setFormData({
+                    ...formData,
+                    stateRegistration: e.target.value,
+                  })
+                }
+                placeholder="Isento ou número"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Responsável / Contato</Label>
+              <Input
+                value={formData.firstName}
+                onChange={(e) =>
+                  setFormData({ ...formData, firstName: e.target.value })
+                }
+                placeholder="Quem recebe o pedido?"
+              />
+            </div>
+          </>
+        )}
+
+        {formData.personType === "fisica" && (
+          <>
+            <div className="md:col-span-2 space-y-2">
+              <Label>CPF *</Label>
+              <Input
+                value={formData.cpf}
+                onChange={(e) =>
+                  setFormData({ ...formData, cpf: masks.cpf(e.target.value) })
+                }
+                placeholder="000.000.000-00"
+                maxLength={14}
+              />
+            </div>
+            <div className="md:col-span-2 space-y-2">
+              <Label>Nome Completo *</Label>
+              <Input
+                value={formData.firstName}
+                onChange={(e) =>
+                  setFormData({ ...formData, firstName: e.target.value })
+                }
+              />
+            </div>
+          </>
+        )}
+
+        <div className="space-y-2">
+          <Label>Email de Acesso *</Label>
+          <Input
+            type="email"
+            value={formData.email}
+            onChange={(e) =>
+              setFormData({ ...formData, email: e.target.value })
+            }
+          />
+        </div>
+        <div className="space-y-2">
+          <Label>Telefone / WhatsApp</Label>
+          <Input
+            value={formData.phone}
+            onChange={(e) =>
+              setFormData({
+                ...formData,
+                phone: masks.phone(e.target.value),
+              })
+            }
+            placeholder="(00) 00000-0000"
+          />
+        </div>
+
+        {isEdit && (
+          <div className="space-y-2 md:col-span-2">
+            <Label className="text-yellow-600">Alterar Senha (Opcional)</Label>
+            <Input
+              type="password"
+              value={formData.password}
+              onChange={(e) =>
+                setFormData({ ...formData, password: e.target.value })
+              }
+              placeholder="Deixe em branco para manter a atual"
+            />
+          </div>
+        )}
+
+        <div className="space-y-2">
+          <Label>CEP</Label>
+          <Input
+            value={formData.cep}
+            onChange={(e) => {
+              const v = masks.cep(e.target.value);
+              setFormData({ ...formData, cep: v });
+              if (v.length === 9) onSearchCEP(v);
+            }}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label>Cidade</Label>
+          <Input
+            value={formData.city}
+            onChange={(e) => setFormData({ ...formData, city: e.target.value })}
+          />
+        </div>
+        <div className="space-y-2 md:col-span-2">
+          <Label>Endereço</Label>
+          <div className="flex gap-2">
+            <Input
+              className="flex-1"
+              value={formData.address}
+              onChange={(e) =>
+                setFormData({ ...formData, address: e.target.value })
+              }
+              placeholder="Rua/Av"
+            />
+            <Input
+              className="w-24"
+              value={formData.addressNumber}
+              onChange={(e) =>
+                setFormData({ ...formData, addressNumber: e.target.value })
+              }
+              placeholder="Nº"
+            />
+          </div>
+        </div>
+        <div className="space-y-2">
+          <Label>Bairro</Label>
+          <Input
+            value={formData.neighborhood}
+            onChange={(e) =>
+              setFormData({ ...formData, neighborhood: e.target.value })
+            }
+          />
+        </div>
+        <div className="space-y-2">
+          <Label>Estado (UF)</Label>
+          <Input
+            value={formData.state}
+            maxLength={2}
+            onChange={(e) =>
+              setFormData({ ...formData, state: e.target.value })
+            }
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function CustomersPage() {
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState("");
+  const [activeTab, setActiveTab] = useState("active");
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
-  const [editingCustomer, setEditingCustomer] = useState<CustomerType | null>(
-    null,
-  );
   const [formLoading, setFormLoading] = useState(false);
   const [customerToDelete, setCustomerToDelete] = useState<CustomerType | null>(
     null,
   );
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(
+    null,
+  );
 
-  const [newCustomer, setNewCustomer] = useState({
-    personType: "juridica",
-    cnpj: "",
-    cpf: "",
-    company: "",
-    tradingName: "",
-    firstName: "",
-    email: "",
-    phone: "",
-    password: "",
-    cep: "",
-    address: "",
-    addressNumber: "",
-    neighborhood: "",
-    city: "",
-    state: "",
-  });
+  const [formData, setFormData] = useState<CustomerFormState>(initialFormState);
 
   const {
     data: usersData = [],
@@ -105,22 +388,50 @@ export default function CustomersPage() {
     queryKey: ["/api/users"],
   });
 
-  const customers = useMemo(
+  const allCustomers = useMemo(
     () => usersData.filter((u) => u.role === "customer"),
     [usersData],
   );
 
-  // ✅ 2. MUTAÇÃO DE EXCLUSÃO (ATIVA O BOTÃO DE LIXEIRA)
+  const pendingCustomers = allCustomers.filter((u) => !u.approved);
+  const activeCustomers = allCustomers.filter(
+    (u) => u.approved && u.ativo !== false,
+  );
+  const inactiveCustomers = allCustomers.filter(
+    (u) => u.approved && u.ativo === false,
+  );
+
+  const filterList = (list: CustomerType[]) => {
+    return list.filter((u) => {
+      const term = searchQuery.toLowerCase();
+      return (
+        (u.firstName?.toLowerCase().includes(term) ?? false) ||
+        (u.company?.toLowerCase().includes(term) ?? false) ||
+        (u.email?.toLowerCase().includes(term) ?? false) ||
+        (u.cnpj?.includes(term) ?? false) ||
+        (u.cpf?.includes(term) ?? false)
+      );
+    });
+  };
+
+  const getDisplayedList = () => {
+    switch (activeTab) {
+      case "pending":
+        return filterList(pendingCustomers);
+      case "inactive":
+        return filterList(inactiveCustomers);
+      default:
+        return filterList(activeCustomers);
+    }
+  };
+
   const deleteUserMutation = useMutation({
-    mutationFn: async (id: number) => {
+    mutationFn: async (id: string) => {
       await apiRequest("DELETE", `/api/users/${id}`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/users"] });
-      toast({
-        title: "Excluído",
-        description: "Cliente removido com sucesso.",
-      });
+      toast({ title: "Excluído", description: "Cliente removido." });
       setCustomerToDelete(null);
     },
     onError: () =>
@@ -131,25 +442,30 @@ export default function CustomersPage() {
       }),
   });
 
-  // ✅ 3. MUTAÇÃO DE CADASTRO (SINCRONIZADO COM BACKEND)
   const createCustomerMutation = useMutation({
-    mutationFn: async (data: typeof newCustomer) => {
-      const res = await apiRequest("POST", "/api/register", {
+    mutationFn: async (data: CustomerFormState) => {
+      const payload = {
         ...data,
         username: data.email,
         role: "customer",
-        firstName: data.firstName || data.tradingName || data.company,
-      });
+        customerType: data.personType,
+        cnpj: data.personType === "juridica" ? data.cnpj : null,
+        company: data.personType === "juridica" ? data.company : null,
+        tradingName: data.personType === "juridica" ? data.tradingName : null,
+        stateRegistration:
+          data.personType === "juridica" ? data.stateRegistration : null,
+        cpf: data.personType === "fisica" ? data.cpf : null,
+        firstName:
+          data.personType === "juridica" ? data.tradingName : data.firstName,
+      };
+      const res = await apiRequest("POST", "/api/register", payload);
       return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/users"] });
       setShowCreateDialog(false);
-      resetForm();
-      toast({
-        title: "Sucesso!",
-        description: "Cliente cadastrado e visível na lista.",
-      });
+      setFormData(initialFormState);
+      toast({ title: "Sucesso!", description: "Cliente cadastrado." });
     },
     onError: (err: any) =>
       toast({
@@ -159,24 +475,86 @@ export default function CustomersPage() {
       }),
   });
 
-  const resetForm = () => {
-    setNewCustomer({
-      personType: "juridica",
-      cnpj: "",
-      cpf: "",
-      company: "",
-      tradingName: "",
-      firstName: "",
-      email: "",
-      phone: "",
+  const updateMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: Partial<User> }) => {
+      await apiRequest("PATCH", `/api/users/${id}`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/users"] });
+      toast({ title: "Atualizado", description: "Dados salvos com sucesso." });
+      setShowEditDialog(false);
+    },
+    onError: () => {
+      toast({
+        title: "Erro",
+        description: "Falha ao atualizar.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleApprove = (id: string) => {
+    updateMutation.mutate({ id, data: { approved: true, ativo: true } });
+    toast({ title: "Aprovado", description: "Acesso liberado." });
+  };
+
+  const handleToggleStatus = (user: CustomerType) => {
+    updateMutation.mutate({ id: user.id, data: { ativo: !user.ativo } });
+  };
+
+  const handleEdit = (customer: CustomerType) => {
+    setSelectedCustomerId(customer.id);
+    setFormData({
+      personType: customer.cnpj ? "juridica" : "fisica",
+      cnpj: customer.cnpj || "",
+      cpf: customer.cpf || "",
+      company: customer.company || "",
+      tradingName: customer.tradingName || "",
+      stateRegistration: customer.stateRegistration || "",
+      firstName: customer.firstName || "",
+      email: customer.email || "",
+      phone: customer.phone || "",
+      cep: customer.cep || "",
+      address: customer.address || "",
+      addressNumber: customer.addressNumber || "",
+      complement: customer.complement || "",
+      neighborhood: customer.neighborhood || "",
+      city: customer.city || "",
+      state: customer.state || "",
       password: "",
-      cep: "",
-      address: "",
-      addressNumber: "",
-      neighborhood: "",
-      city: "",
-      state: "",
     });
+    setShowEditDialog(true);
+  };
+
+  const handleSaveEdit = () => {
+    if (!selectedCustomerId) return;
+    const data = formData;
+    const payload: any = {
+      customerType: data.personType,
+      cnpj: data.personType === "juridica" ? data.cnpj : null,
+      company: data.personType === "juridica" ? data.company : null,
+      tradingName: data.personType === "juridica" ? data.tradingName : null,
+      stateRegistration:
+        data.personType === "juridica" ? data.stateRegistration : null,
+      cpf: data.personType === "fisica" ? data.cpf : null,
+      firstName:
+        data.personType === "juridica" ? data.tradingName : data.firstName,
+      email: data.email,
+      phone: data.phone,
+      cep: data.cep,
+      address: data.address,
+      addressNumber: data.addressNumber,
+      complement: data.complement,
+      neighborhood: data.neighborhood,
+      city: data.city,
+      state: data.state,
+    };
+
+    if (data.password && data.password.trim() !== "") {
+      payload.password = data.password;
+    }
+
+    updateMutation.mutate({ id: selectedCustomerId, data: payload });
   };
 
   const fetchCNPJData = async (cnpj: string) => {
@@ -189,26 +567,26 @@ export default function CustomersPage() {
       );
       if (!response.ok) throw new Error();
       const data = await response.json();
-      setNewCustomer((prev) => ({
+      setFormData((prev) => ({
         ...prev,
         company: data.razao_social,
         tradingName: data.nome_fantasia || data.razao_social,
-        firstName: data.nome_fantasia || data.razao_social,
         cep: masks.cep(data.cep || ""),
         address: data.logradouro,
         addressNumber: data.numero,
         neighborhood: data.bairro,
         city: data.municipio,
         state: data.uf,
+        complement: data.complemento,
+        phone: data.ddd_telefone_1
+          ? masks.phone(`${data.ddd_telefone_1}${data.telefone_1}`)
+          : prev.phone,
       }));
-      toast({
-        title: "Dados Importados",
-        description: "Campos preenchidos via Receita Federal.",
-      });
+      toast({ title: "Encontrado!", description: "Dados carregados." });
     } catch (e) {
       toast({
         title: "Erro",
-        description: "CNPJ não encontrado",
+        description: "CNPJ não encontrado.",
         variant: "destructive",
       });
     } finally {
@@ -223,7 +601,7 @@ export default function CustomersPage() {
       const res = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`);
       const data = await res.json();
       if (!data.erro) {
-        setNewCustomer((p) => ({
+        setFormData((p) => ({
           ...p,
           address: data.logradouro,
           neighborhood: data.bairro,
@@ -235,260 +613,289 @@ export default function CustomersPage() {
   };
 
   const stats = useMemo(() => {
-    const total = customers.length;
-    const approved = customers.filter((c) => c.approved).length;
-    const pending = customers.filter((c) => !c.approved).length;
     return {
-      total,
-      approved,
-      pending,
-      approvedPercent: total > 0 ? Math.round((approved / total) * 100) : 0,
-      pendingPercent: total > 0 ? Math.round((pending / total) * 100) : 0,
+      total: allCustomers.length,
+      approved: activeCustomers.length,
+      pending: pendingCustomers.length,
     };
-  }, [customers]);
+  }, [allCustomers, activeCustomers, pendingCustomers]);
+
+  const CustomerCard = ({ customer }: { customer: CustomerType }) => {
+    const isPJ = !!customer.cnpj;
+    return (
+      <Card className="hover:shadow-md transition-all border-l-4 border-l-primary/50">
+        <CardContent className="p-4">
+          <div className="flex justify-between items-start mb-3">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <Badge variant="outline">{isPJ ? "Jurídica" : "Física"}</Badge>
+                <h3 className="font-bold text-lg leading-none">
+                  {isPJ
+                    ? customer.tradingName || customer.company
+                    : customer.firstName}
+                </h3>
+              </div>
+              {isPJ && (
+                <p className="text-sm text-muted-foreground">
+                  {customer.company}
+                </p>
+              )}
+            </div>
+            <div className="flex gap-1">
+              {!customer.approved && (
+                <Button
+                  size="sm"
+                  className="h-8 bg-green-600 hover:bg-green-700 text-white"
+                  onClick={() => handleApprove(customer.id)}
+                >
+                  <CheckCircle2 className="h-4 w-4 mr-1" /> Aprovar
+                </Button>
+              )}
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => handleEdit(customer)}
+              >
+                <Pencil className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-destructive hover:bg-destructive/10"
+                onClick={() => setCustomerToDelete(customer)}
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+
+          <div className="text-sm space-y-1.5 text-muted-foreground bg-muted/20 p-3 rounded-md">
+            <div className="flex items-center gap-2">
+              <span className="font-mono text-xs border px-1 bg-background rounded">
+                {isPJ ? "CNPJ" : "CPF"}
+              </span>
+              <span className="font-medium text-foreground">
+                {customer.cnpj || customer.cpf || "N/A"}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Mail className="h-3.5 w-3.5" /> {customer.email}
+            </div>
+            {customer.phone && (
+              <div className="flex items-center gap-2">
+                <Phone className="h-3.5 w-3.5" /> {customer.phone}
+              </div>
+            )}
+            {(customer.city || customer.state) && (
+              <div className="flex items-center gap-2">
+                <MapPin className="h-3.5 w-3.5" /> {customer.city} -{" "}
+                {customer.state}
+              </div>
+            )}
+          </div>
+
+          {customer.approved && (
+            <div className="mt-3 flex justify-end">
+              <Button
+                variant={customer.ativo !== false ? "ghost" : "outline"}
+                size="sm"
+                className={`h-7 text-xs ${
+                  customer.ativo !== false
+                    ? "text-muted-foreground hover:text-red-600"
+                    : "text-green-600 border-green-200 bg-green-50"
+                }`}
+                onClick={() => handleToggleStatus(customer)}
+              >
+                {customer.ativo !== false ? (
+                  <>
+                    <Ban className="h-3 w-3 mr-1" /> Bloquear
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="h-3 w-3 mr-1" /> Reativar
+                  </>
+                )}
+              </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    );
+  };
 
   return (
     <div className="p-4 lg:p-6 space-y-6">
-      <div className="flex items-center justify-between gap-4 flex-wrap">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-2xl lg:text-3xl font-bold">Clientes</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            Gerencie sua carteira de clientes
+          <h1 className="text-2xl lg:text-3xl font-bold flex items-center gap-2">
+            <Users className="h-8 w-8 text-primary" /> Gestão de Clientes
+          </h1>
+          <p className="text-muted-foreground">
+            Aprovação e controle de carteira B2B e B2C.
           </p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={() => refetch()}>
+        <div className="flex gap-2 w-full sm:w-auto">
+          <Button
+            variant="outline"
+            className="flex-1 sm:flex-none"
+            onClick={() => refetch()}
+          >
             <RefreshCw className="h-4 w-4 mr-2" /> Atualizar
           </Button>
-          <Button onClick={() => setShowCreateDialog(true)}>
-            <Plus className="h-4 w-4 mr-2" /> Cadastrar Cliente
+          <Button
+            className="flex-1 sm:flex-none"
+            onClick={() => {
+              setFormData(initialFormState);
+              setShowCreateDialog(true);
+            }}
+          >
+            <Plus className="h-4 w-4 mr-2" /> Novo Cliente
           </Button>
         </div>
       </div>
 
-      {/* Cards de Status */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card className="p-4 flex items-center gap-4">
-          <div className="p-3 bg-primary/10 rounded-full">
-            <Users className="text-primary h-6 w-6" />
-          </div>
+        <Card className="p-4 flex items-center justify-between shadow-sm">
           <div>
+            <p className="text-sm text-muted-foreground font-medium">Total</p>
             <p className="text-2xl font-bold">{stats.total}</p>
-            <p className="text-xs text-muted-foreground">Total de Clientes</p>
+          </div>
+          <div className="h-10 w-10 bg-primary/10 rounded-full flex items-center justify-center">
+            <Users className="h-5 w-5 text-primary" />
           </div>
         </Card>
-        <Card className="p-4 flex items-center gap-4">
-          <div className="p-3 bg-green-500/10 rounded-full">
-            <UserCheck className="text-green-600 h-6 w-6" />
-          </div>
+        <Card className="p-4 flex items-center justify-between shadow-sm border-l-4 border-l-green-500">
           <div>
+            <p className="text-sm text-muted-foreground font-medium">Ativos</p>
             <p className="text-2xl font-bold text-green-600">
               {stats.approved}
             </p>
-            <p className="text-xs text-muted-foreground">Ativos</p>
+          </div>
+          <div className="h-10 w-10 bg-green-100 rounded-full flex items-center justify-center">
+            <UserCheck className="h-5 w-5 text-green-600" />
           </div>
         </Card>
-        <Card className="p-4 flex items-center gap-4">
-          <div className="p-3 bg-yellow-500/10 rounded-full">
-            <UserX className="text-yellow-600 h-6 w-6" />
-          </div>
+        <Card className="p-4 flex items-center justify-between shadow-sm border-l-4 border-l-yellow-500">
           <div>
+            <p className="text-sm text-muted-foreground font-medium">
+              Pendentes
+            </p>
             <p className="text-2xl font-bold text-yellow-600">
               {stats.pending}
             </p>
-            <p className="text-xs text-muted-foreground">Pendentes</p>
+          </div>
+          <div className="h-10 w-10 bg-yellow-100 rounded-full flex items-center justify-center">
+            <UserX className="h-5 w-5 text-yellow-600" />
           </div>
         </Card>
       </div>
 
-      {/* Lista de Clientes */}
-      <div className="space-y-4">
-        <div className="relative max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Pesquisar por nome ou CNPJ..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9"
-          />
-        </div>
-
-        {isLoading ? (
-          <div className="flex justify-center py-12">
-            <Loader2 className="animate-spin" />
-          </div>
-        ) : customers.length === 0 ? (
-          <div className="text-center py-12 border rounded-lg bg-muted/20">
-            Nenhum cliente cadastrado.
-          </div>
-        ) : (
-          <div className="grid gap-2">
-            {customers.map((customer) => (
-              <Card
-                key={customer.id}
-                className="hover:bg-muted/10 transition-colors"
-              >
-                <CardContent className="p-4 flex justify-between items-center">
-                  <div>
-                    <div className="flex gap-2 mb-1 items-center">
-                      <Badge
-                        className={
-                          customer.approved ? "bg-green-500" : "bg-yellow-500"
-                        }
-                      >
-                        {customer.approved ? "Ativo" : "Pendente"}
-                      </Badge>
-                      <span className="font-bold">
-                        {customer.razaoSocial || customer.firstName}
-                      </span>
-                    </div>
-                    <div className="text-sm text-muted-foreground flex gap-3">
-                      <Mail className="h-3 w-3 mt-1" /> {customer.email} |{" "}
-                      {customer.cnpj || customer.cpf}
-                    </div>
-                  </div>
-                  <div className="flex gap-1">
-                    <Button variant="ghost" size="icon">
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="text-destructive"
-                      onClick={() => setCustomerToDelete(customer)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        )}
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input
+          placeholder="Buscar por Razão Social, Nome, CNPJ ou Email..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="pl-9 h-11"
+        />
       </div>
 
-      {/* Modal de Cadastro com Máscaras */}
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <TabsList className="grid w-full max-w-[600px] grid-cols-3">
+          <TabsTrigger value="active">Ativos</TabsTrigger>
+          <TabsTrigger value="pending" className="relative">
+            Pendentes
+            {stats.pending > 0 && (
+              <span className="ml-2 bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full animate-pulse">
+                {stats.pending}
+              </span>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="inactive">Bloqueados</TabsTrigger>
+        </TabsList>
+        <TabsContent value={activeTab} className="mt-6">
+          {isLoading ? (
+            <div className="flex justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            </div>
+          ) : getDisplayedList().length === 0 ? (
+            <div className="text-center py-12 border-2 border-dashed rounded-xl bg-muted/10">
+              <p className="text-muted-foreground">
+                Nenhum cliente encontrado.
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              {getDisplayedList().map((customer) => (
+                <CustomerCard key={customer.id} customer={customer} />
+              ))}
+            </div>
+          )}
+        </TabsContent>
+      </Tabs>
+
+      {/* MODAL DE CRIAÇÃO */}
       <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Cadastrar Novo Cliente</DialogTitle>
+            <DialogTitle>Novo Cadastro</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="col-span-2">
-                <Label>CNPJ / CPF</Label>
-                <div className="flex gap-2">
-                  <Input
-                    value={
-                      newCustomer.personType === "juridica"
-                        ? newCustomer.cnpj
-                        : newCustomer.cpf
-                    }
-                    onChange={(e) =>
-                      setNewCustomer({
-                        ...newCustomer,
-                        cnpj:
-                          newCustomer.personType === "juridica"
-                            ? masks.cnpj(e.target.value)
-                            : "",
-                        cpf:
-                          newCustomer.personType === "fisica"
-                            ? masks.cpf(e.target.value)
-                            : "",
-                      })
-                    }
-                    placeholder="Somente números"
-                  />
-                  {newCustomer.personType === "juridica" && (
-                    <Button
-                      type="button"
-                      onClick={() => fetchCNPJData(newCustomer.cnpj)}
-                      disabled={formLoading}
-                    >
-                      {formLoading ? (
-                        <Loader2 className="animate-spin h-4 w-4" />
-                      ) : (
-                        "Importar"
-                      )}
-                    </Button>
-                  )}
-                </div>
-              </div>
-              <div className="col-span-2">
-                <Label>Razão Social / Nome</Label>
-                <Input
-                  value={newCustomer.company}
-                  onChange={(e) =>
-                    setNewCustomer({
-                      ...newCustomer,
-                      company: e.target.value,
-                      firstName: e.target.value,
-                    })
-                  }
-                />
-              </div>
-              <div>
-                <Label>Email</Label>
-                <Input
-                  type="email"
-                  value={newCustomer.email}
-                  onChange={(e) =>
-                    setNewCustomer({ ...newCustomer, email: e.target.value })
-                  }
-                />
-              </div>
-              <div>
-                <Label>Telefone</Label>
-                <Input
-                  value={newCustomer.phone}
-                  onChange={(e) =>
-                    setNewCustomer({
-                      ...newCustomer,
-                      phone: masks.phone(e.target.value),
-                    })
-                  }
-                  placeholder="(00) 00000-0000"
-                />
-              </div>
-              <div>
-                <Label>CEP</Label>
-                <Input
-                  value={newCustomer.cep}
-                  onChange={(e) => {
-                    const v = masks.cep(e.target.value);
-                    setNewCustomer({ ...newCustomer, cep: v });
-                    if (v.length === 9) fetchCEPData(v);
-                  }}
-                  placeholder="00000-000"
-                />
-              </div>
-              <div>
-                <Label>Cidade</Label>
-                <Input
-                  value={newCustomer.city}
-                  onChange={(e) =>
-                    setNewCustomer({ ...newCustomer, city: e.target.value })
-                  }
-                />
-              </div>
-            </div>
-            <div className="flex justify-end gap-2 pt-4">
-              <Button
-                variant="outline"
-                onClick={() => setShowCreateDialog(false)}
-              >
-                Cancelar
-              </Button>
-              <Button
-                onClick={() => createCustomerMutation.mutate(newCustomer)}
-                disabled={createCustomerMutation.isPending}
-              >
-                {createCustomerMutation.isPending && (
-                  <Loader2 className="mr-2 animate-spin h-4 w-4" />
-                )}{" "}
-                Salvar Cliente
-              </Button>
-            </div>
+          <CustomerFormContent
+            formData={formData}
+            setFormData={setFormData}
+            isEdit={false}
+            formLoading={formLoading}
+            onSearchCNPJ={fetchCNPJData}
+            onSearchCEP={fetchCEPData}
+          />
+          <div className="flex justify-end gap-2 pt-4 border-t">
+            <Button
+              variant="outline"
+              onClick={() => setShowCreateDialog(false)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={() => createCustomerMutation.mutate(formData)}
+              disabled={createCustomerMutation.isPending}
+            >
+              {createCustomerMutation.isPending && (
+                <Loader2 className="mr-2 animate-spin h-4 w-4" />
+              )}{" "}
+              Salvar
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* MODAL DE EDIÇÃO */}
+      <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Editar Cliente</DialogTitle>
+          </DialogHeader>
+          <CustomerFormContent
+            formData={formData}
+            setFormData={setFormData}
+            isEdit={true}
+            formLoading={formLoading}
+            onSearchCNPJ={fetchCNPJData}
+            onSearchCEP={fetchCEPData}
+          />
+          <div className="flex justify-end gap-2 pt-4 border-t">
+            <Button variant="outline" onClick={() => setShowEditDialog(false)}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleSaveEdit}
+              disabled={updateMutation.isPending}
+            >
+              {updateMutation.isPending && (
+                <Loader2 className="mr-2 animate-spin h-4 w-4" />
+              )}{" "}
+              Salvar Alterações
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
@@ -500,25 +907,25 @@ export default function CustomersPage() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Confirmar Exclusão</AlertDialogTitle>
+            <AlertDialogTitle>Excluir Cliente?</AlertDialogTitle>
             <AlertDialogDescription>
-              Tem certeza que deseja remover o cliente{" "}
-              <strong>
-                {customerToDelete?.razaoSocial || customerToDelete?.firstName}
-              </strong>
-              ?
+              Isso removerá permanentemente{" "}
+              <span className="font-bold text-foreground">
+                {customerToDelete?.company || customerToDelete?.firstName}
+              </span>
+              .
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-destructive text-white hover:bg-destructive/90"
+              className="bg-destructive hover:bg-destructive/90"
               onClick={() =>
                 customerToDelete &&
                 deleteUserMutation.mutate(customerToDelete.id)
               }
             >
-              Excluir
+              Confirmar Exclusão
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

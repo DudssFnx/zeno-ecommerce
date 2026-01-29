@@ -199,7 +199,7 @@ export async function registerRoutes(
   });
 
   // ==========================================
-  // --- 👥 USUÁRIOS ---
+  // --- 👥 USUÁRIOS E CLIENTES ---
   // ==========================================
   app.get("/api/users", async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).send();
@@ -246,6 +246,66 @@ export async function registerRoutes(
     }
   });
 
+  // 🛑🛑 AQUI ESTAVA FALTANDO A ROTA DE ATUALIZAÇÃO! AGORA ESTÁ AQUI: 🛑🛑
+  app.patch("/api/users/:id", async (req: any, res) => {
+    if (!req.isAuthenticated()) return res.status(401).send();
+    const id = req.params.id;
+    try {
+      const body = req.body;
+      const updateData: any = { updatedAt: new Date() };
+
+      // Copia campos do body para o updateData
+      // Importante: garantir que os nomes batam com o schema
+      if (body.firstName) updateData.firstName = body.firstName;
+      if (body.lastName) updateData.lastName = body.lastName;
+      if (body.email) updateData.email = body.email;
+      if (body.phone) updateData.phone = body.phone;
+      if (body.company) updateData.company = body.company; // Razão Social
+      if (body.tradingName) updateData.tradingName = body.tradingName; // Nome Fantasia
+      if (body.customerType) updateData.customerType = body.customerType;
+
+      // Endereço
+      if (body.cep) updateData.cep = body.cep;
+      if (body.address) updateData.address = body.address;
+      if (body.addressNumber) updateData.addressNumber = body.addressNumber;
+      if (body.complement) updateData.complement = body.complement;
+      if (body.neighborhood) updateData.neighborhood = body.neighborhood;
+      if (body.city) updateData.city = body.city;
+      if (body.state) updateData.state = body.state;
+
+      // Status
+      if (body.approved !== undefined) updateData.approved = body.approved;
+      if (body.ativo !== undefined) updateData.ativo = body.ativo;
+
+      // Documentos (com limpeza)
+      if (body.cnpj) updateData.cnpj = cleanDocument(body.cnpj);
+      if (body.cpf) updateData.cpf = cleanDocument(body.cpf);
+      if (body.stateRegistration)
+        updateData.stateRegistration = body.stateRegistration;
+
+      // Senha (hash)
+      if (body.password && body.password.trim() !== "") {
+        updateData.password = await bcrypt.hash(body.password, 10);
+      }
+
+      console.log("📝 Atualizando usuário ID:", id); // Log para debug
+
+      const [updated] = await db
+        .update(users)
+        .set(updateData)
+        .where(eq(users.id, id))
+        .returning();
+
+      if (!updated)
+        return res.status(404).json({ message: "Usuário não encontrado" });
+
+      res.json(updated);
+    } catch (error: any) {
+      console.error("❌ Erro ao atualizar usuário:", error);
+      res.status(500).json({ message: "Erro interno ao atualizar" });
+    }
+  });
+
   app.delete("/api/users/:id", async (req: any, res) => {
     if (!req.isAuthenticated()) return res.status(401).send();
     try {
@@ -278,7 +338,7 @@ export async function registerRoutes(
     }
   });
 
-  // ✅ POST FORNECEDORES:
+  // ✅ POST FORNECEDORES
   app.post("/api/suppliers", async (req: any, res) => {
     if (!req.isAuthenticated()) return res.status(401).send();
 
@@ -289,7 +349,7 @@ export async function registerRoutes(
     const { id, ...supplierData } = req.body;
 
     try {
-      // 1. Busca todos e filtra no JS (Seguro contra erro SQL)
+      // 1. Busca Javascript segura
       const allSuppliers = await db
         .select()
         .from(suppliers)
@@ -365,7 +425,6 @@ export async function registerRoutes(
         .from(products)
         .orderBy(desc(products.id));
 
-      // ✅ TRADUÇÃO: Essencial para não sumir do frontend
       const mappedProducts = result.map((p) => ({
         ...p,
         nome: p.name,
@@ -573,9 +632,6 @@ export async function registerRoutes(
       res.status(500).json({ message: error.message });
     }
   });
-
-  // REMOVIDO: Rotas que estavam quebrando o servidor (brands, categories, public)
-  // Se precisar delas no futuro, use 'db.select().from(table)' em vez de 'storage.get'
 
   return httpServer;
 }

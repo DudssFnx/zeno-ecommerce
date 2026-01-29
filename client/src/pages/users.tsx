@@ -40,12 +40,11 @@ import {
   Search,
   Shield,
   Tag,
+  Users as UsersIcon,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 
-type UserStatus = "pending" | "approved" | "rejected";
-
-// --- CONFIGURAÇÃO DOS MÓDULOS (Separados) ---
+// --- CONFIGURAÇÃO DOS MÓDULOS (Equipe) ---
 const SYSTEM_MODULES = [
   {
     key: "dashboard",
@@ -54,10 +53,14 @@ const SYSTEM_MODULES = [
   },
   {
     key: "users",
-    label: "Usuários / Clientes",
-    description: "Gerenciar equipe e clientes",
+    label: "Gestão de Equipe",
+    description: "Gerenciar usuários internos",
   },
-  // --- SEPARAÇÃO CATÁLOGO x GESTÃO ---
+  {
+    key: "customers", // Novo módulo específico
+    label: "Gestão de Clientes",
+    description: "Aprovar e gerenciar clientes B2B",
+  },
   {
     key: "sales_catalog",
     label: "Catálogo de Vendas",
@@ -68,8 +71,12 @@ const SYSTEM_MODULES = [
     label: "Gestão de Produtos",
     description: "Cadastrar, editar preços e estoque",
   },
-  // ------------------------------------
   { key: "orders", label: "Pedidos", description: "Vendas e orçamentos" },
+  {
+    key: "suppliers",
+    label: "Fornecedores",
+    description: "Gestão de compras e fornecedores",
+  },
   {
     key: "settings",
     label: "Configurações / Financeiro",
@@ -82,7 +89,7 @@ export default function UsersPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState("all");
 
-  // --- MODAIS (AQUI ESTÁ A VARIÁVEL QUE FALTAVA) ---
+  // --- MODAIS ---
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isPermissionsOpen, setIsPermissionsOpen] = useState(false);
   const [isExtrasOpen, setIsExtrasOpen] = useState(false);
@@ -96,9 +103,9 @@ export default function UsersPage() {
   const [newUserEmail, setNewUserEmail] = useState("");
   const [newUserPassword, setNewUserPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [newUserRole, setNewUserRole] = useState<UserRole>("customer");
+  // Default para employee, já que não criamos customers aqui
+  const [newUserRole, setNewUserRole] = useState<UserRole>("employee");
   const [selectedModules, setSelectedModules] = useState<string[]>([]);
-  const [selectedBrands, setSelectedBrands] = useState<string[]>([]);
 
   // Extras Form
   const [extrasTag, setExtrasTag] = useState("");
@@ -111,6 +118,27 @@ export default function UsersPage() {
   const [editPhone, setEditPhone] = useState("");
   const [editPassword, setEditPassword] = useState("");
   const [showEditPassword, setShowEditPassword] = useState(false);
+
+  // ✅ HELPER DE ERRO (Igual ao de fornecedores)
+  const parseErrorMessage = (error: Error) => {
+    let msg = error.message;
+    if (msg.includes(": ")) {
+      const parts = msg.split(": ");
+      if (parts.length > 1) {
+        try {
+          const json = JSON.parse(parts.slice(1).join(": "));
+          if (json.message) return json.message;
+        } catch {
+          return parts.slice(1).join(": ");
+        }
+      }
+    }
+    try {
+      const json = JSON.parse(msg);
+      if (json.message) return json.message;
+    } catch {}
+    return msg;
+  };
 
   const {
     data: usersData = [],
@@ -145,18 +173,17 @@ export default function UsersPage() {
     }
   }, [userPermissions]);
 
-  // --- FUNÇÃO DE DEFAULTS (ÚNICA DECLARAÇÃO) ---
+  // --- DEFAULTS ---
   const getDefaultModulesForRole = (role: UserRole): string[] => {
     const roleDefaults: Record<string, string[]> = {
       admin: SYSTEM_MODULES.map((m) => m.key),
-      employee: ["dashboard", "products", "orders", "users"],
-      sales: ["sales_catalog", "orders", "users"], // Vendedor ganha catálogo, não gestão
-      customer: ["sales_catalog", "orders"],
+      employee: ["dashboard", "products", "orders", "customers"],
+      sales: ["sales_catalog", "orders", "customers"],
+      // Customer removido daqui pois não é gerenciado nesta tela
     };
     return roleDefaults[role] || [];
   };
 
-  // Atualiza módulos quando muda o cargo na criação
   useEffect(() => {
     if (isCreateOpen) {
       setSelectedModules(getDefaultModulesForRole(newUserRole));
@@ -176,11 +203,12 @@ export default function UsersPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/users"] });
+      toast({ title: "Sucesso", description: "Dados atualizados." });
     },
-    onError: (err) => {
+    onError: (err: Error) => {
       toast({
         title: "Erro",
-        description: "Falha ao atualizar dados.",
+        description: parseErrorMessage(err),
         variant: "destructive",
       });
     },
@@ -204,14 +232,14 @@ export default function UsersPage() {
       setNewUserEmail("");
       setNewUserPassword("");
       setShowPassword(false);
-      setNewUserRole("customer");
+      setNewUserRole("employee");
       setSelectedModules([]);
-      toast({ title: "Sucesso", description: "Usuário criado com sucesso" });
+      toast({ title: "Sucesso", description: "Membro da equipe adicionado!" });
     },
     onError: (err: Error) => {
       toast({
-        title: "Erro",
-        description: err.message || "Falha ao criar usuário",
+        title: "Erro ao criar",
+        description: parseErrorMessage(err), // Usa o parser para mostrar msg amigável
         variant: "destructive",
       });
     },
@@ -224,8 +252,8 @@ export default function UsersPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/users"] });
       toast({
-        title: "Usuário Removido",
-        description: "Usuário excluído com sucesso.",
+        title: "Removido",
+        description: "Usuário excluído da equipe.",
       });
     },
     onError: () => {
@@ -245,16 +273,16 @@ export default function UsersPage() {
   const handleCreateUser = () => {
     if (!newUserName || !newUserEmail || !newUserPassword) {
       toast({
-        title: "Erro",
-        description: "Preencha todos os campos",
+        title: "Campos obrigatórios",
+        description: "Preencha nome, email e senha.",
         variant: "destructive",
       });
       return;
     }
     if (!isValidEmail(newUserEmail)) {
       toast({
-        title: "Erro",
-        description: "Digite um e-mail válido",
+        title: "Email Inválido",
+        description: "Digite um e-mail válido.",
         variant: "destructive",
       });
       return;
@@ -276,10 +304,6 @@ export default function UsersPage() {
         { id: selectedUser.id, data: { modules: modulesString } as any },
         {
           onSuccess: () => {
-            toast({
-              title: "Permissões Salvas",
-              description: "O acesso do usuário foi atualizado.",
-            });
             setIsPermissionsOpen(false);
             setSelectedUser(null);
           },
@@ -320,59 +344,46 @@ export default function UsersPage() {
     );
   };
 
-  const users: UserData[] = usersData.map((u) => ({
-    id: u.id,
-    name:
-      `${u.firstName || ""} ${u.lastName || ""}`.trim() ||
-      u.nome ||
-      u.email ||
-      "Unknown",
-    email: u.email || "",
-    phone: u.telefone || "",
-    company: u.company || u.razaoSocial || undefined,
-    role: u.role as UserRole,
-    customerType: (u.customerType || "varejo") as CustomerType,
-    status: u.approved ? "approved" : ("pending" as UserStatus),
-    active: u.ativo !== false,
-    tag: u.tag || undefined,
-    instagram: u.instagram || undefined,
-    notes: u.notes || undefined,
-    avatarUrl: undefined,
-  }));
+  // ✅ FILTRAGEM INICIAL: Apenas equipe (não mostra customers)
+  const users: UserData[] = usersData
+    .filter((u) => u.role !== "customer") // <--- O Segredo está aqui!
+    .map((u) => ({
+      id: u.id,
+      name:
+        `${u.firstName || ""} ${u.lastName || ""}`.trim() ||
+        u.nome ||
+        u.email ||
+        "Unknown",
+      email: u.email || "",
+      phone: u.telefone || "",
+      company: u.company || u.razaoSocial || undefined,
+      role: u.role as UserRole,
+      customerType: (u.customerType || "varejo") as CustomerType,
+      status: u.approved ? "approved" : ("pending" as UserStatus),
+      active: u.ativo !== false,
+      tag: u.tag || undefined,
+      instagram: u.instagram || undefined,
+      notes: u.notes || undefined,
+      avatarUrl: undefined,
+    }));
 
   const filteredUsers = users.filter((user) => {
     const matchesSearch =
       user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      user.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (user.company &&
-        user.company.toLowerCase().includes(searchQuery.toLowerCase()));
+      user.email.toLowerCase().includes(searchQuery.toLowerCase());
 
     if (activeTab === "all") return matchesSearch;
-    if (activeTab === "pending")
-      return matchesSearch && user.status === "pending";
-    if (activeTab === "customers")
-      return matchesSearch && user.role === "customer";
-    if (activeTab === "staff")
-      return (
-        matchesSearch &&
-        (user.role === "admin" ||
-          user.role === "sales" ||
-          user.role === "employee")
-      );
+    // Tabs da equipe interna
+    if (activeTab === "admin") return matchesSearch && user.role === "admin";
+    if (activeTab === "sales") return matchesSearch && user.role === "sales";
+    if (activeTab === "employee")
+      return matchesSearch && user.role === "employee";
+
     return matchesSearch;
   });
 
   const handleApprove = (user: UserData) => {
-    updateUserMutation.mutate(
-      { id: user.id, data: { approved: true } },
-      {
-        onSuccess: () =>
-          toast({
-            title: "Usuário Aprovado",
-            description: `${user.name} foi aprovado.`,
-          }),
-      },
-    );
+    updateUserMutation.mutate({ id: user.id, data: { approved: true } });
   };
 
   const handleReject = (user: UserData) => {
@@ -382,47 +393,21 @@ export default function UsersPage() {
   };
 
   const handleChangeRole = (user: UserData, role: UserRole) => {
-    updateUserMutation.mutate(
-      { id: user.id, data: { role } },
-      {
-        onSuccess: () =>
-          toast({
-            title: "Função Atualizada",
-            description: `${user.name} agora é ${role}.`,
-          }),
-      },
-    );
+    updateUserMutation.mutate({ id: user.id, data: { role } });
   };
 
   const handleChangeCustomerType = (
     user: UserData,
     customerType: CustomerType,
   ) => {
-    updateUserMutation.mutate(
-      { id: user.id, data: { customerType } },
-      {
-        onSuccess: () =>
-          toast({
-            title: "Tipo Atualizado",
-            description: `${user.name} agora é ${customerType}.`,
-          }),
-      },
-    );
+    updateUserMutation.mutate({ id: user.id, data: { customerType } });
   };
 
   const handleToggleActive = (user: UserData) => {
-    updateUserMutation.mutate(
-      { id: user.id, data: { ativo: !user.active } as any },
-      {
-        onSuccess: () => {
-          const acao = !user.active ? "Reativado" : "Inativado";
-          toast({
-            title: `Usuário ${acao}`,
-            description: `O acesso de ${user.name} foi ${acao.toLowerCase()}.`,
-          });
-        },
-      },
-    );
+    updateUserMutation.mutate({
+      id: user.id,
+      data: { ativo: !user.active } as any,
+    });
   };
 
   const handleOpenExtras = (user: UserData) => {
@@ -446,7 +431,6 @@ export default function UsersPage() {
         },
         {
           onSuccess: () => {
-            toast({ title: "Extras Salvos" });
             setIsExtrasOpen(false);
             setSelectedUser(null);
           },
@@ -482,10 +466,6 @@ export default function UsersPage() {
       { id: selectedUser.id, data: updateData },
       {
         onSuccess: () => {
-          toast({
-            title: "Perfil Atualizado",
-            description: "Dados alterados com sucesso.",
-          });
           setIsEditProfileOpen(false);
           setSelectedUser(null);
         },
@@ -493,15 +473,16 @@ export default function UsersPage() {
     );
   };
 
-  const pendingCount = users.filter((u) => u.status === "pending").length;
-
   return (
     <div className="p-6 lg:p-8 space-y-6">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-3xl font-semibold">Gerenciamento de Usuários</h1>
+          <h1 className="text-3xl font-semibold flex items-center gap-2">
+            <UsersIcon className="h-8 w-8" />
+            Gestão de Equipe
+          </h1>
           <p className="text-muted-foreground mt-1">
-            Gerencie contas de clientes e membros da equipe
+            Gerencie administradores, vendedores e funcionários internos.
           </p>
         </div>
         <div className="flex gap-2">
@@ -509,15 +490,14 @@ export default function UsersPage() {
             <DialogTrigger asChild>
               <Button data-testid="button-create-user">
                 <Plus className="h-4 w-4 mr-2" />
-                Cadastrar Usuário
+                Novo Membro
               </Button>
             </DialogTrigger>
             <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
               <DialogHeader>
-                <DialogTitle>Cadastrar Novo Usuário</DialogTitle>
+                <DialogTitle>Adicionar Membro à Equipe</DialogTitle>
                 <DialogDescription>
-                  Preencha os dados e selecione os módulos que o usuário pode
-                  acessar
+                  Crie acesso para um novo colaborador.
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4 py-4">
@@ -527,7 +507,7 @@ export default function UsersPage() {
                     <Input
                       value={newUserName}
                       onChange={(e) => setNewUserName(e.target.value)}
-                      placeholder="Nome do usuário"
+                      placeholder="Nome do colaborador"
                     />
                   </div>
                   <div className="space-y-2">
@@ -536,7 +516,7 @@ export default function UsersPage() {
                       type="email"
                       value={newUserEmail}
                       onChange={(e) => setNewUserEmail(e.target.value)}
-                      placeholder="email@exemplo.com"
+                      placeholder="email@empresa.com"
                     />
                   </div>
 
@@ -567,7 +547,7 @@ export default function UsersPage() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label>Função</Label>
+                    <Label>Cargo / Função</Label>
                     <Select
                       value={newUserRole}
                       onValueChange={(v) => setNewUserRole(v as UserRole)}
@@ -576,10 +556,11 @@ export default function UsersPage() {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="customer">Cliente</SelectItem>
-                        <SelectItem value="employee">Funcionário</SelectItem>
+                        {/* 🛑 Clientes e Fornecedores removidos daqui! */}
+                        <SelectItem value="employee">
+                          Funcionário (Operacional)
+                        </SelectItem>
                         <SelectItem value="sales">Vendedor</SelectItem>
-                        <SelectItem value="supplier">Fornecedor</SelectItem>
                         <SelectItem value="admin">Administrador</SelectItem>
                       </SelectContent>
                     </Select>
@@ -590,7 +571,7 @@ export default function UsersPage() {
                   <div className="flex items-center gap-2">
                     <Shield className="h-4 w-4 text-primary" />
                     <Label className="text-base font-medium">
-                      Permissões Iniciais
+                      Módulos de Acesso
                     </Label>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
@@ -606,6 +587,9 @@ export default function UsersPage() {
                         />
                         <div className="flex-1">
                           <p className="text-sm font-medium">{module.label}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {module.description}
+                          </p>
                         </div>
                       </div>
                     ))}
@@ -617,9 +601,7 @@ export default function UsersPage() {
                   onClick={handleCreateUser}
                   disabled={createUserMutation.isPending}
                 >
-                  {createUserMutation.isPending
-                    ? "Criando..."
-                    : "Criar Usuário"}
+                  {createUserMutation.isPending ? "Criando..." : "Criar Acesso"}
                 </Button>
               </div>
             </DialogContent>
@@ -634,7 +616,7 @@ export default function UsersPage() {
       <div className="relative max-w-sm">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input
-          placeholder="Buscar usuários..."
+          placeholder="Buscar na equipe..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           className="pl-9"
@@ -644,22 +626,9 @@ export default function UsersPage() {
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
           <TabsTrigger value="all">Todos ({users.length})</TabsTrigger>
-          <TabsTrigger value="pending">Pendentes ({pendingCount})</TabsTrigger>
-          <TabsTrigger value="customers">
-            Clientes ({users.filter((u) => u.role === "customer").length})
-          </TabsTrigger>
-          <TabsTrigger value="staff">
-            Equipe (
-            {
-              users.filter(
-                (u) =>
-                  u.role === "admin" ||
-                  u.role === "sales" ||
-                  u.role === "employee",
-              ).length
-            }
-            )
-          </TabsTrigger>
+          <TabsTrigger value="admin">Administradores</TabsTrigger>
+          <TabsTrigger value="sales">Vendas</TabsTrigger>
+          <TabsTrigger value="employee">Operacional</TabsTrigger>
         </TabsList>
 
         <TabsContent value={activeTab} className="mt-6">
@@ -669,7 +638,9 @@ export default function UsersPage() {
             </div>
           ) : filteredUsers.length === 0 ? (
             <div className="text-center py-12">
-              <p className="text-muted-foreground">Nenhum usuário encontrado</p>
+              <p className="text-muted-foreground">
+                Nenhum membro encontrado nesta categoria.
+              </p>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -683,13 +654,7 @@ export default function UsersPage() {
                     onChangeCustomerType={handleChangeCustomerType}
                     onEditExtras={handleOpenExtras}
                     onEditProfile={handleOpenEditProfile}
-                    onOpenPermissions={
-                      user.role === "admin" ||
-                      user.role === "sales" ||
-                      user.role === "employee"
-                        ? handleOpenPermissions
-                        : undefined
-                    }
+                    onOpenPermissions={handleOpenPermissions}
                     onToggleActive={handleToggleActive}
                   />
                 </div>
@@ -699,6 +664,7 @@ export default function UsersPage() {
         </TabsContent>
       </Tabs>
 
+      {/* Modais auxiliares mantidos igual ao original */}
       <Dialog open={isPermissionsOpen} onOpenChange={setIsPermissionsOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
