@@ -14,7 +14,6 @@ import { type Server } from "http";
 import multer from "multer";
 import { db } from "./db";
 import { setupAuth } from "./replitAuth";
-import { storage } from "./storage";
 
 // ✅ 1. FUNÇÃO AUXILIAR
 function cleanDocument(doc: string | undefined | null) {
@@ -157,11 +156,8 @@ export async function registerRoutes(
   });
 
   app.patch("/api/company/me", async (req: any, res) => {
-    if (!req.isAuthenticated()) {
-      return res
-        .status(401)
-        .json({ message: "Sessão expirada. Por favor, faça login novamente." });
-    }
+    if (!req.isAuthenticated())
+      return res.status(401).json({ message: "Sessão expirada." });
     const userCompanyId = req.user.companyId;
 
     try {
@@ -194,11 +190,8 @@ export async function registerRoutes(
         }
       }
 
-      if (!updated) {
-        return res
-          .status(404)
-          .json({ message: "Empresa não encontrada para atualizar." });
-      }
+      if (!updated)
+        return res.status(404).json({ message: "Empresa não encontrada." });
       res.json(updated);
     } catch (error: any) {
       res.status(500).json({ message: "Erro interno: " + error.message });
@@ -206,7 +199,7 @@ export async function registerRoutes(
   });
 
   // ==========================================
-  // --- 👥 USUÁRIOS (COM TRADUÇÃO) ---
+  // --- 👥 USUÁRIOS ---
   // ==========================================
   app.get("/api/users", async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).send();
@@ -215,7 +208,7 @@ export async function registerRoutes(
         .select()
         .from(users)
         .orderBy(desc(users.createdAt));
-      // Tradução para o frontend
+      // Tradução
       const mapped = result.map((u) => ({
         ...u,
         nome: u.firstName,
@@ -227,8 +220,44 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/register", async (req: any, res) => {
+    if (!req.isAuthenticated())
+      return res.status(401).json({ message: "Não autorizado" });
+    try {
+      const { email, password } = req.body;
+      const userCompanyId = String(req.user.companyId || "1");
+      const hashedPassword = await bcrypt.hash(password || "123456", 10);
+
+      const [newUser] = await db
+        .insert(users)
+        .values({
+          ...req.body,
+          password: hashedPassword,
+          role: "customer",
+          companyId: userCompanyId,
+          approved: true,
+          createdAt: new Date(),
+        })
+        .returning();
+
+      res.status(201).json(newUser);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.delete("/api/users/:id", async (req: any, res) => {
+    if (!req.isAuthenticated()) return res.status(401).send();
+    try {
+      await db.delete(users).where(eq(users.id, req.params.id));
+      res.json({ message: "Excluído" });
+    } catch (error) {
+      res.status(500).send();
+    }
+  });
+
   // ==========================================
-  // --- 🚚 FORNECEDORES (CORRIGIDO: ID 0) ---
+  // --- 🚚 FORNECEDORES (BLINDADO) ---
   // ==========================================
   app.get("/api/suppliers", async (req: any, res) => {
     if (!req.isAuthenticated()) return res.status(401).send();
@@ -249,25 +278,23 @@ export async function registerRoutes(
     }
   });
 
-  // ✅ POST FORNECEDORES: Forçando a exclusão do ID e usando Javascript para duplicidade
+  // ✅ POST FORNECEDORES:
   app.post("/api/suppliers", async (req: any, res) => {
     if (!req.isAuthenticated()) return res.status(401).send();
 
     const docInput = cleanDocument(req.body.cnpj || req.body.cpf);
     const userCompanyId = req.user.companyId || "1";
 
-    // 🛑 REMOVE COMPLETAMENTE O ID DO PAYLOAD
-    // Isso obriga o Postgres a usar o auto-increment (serial)
+    // 🛑 REMOVE O ID (Crucial!)
     const { id, ...supplierData } = req.body;
 
     try {
-      // 1. Busca TODOS os fornecedores desta empresa (Sem SQL complexo)
+      // 1. Busca todos e filtra no JS (Seguro contra erro SQL)
       const allSuppliers = await db
         .select()
         .from(suppliers)
         .where(eq(suppliers.companyId, Number(userCompanyId)));
 
-      // 2. Filtra no JAVASCRIPT (Seguro)
       if (docInput) {
         const existing = allSuppliers.find((s) => {
           const sDoc = cleanDocument(s.cnpj || s.cpf || "");
@@ -275,14 +302,13 @@ export async function registerRoutes(
         });
 
         if (existing) {
-          // 🛑 Retorna 409 (Conflito) -> Mostra Box Vermelho
           return res.status(409).json({
             message: `Este CNPJ já está cadastrado para o fornecedor "${existing.name}".`,
           });
         }
       }
 
-      // 3. Cria se não existir (Inserindo dados SEM o ID)
+      // 2. Cria
       const [supplier] = await db
         .insert(suppliers)
         .values({
@@ -294,21 +320,12 @@ export async function registerRoutes(
       res.status(201).json(supplier);
     } catch (error: any) {
       console.error("Erro Fornecedor:", error);
-      // Se ainda assim der erro de chave única (ex: ID sequência quebrada), avisa
       if (error.code === "23505") {
-        // Tenta identificar se é ID ou CNPJ
-        if (error.detail && error.detail.includes("id")) {
-          return res
-            .status(500)
-            .json({ message: "Erro interno de ID. Tente novamente." });
-        }
         return res
           .status(409)
           .json({ message: "Este CNPJ já está cadastrado no sistema." });
       }
-      res
-        .status(500)
-        .json({ message: "Erro interno no servidor ao cadastrar." });
+      res.status(500).json({ message: "Erro interno no servidor." });
     }
   });
 
@@ -348,7 +365,7 @@ export async function registerRoutes(
         .from(products)
         .orderBy(desc(products.id));
 
-      // Tradução para o frontend antigo
+      // ✅ TRADUÇÃO: Essencial para não sumir do frontend
       const mappedProducts = result.map((p) => ({
         ...p,
         nome: p.name,
@@ -401,7 +418,6 @@ export async function registerRoutes(
 
       res.status(201).json(product);
     } catch (error: any) {
-      console.error("Erro ao criar produto:", error);
       res
         .status(500)
         .json({ message: "Erro ao criar produto: " + error.message });
@@ -411,14 +427,12 @@ export async function registerRoutes(
   app.patch("/api/products/:id", async (req: any, res) => {
     if (!req.isAuthenticated())
       return res.status(401).json({ message: "Não autenticado" });
-
     const id = parseInt(req.params.id);
     try {
       const updateData: any = { updatedAt: new Date() };
 
       if (req.body.name !== undefined) updateData.name = req.body.name;
       if (req.body.nome !== undefined) updateData.name = req.body.nome;
-
       if (req.body.description !== undefined)
         updateData.description = req.body.description;
       if (req.body.sku !== undefined) updateData.sku = req.body.sku;
@@ -434,10 +448,8 @@ export async function registerRoutes(
         .where(eq(products.id, id))
         .returning();
 
-      if (!updated) {
+      if (!updated)
         return res.status(404).json({ message: "Produto não encontrado" });
-      }
-
       res.json(updated);
     } catch (error: any) {
       res.status(500).json({ message: "Erro interno ao atualizar produto" });
@@ -562,33 +574,8 @@ export async function registerRoutes(
     }
   });
 
-  // --- OUTRAS ROTAS ---
-  app.get("/api/categories", async (req, res) => {
-    const cats = await storage.getCategories();
-    res.json(cats);
-  });
-
-  app.get("/api/brands", async (req, res) => {
-    const brands = await storage.getBrands();
-    res.json(brands);
-  });
-
-  app.get("/api/public/categories", async (req, res) => {
-    const cats = await storage.getCategories();
-    res.json(cats);
-  });
-
-  app.get("/api/public/products", async (req, res) => {
-    const prods = await storage.getProducts();
-    // Tradução para a vitrine
-    const mapped = prods.products.map((p: any) => ({
-      ...p,
-      nome: p.name,
-      precoVarejo: p.price,
-      imagem: p.image,
-    }));
-    res.json({ ...prods, products: mapped });
-  });
+  // REMOVIDO: Rotas que estavam quebrando o servidor (brands, categories, public)
+  // Se precisar delas no futuro, use 'db.select().from(table)' em vez de 'storage.get'
 
   return httpServer;
 }
