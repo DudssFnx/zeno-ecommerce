@@ -16,7 +16,6 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Select,
   SelectContent,
@@ -44,7 +43,21 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 
-// --- CONFIGURAÇÃO DOS MÓDULOS (Equipe) ---
+// --- MÁSCARAS ---
+const masks = {
+  cpf: (v: string) =>
+    v
+      .replace(/\D/g, "")
+      .replace(/^(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4")
+      .substring(0, 14),
+  phone: (v: string) =>
+    v
+      .replace(/\D/g, "")
+      .replace(/^(\d{2})(\d{5})(\d{4})/, "($1) $2-$3")
+      .substring(0, 15),
+};
+
+// --- CONFIGURAÇÃO DOS MÓDULOS ---
 const SYSTEM_MODULES = [
   {
     key: "dashboard",
@@ -57,7 +70,7 @@ const SYSTEM_MODULES = [
     description: "Gerenciar usuários internos",
   },
   {
-    key: "customers", // Novo módulo específico
+    key: "customers",
     label: "Gestão de Clientes",
     description: "Aprovar e gerenciar clientes B2B",
   },
@@ -84,6 +97,13 @@ const SYSTEM_MODULES = [
   },
 ];
 
+// Definição dos perfis padrão para comparação
+const ROLE_PRESETS: Record<string, string[]> = {
+  admin: SYSTEM_MODULES.map((m) => m.key),
+  employee: ["dashboard", "products", "orders", "customers"],
+  sales: ["sales_catalog", "orders", "customers"],
+};
+
 export default function UsersPage() {
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState("");
@@ -91,7 +111,6 @@ export default function UsersPage() {
 
   // --- MODAIS ---
   const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [isPermissionsOpen, setIsPermissionsOpen] = useState(false);
   const [isExtrasOpen, setIsExtrasOpen] = useState(false);
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
 
@@ -101,10 +120,11 @@ export default function UsersPage() {
   // Create Form
   const [newUserName, setNewUserName] = useState("");
   const [newUserEmail, setNewUserEmail] = useState("");
+  const [newUserPhone, setNewUserPhone] = useState("");
+  const [newUserCPF, setNewUserCPF] = useState("");
   const [newUserPassword, setNewUserPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  // Default para employee, já que não criamos customers aqui
-  const [newUserRole, setNewUserRole] = useState<UserRole>("employee");
+  const [newUserRole, setNewUserRole] = useState<string>("employee");
   const [selectedModules, setSelectedModules] = useState<string[]>([]);
 
   // Extras Form
@@ -112,32 +132,44 @@ export default function UsersPage() {
   const [extrasInstagram, setExtrasInstagram] = useState("");
   const [extrasNotes, setExtrasNotes] = useState("");
 
-  // Edit Profile Form
+  // Edit Profile Form (Agora Completo)
   const [editName, setEditName] = useState("");
   const [editEmail, setEditEmail] = useState("");
   const [editPhone, setEditPhone] = useState("");
+  const [editCPF, setEditCPF] = useState("");
   const [editPassword, setEditPassword] = useState("");
   const [showEditPassword, setShowEditPassword] = useState(false);
+  const [editRole, setEditRole] = useState<string>("employee");
+  const [editModules, setEditModules] = useState<string[]>([]);
 
-  // ✅ HELPER DE ERRO (Igual ao de fornecedores)
+  // ✅ HELPER DE ERRO
   const parseErrorMessage = (error: Error) => {
     let msg = error.message;
-    if (msg.includes(": ")) {
-      const parts = msg.split(": ");
-      if (parts.length > 1) {
-        try {
-          const json = JSON.parse(parts.slice(1).join(": "));
+    try {
+      if (msg.includes("{")) {
+        const jsonMatch = msg.match(/\{.*\}/);
+        if (jsonMatch) {
+          const json = JSON.parse(jsonMatch[0]);
           if (json.message) return json.message;
-        } catch {
-          return parts.slice(1).join(": ");
         }
       }
-    }
-    try {
-      const json = JSON.parse(msg);
-      if (json.message) return json.message;
     } catch {}
     return msg;
+  };
+
+  // ✅ LÓGICA INTELIGENTE DE PERMISSÕES
+  // Verifica se os módulos atuais batem com algum preset
+  const checkRoleByModules = (modules: string[]): string => {
+    const sortedModules = [...modules].sort().join(",");
+
+    if (sortedModules === [...ROLE_PRESETS.admin].sort().join(","))
+      return "admin";
+    if (sortedModules === [...ROLE_PRESETS.sales].sort().join(","))
+      return "sales";
+    if (sortedModules === [...ROLE_PRESETS.employee].sort().join(","))
+      return "employee";
+
+    return "custom";
   };
 
   const {
@@ -148,58 +180,63 @@ export default function UsersPage() {
     queryKey: ["/api/users"],
   });
 
-  // Query para buscar permissões atuais
-  const { data: userPermissions } = useQuery<{
-    userId: string;
-    modules: string[];
-  }>({
-    queryKey: ["/api/users", selectedUser?.id, "permissions"],
-    queryFn: async () => {
-      if (!selectedUser?.id) return { userId: "", modules: [] };
-      const res = await fetch(`/api/users/${selectedUser.id}/permissions`, {
-        credentials: "include",
-      });
-      if (!res.ok) {
-        return { userId: selectedUser.id, modules: [] };
-      }
-      return res.json();
-    },
-    enabled: !!selectedUser?.id && isPermissionsOpen,
-  });
+  // --- Handlers para Criação ---
 
-  useEffect(() => {
-    if (userPermissions?.modules) {
-      setSelectedModules(userPermissions.modules);
+  // Ao mudar o cargo no Create, atualiza os módulos
+  const handleNewUserRoleChange = (role: string) => {
+    setNewUserRole(role);
+    if (role !== "custom" && ROLE_PRESETS[role]) {
+      setSelectedModules([...ROLE_PRESETS[role]]);
+    } else if (role === "custom") {
+      // Se mudar para personalizado manualmente, não limpa, mantem o que estava
     }
-  }, [userPermissions]);
-
-  // --- DEFAULTS ---
-  const getDefaultModulesForRole = (role: UserRole): string[] => {
-    const roleDefaults: Record<string, string[]> = {
-      admin: SYSTEM_MODULES.map((m) => m.key),
-      employee: ["dashboard", "products", "orders", "customers"],
-      sales: ["sales_catalog", "orders", "customers"],
-      // Customer removido daqui pois não é gerenciado nesta tela
-    };
-    return roleDefaults[role] || [];
   };
 
-  useEffect(() => {
-    if (isCreateOpen) {
-      setSelectedModules(getDefaultModulesForRole(newUserRole));
-    }
-  }, [newUserRole, isCreateOpen]);
+  // Ao mudar módulos no Create, verifica se virou personalizado
+  const handleNewUserModuleToggle = (moduleKey: string) => {
+    const newModules = selectedModules.includes(moduleKey)
+      ? selectedModules.filter((k) => k !== moduleKey)
+      : [...selectedModules, moduleKey];
 
-  // Mutations
+    setSelectedModules(newModules);
+    setNewUserRole(checkRoleByModules(newModules));
+  };
+
+  // --- Handlers para Edição ---
+
+  // Ao mudar o cargo no Edit, atualiza os módulos
+  const handleEditRoleChange = (role: string) => {
+    setEditRole(role);
+    if (role !== "custom" && ROLE_PRESETS[role]) {
+      setEditModules([...ROLE_PRESETS[role]]);
+    }
+  };
+
+  // Ao mudar módulos no Edit, verifica se virou personalizado
+  const handleEditModuleToggle = (moduleKey: string) => {
+    const newModules = editModules.includes(moduleKey)
+      ? editModules.filter((k) => k !== moduleKey)
+      : [...editModules, moduleKey];
+
+    setEditModules(newModules);
+    setEditRole(checkRoleByModules(newModules));
+  };
+
+  // Inicializa o form de criação com defaults
+  useEffect(() => {
+    if (isCreateOpen && selectedModules.length === 0) {
+      handleNewUserRoleChange("employee");
+    }
+  }, [isCreateOpen]);
+
+  // --- Mutations ---
   const updateUserMutation = useMutation({
-    mutationFn: async ({
-      id,
-      data,
-    }: {
-      id: string;
-      data: Partial<User> & { password?: string; modules?: string };
-    }) => {
-      await apiRequest("PATCH", `/api/users/${id}`, data);
+    mutationFn: async ({ id, data }: { id: string; data: any }) => {
+      const res = await apiRequest("PATCH", `/api/users/${id}`, data);
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || "Erro ao atualizar");
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/users"] });
@@ -215,31 +252,31 @@ export default function UsersPage() {
   });
 
   const createUserMutation = useMutation({
-    mutationFn: async (data: {
-      firstName: string;
-      email: string;
-      password: string;
-      role: string;
-      modules: string;
-    }) => {
-      const response = await apiRequest("POST", "/api/users", data);
+    mutationFn: async (data: any) => {
+      const response = await apiRequest("POST", "/api/register", data);
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.message || "Erro ao criar usuário");
+      }
       return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/users"] });
       setIsCreateOpen(false);
+      // Reset form
       setNewUserName("");
       setNewUserEmail("");
+      setNewUserPhone("");
+      setNewUserCPF("");
       setNewUserPassword("");
       setShowPassword(false);
-      setNewUserRole("employee");
-      setSelectedModules([]);
+      handleNewUserRoleChange("employee");
       toast({ title: "Sucesso", description: "Membro da equipe adicionado!" });
     },
     onError: (err: Error) => {
       toast({
         title: "Erro ao criar",
-        description: parseErrorMessage(err), // Usa o parser para mostrar msg amigável
+        description: parseErrorMessage(err),
         variant: "destructive",
       });
     },
@@ -251,10 +288,7 @@ export default function UsersPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/users"] });
-      toast({
-        title: "Removido",
-        description: "Usuário excluído da equipe.",
-      });
+      toast({ title: "Removido", description: "Usuário excluído da equipe." });
     },
     onError: () => {
       toast({
@@ -265,10 +299,8 @@ export default function UsersPage() {
     },
   });
 
-  const isValidEmail = (email: string): boolean => {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(email);
-  };
+  const isValidEmail = (email: string) =>
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
   const handleCreateUser = () => {
     if (!newUserName || !newUserEmail || !newUserPassword) {
@@ -292,61 +324,15 @@ export default function UsersPage() {
       firstName: newUserName,
       email: newUserEmail,
       password: newUserPassword,
-      role: newUserRole,
+      role: newUserRole === "custom" ? "employee" : newUserRole, // Salva 'employee' se for custom, mas os módulos definem a permissão real
       modules: JSON.stringify(selectedModules),
+      phone: newUserPhone,
+      cpf: newUserCPF,
     });
   };
 
-  const handleSavePermissions = () => {
-    if (selectedUser) {
-      const modulesString = JSON.stringify(selectedModules);
-      updateUserMutation.mutate(
-        { id: selectedUser.id, data: { modules: modulesString } as any },
-        {
-          onSuccess: () => {
-            setIsPermissionsOpen(false);
-            setSelectedUser(null);
-          },
-        },
-      );
-    }
-  };
-
-  const handleOpenPermissions = (user: UserData) => {
-    setSelectedUser(user);
-    const userObj = usersData.find((u) => u.id === user.id);
-    let existingModules: string[] = [];
-
-    if (userObj?.modules) {
-      try {
-        existingModules =
-          typeof userObj.modules === "string"
-            ? JSON.parse(userObj.modules)
-            : userObj.modules;
-      } catch (e) {
-        existingModules = [];
-      }
-    }
-
-    if (existingModules.length > 0) {
-      setSelectedModules(existingModules);
-    } else {
-      setSelectedModules(getDefaultModulesForRole(user.role));
-    }
-    setIsPermissionsOpen(true);
-  };
-
-  const toggleModule = (moduleKey: string) => {
-    setSelectedModules((prev) =>
-      prev.includes(moduleKey)
-        ? prev.filter((k) => k !== moduleKey)
-        : [...prev, moduleKey],
-    );
-  };
-
-  // ✅ FILTRAGEM INICIAL: Apenas equipe (não mostra customers)
   const users: UserData[] = usersData
-    .filter((u) => u.role !== "customer") // <--- O Segredo está aqui!
+    .filter((u) => u.role !== "customer")
     .map((u) => ({
       id: u.id,
       name:
@@ -355,7 +341,7 @@ export default function UsersPage() {
         u.email ||
         "Unknown",
       email: u.email || "",
-      phone: u.telefone || "",
+      phone: u.telefone || u.phone || "",
       company: u.company || u.razaoSocial || undefined,
       role: u.role as UserRole,
       customerType: (u.customerType || "varejo") as CustomerType,
@@ -364,7 +350,7 @@ export default function UsersPage() {
       tag: u.tag || undefined,
       instagram: u.instagram || undefined,
       notes: u.notes || undefined,
-      avatarUrl: undefined,
+      modules: u.modules, // Passando módulos para uso na edição
     }));
 
   const filteredUsers = users.filter((user) => {
@@ -373,42 +359,32 @@ export default function UsersPage() {
       user.email.toLowerCase().includes(searchQuery.toLowerCase());
 
     if (activeTab === "all") return matchesSearch;
-    // Tabs da equipe interna
     if (activeTab === "admin") return matchesSearch && user.role === "admin";
     if (activeTab === "sales") return matchesSearch && user.role === "sales";
     if (activeTab === "employee")
       return matchesSearch && user.role === "employee";
-
     return matchesSearch;
   });
 
-  const handleApprove = (user: UserData) => {
+  // --- Actions ---
+  const handleApprove = (user: UserData) =>
     updateUserMutation.mutate({ id: user.id, data: { approved: true } });
-  };
-
-  const handleReject = (user: UserData) => {
-    if (confirm(`Tem certeza que deseja EXCLUIR ${user.name}?`)) {
-      deleteUserMutation.mutate(user.id);
-    }
-  };
-
-  const handleChangeRole = (user: UserData, role: UserRole) => {
-    updateUserMutation.mutate({ id: user.id, data: { role } });
-  };
-
-  const handleChangeCustomerType = (
-    user: UserData,
-    customerType: CustomerType,
-  ) => {
-    updateUserMutation.mutate({ id: user.id, data: { customerType } });
-  };
-
-  const handleToggleActive = (user: UserData) => {
+  const handleToggleActive = (user: UserData) =>
     updateUserMutation.mutate({
       id: user.id,
       data: { ativo: !user.active } as any,
     });
+  const handleReject = (user: UserData) => {
+    if (confirm(`Excluir ${user.name}?`)) deleteUserMutation.mutate(user.id);
   };
+
+  // Estas funções não são mais usadas diretamente pois movemos para o modal de edição completo
+  const handleChangeRole = (user: UserData, role: UserRole) =>
+    updateUserMutation.mutate({ id: user.id, data: { role } });
+  const handleChangeCustomerType = (
+    user: UserData,
+    customerType: CustomerType,
+  ) => updateUserMutation.mutate({ id: user.id, data: { customerType } });
 
   const handleOpenExtras = (user: UserData) => {
     setSelectedUser(user);
@@ -429,23 +405,38 @@ export default function UsersPage() {
             notes: extrasNotes || null,
           },
         },
-        {
-          onSuccess: () => {
-            setIsExtrasOpen(false);
-            setSelectedUser(null);
-          },
-        },
+        { onSuccess: () => setIsExtrasOpen(false) },
       );
     }
   };
 
+  // ✅ ABRIR MODAL DE EDIÇÃO COMPLETO
   const handleOpenEditProfile = (user: UserData) => {
     setSelectedUser(user);
+    const fullUser = usersData.find((u) => u.id === user.id);
+
     setEditName(user.name);
     setEditEmail(user.email);
     setEditPhone(user.phone || "");
+    setEditCPF(fullUser?.cpf || "");
     setEditPassword("");
     setShowEditPassword(false);
+
+    // Carregar Permissões e Role
+    let currentModules: string[] = [];
+    if (fullUser?.modules) {
+      try {
+        currentModules =
+          typeof fullUser.modules === "string"
+            ? JSON.parse(fullUser.modules)
+            : fullUser.modules;
+      } catch {
+        currentModules = [];
+      }
+    }
+    setEditModules(currentModules);
+    setEditRole(checkRoleByModules(currentModules)); // Detecta se é Custom ou Preset
+
     setIsEditProfileOpen(true);
   };
 
@@ -453,9 +444,12 @@ export default function UsersPage() {
     if (!selectedUser) return;
 
     const updateData: any = {
-      nome: editName,
+      firstName: editName,
       email: editEmail,
-      telefone: editPhone,
+      phone: editPhone,
+      cpf: editCPF,
+      role: editRole === "custom" ? "employee" : editRole, // Salva role compatível
+      modules: JSON.stringify(editModules),
     };
 
     if (editPassword.trim()) {
@@ -464,12 +458,7 @@ export default function UsersPage() {
 
     updateUserMutation.mutate(
       { id: selectedUser.id, data: updateData },
-      {
-        onSuccess: () => {
-          setIsEditProfileOpen(false);
-          setSelectedUser(null);
-        },
-      },
+      { onSuccess: () => setIsEditProfileOpen(false) },
     );
   };
 
@@ -478,7 +467,7 @@ export default function UsersPage() {
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-3xl font-semibold flex items-center gap-2">
-            <UsersIcon className="h-8 w-8" />
+            <UsersIcon className="h-8 w-8 text-primary" />
             Gestão de Equipe
           </h1>
           <p className="text-muted-foreground mt-1">
@@ -489,8 +478,7 @@ export default function UsersPage() {
           <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
             <DialogTrigger asChild>
               <Button data-testid="button-create-user">
-                <Plus className="h-4 w-4 mr-2" />
-                Novo Membro
+                <Plus className="h-4 w-4 mr-2" /> Novo Membro
               </Button>
             </DialogTrigger>
             <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -519,7 +507,26 @@ export default function UsersPage() {
                       placeholder="email@empresa.com"
                     />
                   </div>
-
+                  <div className="space-y-2">
+                    <Label>CPF</Label>
+                    <Input
+                      value={newUserCPF}
+                      onChange={(e) => setNewUserCPF(masks.cpf(e.target.value))}
+                      placeholder="000.000.000-00"
+                      maxLength={14}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Telefone / WhatsApp</Label>
+                    <Input
+                      value={newUserPhone}
+                      onChange={(e) =>
+                        setNewUserPhone(masks.phone(e.target.value))
+                      }
+                      placeholder="(00) 00000-0000"
+                      maxLength={15}
+                    />
+                  </div>
                   <div className="space-y-2">
                     <Label>Senha *</Label>
                     <div className="relative">
@@ -545,23 +552,22 @@ export default function UsersPage() {
                       </Button>
                     </div>
                   </div>
-
                   <div className="space-y-2">
                     <Label>Cargo / Função</Label>
                     <Select
                       value={newUserRole}
-                      onValueChange={(v) => setNewUserRole(v as UserRole)}
+                      onValueChange={handleNewUserRoleChange}
                     >
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {/* 🛑 Clientes e Fornecedores removidos daqui! */}
                         <SelectItem value="employee">
                           Funcionário (Operacional)
                         </SelectItem>
                         <SelectItem value="sales">Vendedor</SelectItem>
                         <SelectItem value="admin">Administrador</SelectItem>
+                        <SelectItem value="custom">Personalizado</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -579,7 +585,7 @@ export default function UsersPage() {
                       <div
                         key={module.key}
                         className="flex items-center space-x-3 p-3 rounded-lg border bg-muted/30 hover-elevate cursor-pointer"
-                        onClick={() => toggleModule(module.key)}
+                        onClick={() => handleNewUserModuleToggle(module.key)}
                       >
                         <Checkbox
                           checked={selectedModules.includes(module.key)}
@@ -595,7 +601,6 @@ export default function UsersPage() {
                     ))}
                   </div>
                 </div>
-
                 <Button
                   className="w-full"
                   onClick={handleCreateUser}
@@ -607,8 +612,7 @@ export default function UsersPage() {
             </DialogContent>
           </Dialog>
           <Button variant="outline" onClick={() => refetch()}>
-            <RefreshCw className="h-4 w-4 mr-2" />
-            Atualizar
+            <RefreshCw className="h-4 w-4 mr-2" /> Atualizar
           </Button>
         </div>
       </div>
@@ -630,7 +634,6 @@ export default function UsersPage() {
           <TabsTrigger value="sales">Vendas</TabsTrigger>
           <TabsTrigger value="employee">Operacional</TabsTrigger>
         </TabsList>
-
         <TabsContent value={activeTab} className="mt-6">
           {isLoading ? (
             <div className="flex items-center justify-center py-12">
@@ -653,8 +656,8 @@ export default function UsersPage() {
                     onChangeRole={handleChangeRole}
                     onChangeCustomerType={handleChangeCustomerType}
                     onEditExtras={handleOpenExtras}
-                    onEditProfile={handleOpenEditProfile}
-                    onOpenPermissions={handleOpenPermissions}
+                    onEditProfile={handleOpenEditProfile} // ✅ Abre o modal novo completo
+                    onOpenPermissions={() => {}} // Desativado pois está integrado no EditProfile
                     onToggleActive={handleToggleActive}
                   />
                 </div>
@@ -664,67 +667,11 @@ export default function UsersPage() {
         </TabsContent>
       </Tabs>
 
-      {/* Modais auxiliares mantidos igual ao original */}
-      <Dialog open={isPermissionsOpen} onOpenChange={setIsPermissionsOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Shield className="h-5 w-5" />
-              Permissões de {selectedUser?.name}
-            </DialogTitle>
-            <DialogDescription>
-              Configure quais módulos este usuário pode acessar
-            </DialogDescription>
-          </DialogHeader>
-          <ScrollArea className="max-h-[400px] pr-4">
-            <div className="space-y-2">
-              {SYSTEM_MODULES.map((module) => (
-                <div
-                  key={module.key}
-                  className="flex items-center space-x-3 p-3 rounded-lg border bg-muted/30 hover-elevate cursor-pointer"
-                  onClick={() => toggleModule(module.key)}
-                >
-                  <Checkbox
-                    checked={selectedModules.includes(module.key)}
-                    className="pointer-events-none"
-                  />
-                  <div className="flex-1">
-                    <p className="text-sm font-medium">{module.label}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {module.description}
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </ScrollArea>
-          <div className="flex justify-end gap-2 pt-4">
-            <Button
-              variant="outline"
-              onClick={() => setIsPermissionsOpen(false)}
-            >
-              Cancelar
-            </Button>
-            <Button
-              onClick={handleSavePermissions}
-              disabled={updateUserMutation.isPending}
-            >
-              {updateUserMutation.isPending ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                "Salvar Permissões"
-              )}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
       <Dialog open={isExtrasOpen} onOpenChange={setIsExtrasOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Tag className="h-5 w-5" />
-              Extras de {selectedUser?.name}
+              <Tag className="h-5 w-5" /> Extras de {selectedUser?.name}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-4">
@@ -769,48 +716,59 @@ export default function UsersPage() {
         </DialogContent>
       </Dialog>
 
+      {/* ✅ MODAL DE EDIÇÃO COMPLETO */}
       <Dialog open={isEditProfileOpen} onOpenChange={setIsEditProfileOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Pencil className="h-5 w-5" />
               Editar Dados de {selectedUser?.name}
             </DialogTitle>
             <DialogDescription>
-              Altere dados cadastrais e senha
+              Altere dados cadastrais, senha e permissões de acesso.
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label>Nome Completo</Label>
-              <Input
-                value={editName}
-                onChange={(e) => setEditName(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>E-mail</Label>
-              <Input
-                type="email"
-                value={editEmail}
-                onChange={(e) => setEditEmail(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Telefone / WhatsApp</Label>
-              <Input
-                value={editPhone}
-                onChange={(e) => setEditPhone(e.target.value)}
-                placeholder="(11) 99999-9999"
-              />
-            </div>
-
-            <div className="pt-2 border-t mt-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label className="text-destructive">
-                  Alterar Senha (Opcional)
-                </Label>
+                <Label>Nome Completo</Label>
+                <Input
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>E-mail</Label>
+                <Input
+                  type="email"
+                  value={editEmail}
+                  onChange={(e) => setEditEmail(e.target.value)}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>CPF</Label>
+                <Input
+                  value={editCPF}
+                  onChange={(e) => setEditCPF(masks.cpf(e.target.value))}
+                  placeholder="000.000.000-00"
+                  maxLength={14}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Telefone / WhatsApp</Label>
+                <Input
+                  value={editPhone}
+                  onChange={(e) => setEditPhone(masks.phone(e.target.value))}
+                  placeholder="(11) 99999-9999"
+                  maxLength={15}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Senha (Opcional)</Label>
                 <div className="relative">
                   <Input
                     type={showEditPassword ? "text" : "password"}
@@ -833,9 +791,52 @@ export default function UsersPage() {
                     )}
                   </Button>
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  Só preencha se quiser redefinir a senha deste usuário.
-                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Cargo / Função</Label>
+                <Select value={editRole} onValueChange={handleEditRoleChange}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="employee">
+                      Funcionário (Operacional)
+                    </SelectItem>
+                    <SelectItem value="sales">Vendedor</SelectItem>
+                    <SelectItem value="admin">Administrador</SelectItem>
+                    <SelectItem value="custom">Personalizado</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="space-y-3 pt-4 border-t">
+              <div className="flex items-center gap-2">
+                <Shield className="h-4 w-4 text-primary" />
+                <Label className="text-base font-medium">
+                  Permissões de Acesso
+                </Label>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                {SYSTEM_MODULES.map((module) => (
+                  <div
+                    key={module.key}
+                    className="flex items-center space-x-3 p-3 rounded-lg border bg-muted/30 hover-elevate cursor-pointer"
+                    onClick={() => handleEditModuleToggle(module.key)}
+                  >
+                    <Checkbox
+                      checked={editModules.includes(module.key)}
+                      className="pointer-events-none"
+                    />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium">{module.label}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {module.description}
+                      </p>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           </div>

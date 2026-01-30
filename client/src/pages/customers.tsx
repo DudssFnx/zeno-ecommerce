@@ -26,6 +26,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { User } from "@shared/schema";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
+  AlertCircle, // 🛑 Ícone do Alerta
   Ban,
   CheckCircle2,
   Loader2,
@@ -113,8 +114,26 @@ const initialFormState: CustomerFormState = {
   state: "",
 };
 
-// ✅ COMPONENTE DE FORMULÁRIO (AGORA FORA DO COMPONENTE PRINCIPAL)
-// Isso resolve o bug de perder o foco ao digitar
+// ✅ HELPER PARA LIMPAR A MENSAGEM DE ERRO
+const getCleanErrorMessage = (error: any) => {
+  if (!error) return "Erro desconhecido";
+  let msg = error.message || error.toString();
+
+  // Tenta remover prefixos como "409: " ou "Error: "
+  msg = msg.replace(/^(Error: )?(\d{3}: )?/, "");
+
+  // Se a mensagem for um JSON stringificado, tenta parsear
+  try {
+    const parsed = JSON.parse(msg);
+    if (parsed.message) return parsed.message;
+  } catch (e) {
+    // Não é JSON, retorna a string limpa
+  }
+
+  return msg;
+};
+
+// ✅ COMPONENTE DE FORMULÁRIO COM O BOX VERMELHO
 function CustomerFormContent({
   formData,
   setFormData,
@@ -122,6 +141,7 @@ function CustomerFormContent({
   formLoading,
   onSearchCNPJ,
   onSearchCEP,
+  error, // Recebe o erro
 }: {
   formData: CustomerFormState;
   setFormData: (data: CustomerFormState) => void;
@@ -129,9 +149,25 @@ function CustomerFormContent({
   formLoading: boolean;
   onSearchCNPJ: (cnpj: string) => void;
   onSearchCEP: (cep: string) => void;
+  error: string | null;
 }) {
   return (
     <div className="py-4 space-y-6">
+      {/* 🛑 BOX VERMELHO - IGUAL AO DE PRODUTOS */}
+      {error && (
+        <div className="rounded-md border border-red-500/50 bg-red-500/10 p-4 mb-4">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="h-5 w-5 text-red-600 mt-0.5 shrink-0" />
+            <div className="space-y-1">
+              <h4 className="font-medium text-red-600 leading-none">
+                Erro de Validação
+              </h4>
+              <p className="text-sm text-red-500 opacity-90">{error}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="space-y-3">
         <Label className="text-base font-semibold">Tipo de Pessoa</Label>
         <RadioGroup
@@ -378,6 +414,9 @@ export default function CustomersPage() {
     null,
   );
 
+  // Estado de Erro para exibir no box vermelho
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
   const [formData, setFormData] = useState<CustomerFormState>(initialFormState);
 
   const {
@@ -444,6 +483,9 @@ export default function CustomersPage() {
 
   const createCustomerMutation = useMutation({
     mutationFn: async (data: CustomerFormState) => {
+      // Limpa erro anterior
+      setErrorMessage(null);
+
       const payload = {
         ...data,
         username: data.email,
@@ -458,38 +500,48 @@ export default function CustomersPage() {
         firstName:
           data.personType === "juridica" ? data.tradingName : data.firstName,
       };
+
       const res = await apiRequest("POST", "/api/register", payload);
+      // Se a resposta não for OK, capturamos o body para pegar a mensagem
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(JSON.stringify(errData)); // Lança o JSON inteiro para processarmos no onError
+      }
       return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/users"] });
       setShowCreateDialog(false);
       setFormData(initialFormState);
+      setErrorMessage(null);
       toast({ title: "Sucesso!", description: "Cliente cadastrado." });
     },
-    onError: (err: any) =>
-      toast({
-        title: "Erro",
-        description: err.message,
-        variant: "destructive",
-      }),
+    onError: (err: any) => {
+      // ✅ AQUI: Limpamos a mensagem feia antes de mostrar
+      const cleanMsg = getCleanErrorMessage(err);
+      setErrorMessage(cleanMsg);
+    },
   });
 
   const updateMutation = useMutation({
     mutationFn: async ({ id, data }: { id: string; data: Partial<User> }) => {
-      await apiRequest("PATCH", `/api/users/${id}`, data);
+      setErrorMessage(null);
+      const res = await apiRequest("PATCH", `/api/users/${id}`, data);
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(JSON.stringify(errData));
+      }
+      return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/users"] });
       toast({ title: "Atualizado", description: "Dados salvos com sucesso." });
       setShowEditDialog(false);
+      setErrorMessage(null);
     },
-    onError: () => {
-      toast({
-        title: "Erro",
-        description: "Falha ao atualizar.",
-        variant: "destructive",
-      });
+    onError: (err: any) => {
+      const cleanMsg = getCleanErrorMessage(err);
+      setErrorMessage(cleanMsg);
     },
   });
 
@@ -504,6 +556,7 @@ export default function CustomersPage() {
 
   const handleEdit = (customer: CustomerType) => {
     setSelectedCustomerId(customer.id);
+    setErrorMessage(null);
     setFormData({
       personType: customer.cnpj ? "juridica" : "fisica",
       cnpj: customer.cnpj || "",
@@ -622,6 +675,15 @@ export default function CustomersPage() {
 
   const CustomerCard = ({ customer }: { customer: CustomerType }) => {
     const isPJ = !!customer.cnpj;
+
+    // ✅ LÓGICA NOVA: Aplica a máscara correta antes de exibir
+    let documentDisplay = "N/A";
+    if (customer.cnpj) {
+      documentDisplay = masks.cnpj(customer.cnpj);
+    } else if (customer.cpf) {
+      documentDisplay = masks.cpf(customer.cpf);
+    }
+
     return (
       <Card className="hover:shadow-md transition-all border-l-4 border-l-primary/50">
         <CardContent className="p-4">
@@ -676,7 +738,8 @@ export default function CustomersPage() {
                 {isPJ ? "CNPJ" : "CPF"}
               </span>
               <span className="font-medium text-foreground">
-                {customer.cnpj || customer.cpf || "N/A"}
+                {/* ✅ USA A VARIÁVEL FORMATADA */}
+                {documentDisplay}
               </span>
             </div>
             <div className="flex items-center gap-2">
@@ -746,6 +809,7 @@ export default function CustomersPage() {
           <Button
             className="flex-1 sm:flex-none"
             onClick={() => {
+              setErrorMessage(null);
               setFormData(initialFormState);
               setShowCreateDialog(true);
             }}
@@ -848,6 +912,7 @@ export default function CustomersPage() {
             formLoading={formLoading}
             onSearchCNPJ={fetchCNPJData}
             onSearchCEP={fetchCEPData}
+            error={errorMessage}
           />
           <div className="flex justify-end gap-2 pt-4 border-t">
             <Button
@@ -882,6 +947,7 @@ export default function CustomersPage() {
             formLoading={formLoading}
             onSearchCNPJ={fetchCNPJData}
             onSearchCEP={fetchCEPData}
+            error={errorMessage}
           />
           <div className="flex justify-end gap-2 pt-4 border-t">
             <Button variant="outline" onClick={() => setShowEditDialog(false)}>

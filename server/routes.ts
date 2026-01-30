@@ -220,6 +220,7 @@ export async function registerRoutes(
     }
   });
 
+  // ✅ POST REGISTER: COM TRATAMENTO DE ERRO AMIGÁVEL
   app.post("/api/register", async (req: any, res) => {
     if (!req.isAuthenticated())
       return res.status(401).json({ message: "Não autorizado" });
@@ -228,10 +229,15 @@ export async function registerRoutes(
       const userCompanyId = String(req.user.companyId || "1");
       const hashedPassword = await bcrypt.hash(password || "123456", 10);
 
+      // Limpeza
+      const cleanData = { ...req.body };
+      if (cleanData.cnpj) cleanData.cnpj = cleanDocument(cleanData.cnpj);
+      if (cleanData.cpf) cleanData.cpf = cleanDocument(cleanData.cpf);
+
       const [newUser] = await db
         .insert(users)
         .values({
-          ...req.body,
+          ...cleanData,
           password: hashedPassword,
           role: "customer",
           companyId: userCompanyId,
@@ -242,11 +248,23 @@ export async function registerRoutes(
 
       res.status(201).json(newUser);
     } catch (error: any) {
+      // 🛑 Captura erro de duplicidade e devolve 409
+      if (error.code === "23505") {
+        let msg = "Este registro já existe.";
+        if (error.detail?.includes("email"))
+          msg = "Este e-mail já está em uso.";
+        else if (error.detail?.includes("cnpj"))
+          msg = "Este CNPJ já está cadastrado.";
+        else if (error.detail?.includes("cpf"))
+          msg = "Este CPF já está cadastrado.";
+
+        return res.status(409).json({ message: msg });
+      }
       res.status(500).json({ message: error.message });
     }
   });
 
-  // 🛑🛑 AQUI ESTAVA FALTANDO A ROTA DE ATUALIZAÇÃO! AGORA ESTÁ AQUI: 🛑🛑
+  // ✅ PATCH USER: COM TRATAMENTO DE ERRO AMIGÁVEL
   app.patch("/api/users/:id", async (req: any, res) => {
     if (!req.isAuthenticated()) return res.status(401).send();
     const id = req.params.id;
@@ -254,17 +272,14 @@ export async function registerRoutes(
       const body = req.body;
       const updateData: any = { updatedAt: new Date() };
 
-      // Copia campos do body para o updateData
-      // Importante: garantir que os nomes batam com o schema
       if (body.firstName) updateData.firstName = body.firstName;
       if (body.lastName) updateData.lastName = body.lastName;
       if (body.email) updateData.email = body.email;
       if (body.phone) updateData.phone = body.phone;
-      if (body.company) updateData.company = body.company; // Razão Social
-      if (body.tradingName) updateData.tradingName = body.tradingName; // Nome Fantasia
+      if (body.company) updateData.company = body.company;
+      if (body.tradingName) updateData.tradingName = body.tradingName;
       if (body.customerType) updateData.customerType = body.customerType;
 
-      // Endereço
       if (body.cep) updateData.cep = body.cep;
       if (body.address) updateData.address = body.address;
       if (body.addressNumber) updateData.addressNumber = body.addressNumber;
@@ -273,22 +288,17 @@ export async function registerRoutes(
       if (body.city) updateData.city = body.city;
       if (body.state) updateData.state = body.state;
 
-      // Status
       if (body.approved !== undefined) updateData.approved = body.approved;
       if (body.ativo !== undefined) updateData.ativo = body.ativo;
 
-      // Documentos (com limpeza)
       if (body.cnpj) updateData.cnpj = cleanDocument(body.cnpj);
       if (body.cpf) updateData.cpf = cleanDocument(body.cpf);
       if (body.stateRegistration)
         updateData.stateRegistration = body.stateRegistration;
 
-      // Senha (hash)
       if (body.password && body.password.trim() !== "") {
         updateData.password = await bcrypt.hash(body.password, 10);
       }
-
-      console.log("📝 Atualizando usuário ID:", id); // Log para debug
 
       const [updated] = await db
         .update(users)
@@ -301,8 +311,19 @@ export async function registerRoutes(
 
       res.json(updated);
     } catch (error: any) {
-      console.error("❌ Erro ao atualizar usuário:", error);
-      res.status(500).json({ message: "Erro interno ao atualizar" });
+      // 🛑 Captura erro de duplicidade na edição
+      if (error.code === "23505") {
+        let msg = "Conflito de dados.";
+        if (error.detail?.includes("email"))
+          msg = "Este e-mail já pertence a outro usuário.";
+        else if (error.detail?.includes("cnpj"))
+          msg = "Este CNPJ já pertence a outro usuário.";
+        else if (error.detail?.includes("cpf"))
+          msg = "Este CPF já pertence a outro usuário.";
+
+        return res.status(409).json({ message: msg });
+      }
+      res.status(500).json({ message: "Erro interno: " + error.message });
     }
   });
 
@@ -345,11 +366,9 @@ export async function registerRoutes(
     const docInput = cleanDocument(req.body.cnpj || req.body.cpf);
     const userCompanyId = req.user.companyId || "1";
 
-    // 🛑 REMOVE O ID (Crucial!)
     const { id, ...supplierData } = req.body;
 
     try {
-      // 1. Busca Javascript segura
       const allSuppliers = await db
         .select()
         .from(suppliers)
@@ -368,7 +387,6 @@ export async function registerRoutes(
         }
       }
 
-      // 2. Cria
       const [supplier] = await db
         .insert(suppliers)
         .values({
@@ -379,7 +397,6 @@ export async function registerRoutes(
 
       res.status(201).json(supplier);
     } catch (error: any) {
-      console.error("Erro Fornecedor:", error);
       if (error.code === "23505") {
         return res
           .status(409)
@@ -416,7 +433,7 @@ export async function registerRoutes(
   });
 
   // ==========================================
-  // --- 🛒 PRODUTOS (COM TRADUÇÃO) ---
+  // --- 🛒 PRODUTOS ---
   // ==========================================
   app.get("/api/products", async (req, res) => {
     try {
