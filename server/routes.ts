@@ -433,7 +433,7 @@ export async function registerRoutes(
   });
 
   // ==========================================
-  // --- 🛒 PRODUTOS ---
+  // --- 🛒 PRODUTOS (COM TRADUÇÃO) ---
   // ==========================================
   app.get("/api/products", async (req, res) => {
     try {
