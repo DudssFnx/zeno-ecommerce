@@ -1,19 +1,15 @@
-import { useState } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { Link, useLocation } from "wouter";
-import { Plus, Search, MoreVertical, Eye, Printer, Package, PackagePlus, PackageMinus, Loader2, Trash2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -22,20 +18,61 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { PurchaseOrder } from "@shared/schema";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import {
+  Eye,
+  Loader2,
+  MoreVertical,
+  Package,
+  PackagePlus,
+  Plus,
+  Printer,
+  RotateCcw,
+  Search,
+  Trash2,
+  XSquare,
+} from "lucide-react";
+import { useState } from "react";
+import { Link, useLocation } from "wouter";
 
-const STATUS_LABELS: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline"; className?: string }> = {
-  DRAFT: { label: "Lancamento Pendente", variant: "outline", className: "bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-900 dark:text-blue-200 dark:border-blue-700" },
-  FINALIZED: { label: "Lancamento Pendente", variant: "outline", className: "bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-900 dark:text-blue-200 dark:border-blue-700" },
-  STOCK_POSTED: { label: "Estoque Lancado", variant: "outline", className: "bg-green-100 text-green-800 border-green-300 dark:bg-green-900 dark:text-green-200 dark:border-green-700" },
-  STOCK_REVERSED: { label: "Estoque Estornado", variant: "outline", className: "bg-red-100 text-red-800 border-red-300 dark:bg-red-900 dark:text-red-200 dark:border-red-700" },
+type PurchaseOrderWithDetails = PurchaseOrder & {
+  supplierName: string | null;
+  itemCount: number;
+};
+
+const STATUS_LABELS: Record<
+  string,
+  {
+    label: string;
+    variant: "default" | "secondary" | "destructive" | "outline";
+    className?: string;
+  }
+> = {
+  DRAFT: {
+    label: "Rascunho",
+    variant: "outline",
+    className: "bg-blue-50 text-blue-700 border-blue-200",
+  },
+  FINALIZED: {
+    label: "Aprovado",
+    variant: "outline",
+    className: "bg-indigo-50 text-indigo-700 border-indigo-200",
+  },
+  STOCK_POSTED: {
+    label: "Estoque Lançado",
+    variant: "outline",
+    className: "bg-green-50 text-green-700 border-green-200",
+  },
 };
 
 export default function PurchasesPage() {
@@ -43,19 +80,29 @@ export default function PurchasesPage() {
   const [, navigate] = useLocation();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [isBulkProcessing, setIsBulkProcessing] = useState(false);
   const [processingId, setProcessingId] = useState<number | null>(null);
 
-  const { data: orders = [], isLoading } = useQuery<PurchaseOrder[]>({
-    queryKey: ["/api/purchases", statusFilter, search],
-    queryFn: async () => {
-      const params = new URLSearchParams();
-      if (statusFilter && statusFilter !== "all") params.append("status", statusFilter);
-      if (search) params.append("search", search);
-      const res = await fetch(`/api/purchases?${params.toString()}`, { credentials: "include" });
-      if (!res.ok) throw new Error("Failed to fetch");
-      return res.json();
+  const { data: orders = [], isLoading } = useQuery<PurchaseOrderWithDetails[]>(
+    {
+      queryKey: ["/api/purchases", statusFilter, search],
+      queryFn: async () => {
+        const params = new URLSearchParams();
+        if (statusFilter && statusFilter !== "all")
+          params.append("status", statusFilter);
+        if (search) params.append("search", search);
+
+        const res = await fetch(`/api/purchases?${params.toString()}`, {
+          credentials: "include",
+        });
+        if (!res.ok) throw new Error("Failed to fetch");
+        return res.json();
+      },
     },
-  });
+  );
+
+  // --- MUTAÇÕES ---
 
   const postStockMutation = useMutation({
     mutationFn: async (id: number) => {
@@ -64,11 +111,16 @@ export default function PurchasesPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/purchases"] });
-      toast({ title: "Sucesso", description: "Estoque lancado com sucesso" });
+      queryClient.invalidateQueries({ queryKey: ["/api/products"] });
+      toast({ title: "Sucesso", description: "Estoque lançado." });
       setProcessingId(null);
     },
-    onError: (error: any) => {
-      toast({ title: "Erro", description: error.message || "Falha ao lancar estoque", variant: "destructive" });
+    onError: (err: any) => {
+      toast({
+        title: "Erro",
+        description: err.message,
+        variant: "destructive",
+      });
       setProcessingId(null);
     },
   });
@@ -80,11 +132,19 @@ export default function PurchasesPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/purchases"] });
-      toast({ title: "Sucesso", description: "Estoque estornado com sucesso" });
+      queryClient.invalidateQueries({ queryKey: ["/api/products"] });
+      toast({
+        title: "Estornado",
+        description: "Estoque revertido e pedido voltou para Rascunho.",
+      });
       setProcessingId(null);
     },
-    onError: (error: any) => {
-      toast({ title: "Erro", description: error.message || "Falha ao estornar estoque", variant: "destructive" });
+    onError: (err: any) => {
+      toast({
+        title: "Erro",
+        description: err.message,
+        variant: "destructive",
+      });
       setProcessingId(null);
     },
   });
@@ -96,18 +156,142 @@ export default function PurchasesPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/purchases"] });
-      toast({ title: "Sucesso", description: "Pedido excluido com sucesso" });
+      queryClient.invalidateQueries({ queryKey: ["/api/products"] });
+      toast({ title: "Sucesso", description: "Pedido excluído." });
       setProcessingId(null);
     },
-    onError: (error: any) => {
-      toast({ title: "Erro", description: error.message || "Falha ao excluir pedido", variant: "destructive" });
+    onError: (err: any) => {
+      toast({
+        title: "Erro",
+        description: err.message,
+        variant: "destructive",
+      });
       setProcessingId(null);
     },
   });
 
+  // --- AÇÕES EM MASSA ---
+
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) setSelectedIds(orders.map((o) => o.id));
+    else setSelectedIds([]);
+  };
+
+  const handleSelectOne = (checked: boolean, id: number) => {
+    if (checked) setSelectedIds((prev) => [...prev, id]);
+    else setSelectedIds((prev) => prev.filter((item) => item !== id));
+  };
+
+  const handleBulkPostStock = async () => {
+    const drafts = orders.filter(
+      (o) => selectedIds.includes(o.id) && o.status === "DRAFT",
+    );
+    if (drafts.length === 0) return;
+    if (!confirm(`Lançar estoque de ${drafts.length} pedidos?`)) return;
+
+    setIsBulkProcessing(true);
+    try {
+      await Promise.all(
+        drafts.map((order) =>
+          apiRequest("POST", `/api/purchases/${order.id}/post-stock`),
+        ),
+      );
+      toast({ title: "Sucesso", description: "Pedidos lançados." });
+      queryClient.invalidateQueries({ queryKey: ["/api/purchases"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/products"] });
+      setSelectedIds([]);
+    } catch (error) {
+      toast({
+        title: "Erro",
+        description: "Falha ao processar.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsBulkProcessing(false);
+    }
+  };
+
+  const handleBulkReverseStock = async () => {
+    const posted = orders.filter(
+      (o) => selectedIds.includes(o.id) && o.status === "STOCK_POSTED",
+    );
+    if (posted.length === 0) return;
+    if (
+      !confirm(
+        `Deseja ESTORNAR o estoque de ${posted.length} pedidos e voltá-los para Rascunho?`,
+      )
+    )
+      return;
+
+    setIsBulkProcessing(true);
+    try {
+      await Promise.all(
+        posted.map((order) =>
+          apiRequest("POST", `/api/purchases/${order.id}/reverse-stock`),
+        ),
+      );
+      toast({
+        title: "Sucesso",
+        description: "Pedidos estornados para Rascunho.",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/purchases"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/products"] });
+      setSelectedIds([]);
+    } catch (error) {
+      toast({
+        title: "Erro",
+        description: "Falha ao estornar.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsBulkProcessing(false);
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedIds.length === 0) return;
+    const hasPosted = orders.some(
+      (o) => selectedIds.includes(o.id) && o.status === "STOCK_POSTED",
+    );
+    const msg = hasPosted
+      ? `ATENÇÃO: Alguns pedidos já lançaram estoque. Ao excluir, o estoque será ESTORNADO.\n\nDeseja continuar?`
+      : `Excluir ${selectedIds.length} pedidos?`;
+
+    if (!confirm(msg)) return;
+
+    setIsBulkProcessing(true);
+    try {
+      await Promise.all(
+        selectedIds.map((id) => apiRequest("DELETE", `/api/purchases/${id}`)),
+      );
+      toast({ title: "Sucesso", description: "Pedidos excluídos." });
+      queryClient.invalidateQueries({ queryKey: ["/api/purchases"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/products"] });
+      setSelectedIds([]);
+    } catch (error) {
+      toast({
+        title: "Erro",
+        description: "Falha ao excluir.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsBulkProcessing(false);
+    }
+  };
+
+  const hasDraftsSelected = orders.some(
+    (o) => selectedIds.includes(o.id) && o.status === "DRAFT",
+  );
+  const hasPostedSelected = orders.some(
+    (o) => selectedIds.includes(o.id) && o.status === "STOCK_POSTED",
+  );
+
   const formatCurrency = (value: string | number) => {
     const num = typeof value === "string" ? parseFloat(value) : value;
-    return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(num);
+    return new Intl.NumberFormat("pt-BR", {
+      style: "currency",
+      currency: "BRL",
+    }).format(num);
   };
 
   const formatDate = (date: string | Date | null) => {
@@ -119,84 +303,201 @@ export default function PurchasesPage() {
     <div className="p-6 space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold" data-testid="text-page-title">Pedidos de Compra</h1>
-          <p className="text-muted-foreground">Gerencie suas compras e estoque</p>
+          <h1 className="text-2xl font-bold" data-testid="text-page-title">
+            Pedidos de Compra
+          </h1>
+          <p className="text-muted-foreground">
+            Gerencie suas compras e entrada de notas
+          </p>
         </div>
         <Button asChild data-testid="button-new-purchase">
           <Link href="/purchase-orders/new">
-            <Plus className="mr-2 h-4 w-4" />
-            Nova Compra
+            <Plus className="mr-2 h-4 w-4" /> Nova Compra
           </Link>
         </Button>
       </div>
 
       <Card>
-        <CardHeader>
-          <div className="flex flex-wrap items-center gap-4">
-            <div className="relative flex-1 min-w-[200px]">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Buscar por numero..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-9"
-                data-testid="input-search"
-              />
+        <CardHeader className="pb-3">
+          <div className="flex flex-wrap items-center gap-4 justify-between">
+            <div className="flex gap-4 flex-1">
+              <div className="relative flex-1 min-w-[200px] max-w-sm">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Buscar..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  <SelectItem value="DRAFT">Rascunho</SelectItem>
+                  <SelectItem value="STOCK_POSTED">Estoque Lançado</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-[180px]" data-testid="select-status-filter">
-                <SelectValue placeholder="Filtrar status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos</SelectItem>
-                <SelectItem value="DRAFT">Lancamento Pendente</SelectItem>
-                <SelectItem value="FINALIZED">Lancamento Pendente</SelectItem>
-                <SelectItem value="STOCK_POSTED">Estoque Lancado</SelectItem>
-                <SelectItem value="STOCK_REVERSED">Estoque Estornado</SelectItem>
-              </SelectContent>
-            </Select>
+
+            {selectedIds.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2 bg-muted/50 p-2 rounded-lg border animate-in fade-in slide-in-from-right-5">
+                <span className="text-sm font-medium px-2">
+                  {selectedIds.length} selecionados
+                </span>
+
+                {hasDraftsSelected && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-green-600 border-green-200 bg-green-50 hover:bg-green-100"
+                    onClick={handleBulkPostStock}
+                    disabled={isBulkProcessing}
+                  >
+                    <PackagePlus className="mr-2 h-4 w-4" />
+                    Lançar
+                  </Button>
+                )}
+
+                {hasPostedSelected && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-orange-600 border-orange-200 bg-orange-50 hover:bg-orange-100"
+                    onClick={handleBulkReverseStock}
+                    disabled={isBulkProcessing}
+                  >
+                    <RotateCcw className="mr-2 h-4 w-4" /> Estornar
+                  </Button>
+                )}
+
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="text-red-600 border-red-200 bg-red-50 hover:bg-red-100"
+                  onClick={handleBulkDelete}
+                  disabled={isBulkProcessing}
+                >
+                  <Trash2 className="mr-2 h-4 w-4" /> Excluir
+                </Button>
+
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => setSelectedIds([])}
+                  className="h-8 w-8 ml-auto"
+                >
+                  <XSquare className="h-4 w-4 text-muted-foreground" />
+                </Button>
+              </div>
+            )}
           </div>
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <div className="text-center py-8 text-muted-foreground">Carregando...</div>
+            <div className="flex justify-center py-8">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            </div>
           ) : orders.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground" data-testid="text-empty-state">
+            <div className="text-center py-8 text-muted-foreground">
               <Package className="mx-auto h-12 w-12 mb-4 opacity-50" />
               <p>Nenhum pedido encontrado</p>
-              <Button variant="outline" className="mt-4" asChild>
-                <Link href="/purchase-orders/new">Criar primeiro pedido</Link>
-              </Button>
             </div>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Numero</TableHead>
-                  <TableHead>Data</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Valor Total</TableHead>
-                  <TableHead className="text-right">Acoes</TableHead>
+                  <TableHead className="w-[40px]">
+                    <Checkbox
+                      checked={
+                        orders.length > 0 &&
+                        selectedIds.length === orders.length
+                      }
+                      onCheckedChange={(checked) => handleSelectAll(!!checked)}
+                    />
+                  </TableHead>
+                  <TableHead className="w-[140px]">Status</TableHead>
+                  <TableHead>Fornecedor / Pedido</TableHead>
+                  <TableHead>Comprador</TableHead>
+                  <TableHead className="text-center">Volume</TableHead>
+                  <TableHead className="text-right">Criado em</TableHead>
+                  <TableHead className="text-right">Total</TableHead>
+                  <TableHead className="w-[50px]"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {orders.map((order) => (
-                  <TableRow key={order.id} data-testid={`row-purchase-${order.id}`}>
-                    <TableCell className="font-medium">{order.number}</TableCell>
-                    <TableCell>{formatDate(order.createdAt)}</TableCell>
+                  <TableRow
+                    key={order.id}
+                    className={
+                      selectedIds.includes(order.id) ? "bg-muted/50" : ""
+                    }
+                  >
                     <TableCell>
-                      <Badge 
-                        variant={STATUS_LABELS[order.status]?.variant || "outline"}
+                      <Checkbox
+                        checked={selectedIds.includes(order.id)}
+                        onCheckedChange={(checked) =>
+                          handleSelectOne(!!checked, order.id)
+                        }
+                      />
+                    </TableCell>
+
+                    <TableCell>
+                      <Badge
+                        variant={
+                          STATUS_LABELS[order.status]?.variant || "outline"
+                        }
                         className={STATUS_LABELS[order.status]?.className}
                       >
                         {STATUS_LABELS[order.status]?.label || order.status}
                       </Badge>
                     </TableCell>
-                    <TableCell className="text-right">{formatCurrency(order.totalValue)}</TableCell>
-                    <TableCell className="text-right">
+
+                    <TableCell>
+                      <div
+                        className="flex flex-col cursor-pointer"
+                        onClick={() => navigate(`/purchase-orders/${order.id}`)}
+                      >
+                        <span className="font-bold text-base text-foreground/90">
+                          {order.supplierName || "Fornecedor Avulso"}
+                        </span>
+                        <span className="text-xs text-muted-foreground font-mono mt-0.5">
+                          #{order.number}
+                        </span>
+                      </div>
+                    </TableCell>
+
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-bold">
+                          ME
+                        </div>
+                        <span className="text-sm text-muted-foreground">
+                          Eu
+                        </span>
+                      </div>
+                    </TableCell>
+
+                    <TableCell className="text-center text-sm text-muted-foreground">
+                      {order.itemCount} itens
+                    </TableCell>
+
+                    <TableCell className="text-right text-sm text-muted-foreground">
+                      {formatDate(order.createdAt)}
+                    </TableCell>
+
+                    <TableCell
+                      className={`text-right font-bold ${parseFloat(order.totalValue as any) === 0 ? "text-muted-foreground/40" : ""}`}
+                    >
+                      {formatCurrency(order.totalValue)}
+                    </TableCell>
+
+                    <TableCell>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button size="icon" variant="ghost" data-testid={`button-actions-${order.id}`}>
+                          <Button size="icon" variant="ghost">
                             {processingId === order.id ? (
                               <Loader2 className="h-4 w-4 animate-spin" />
                             ) : (
@@ -206,62 +507,70 @@ export default function PurchasesPage() {
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem
-                            onClick={() => navigate(`/purchase-orders/${order.id}`)}
-                            data-testid={`menu-view-${order.id}`}
+                            onClick={() =>
+                              navigate(`/purchase-orders/${order.id}`)
+                            }
                           >
-                            <Eye className="mr-2 h-4 w-4" />
-                            Visualizar
+                            <Eye className="mr-2 h-4 w-4" /> Visualizar
                           </DropdownMenuItem>
+
                           <DropdownMenuItem
-                            onClick={() => window.open(`/api/purchases/${order.id}/pdf`, '_blank')}
-                            data-testid={`menu-print-${order.id}`}
+                            onClick={() =>
+                              window.open(
+                                `/api/purchases/${order.id}/pdf`,
+                                "_blank",
+                              )
+                            }
                           >
-                            <Printer className="mr-2 h-4 w-4" />
-                            Imprimir
+                            <Printer className="mr-2 h-4 w-4" /> Imprimir
                           </DropdownMenuItem>
-                          {(order.status === "DRAFT" || order.status === "FINALIZED" || order.status === "STOCK_REVERSED") && (
+
+                          <DropdownMenuSeparator />
+
+                          {order.status === "DRAFT" && (
                             <DropdownMenuItem
                               onClick={() => {
-                                if (confirm("Deseja lancar o estoque deste pedido?")) {
+                                if (confirm("Lançar estoque?"))
                                   postStockMutation.mutate(order.id);
-                                }
                               }}
-                              disabled={postStockMutation.isPending}
-                              data-testid={`menu-post-stock-${order.id}`}
+                              className="text-green-600 focus:text-green-700"
                             >
-                              <PackagePlus className="mr-2 h-4 w-4" />
-                              Lancar Estoque
+                              <PackagePlus className="mr-2 h-4 w-4" /> Lançar
+                              Estoque
                             </DropdownMenuItem>
                           )}
+
                           {order.status === "STOCK_POSTED" && (
                             <DropdownMenuItem
                               onClick={() => {
-                                if (confirm("Deseja estornar o estoque deste pedido?")) {
+                                if (
+                                  confirm(
+                                    "Deseja estornar o estoque e voltar para Rascunho?",
+                                  )
+                                )
                                   reverseStockMutation.mutate(order.id);
-                                }
                               }}
-                              disabled={reverseStockMutation.isPending}
-                              data-testid={`menu-reverse-stock-${order.id}`}
+                              className="text-orange-600 focus:text-orange-700"
                             >
-                              <PackageMinus className="mr-2 h-4 w-4" />
-                              Estornar Estoque
+                              <RotateCcw className="mr-2 h-4 w-4" /> Estornar
                             </DropdownMenuItem>
                           )}
-                          {order.status !== "STOCK_POSTED" && (
-                            <DropdownMenuItem
-                              onClick={() => {
-                                if (confirm("Deseja excluir este pedido de compra? Esta acao nao pode ser desfeita.")) {
-                                  deleteMutation.mutate(order.id);
-                                }
-                              }}
-                              disabled={deleteMutation.isPending}
-                              className="text-red-600 focus:text-red-600"
-                              data-testid={`menu-delete-${order.id}`}
-                            >
-                              <Trash2 className="mr-2 h-4 w-4" />
-                              Excluir Pedido
-                            </DropdownMenuItem>
-                          )}
+
+                          <DropdownMenuItem
+                            onClick={() => {
+                              const isPosted = order.status === "STOCK_POSTED";
+                              const msg = isPosted
+                                ? "⚠️ ATENÇÃO: Ao excluir, o sistema vai ESTORNAR o estoque automaticamente.\n\nDeseja continuar?"
+                                : "Excluir pedido?";
+                              if (confirm(msg)) deleteMutation.mutate(order.id);
+                            }}
+                            className="text-red-600 focus:text-red-700"
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            {order.status === "STOCK_POSTED"
+                              ? "Estornar e Excluir"
+                              : "Excluir"}
+                          </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </TableCell>

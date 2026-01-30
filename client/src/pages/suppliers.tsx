@@ -20,7 +20,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Separator } from "@/components/ui/separator";
 import {
   Table,
   TableBody,
@@ -47,7 +46,7 @@ import {
   Search,
   Trash2,
   Truck,
-  X,
+  XSquare,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -217,30 +216,23 @@ export default function SuppliersPage() {
     }
   };
 
-  // ✅ HELPER PARA LIMPAR A MENSAGEM DE ERRO
   const parseErrorMessage = (error: Error) => {
     let msg = error.message;
-    // Remove prefixos comuns como "Error: 500: " ou "409: "
     if (msg.includes(": ")) {
-      // Pega o que vem depois do status code
       const parts = msg.split(": ");
       if (parts.length > 1) {
         try {
-          // Tenta ver se é um JSON
           const json = JSON.parse(parts.slice(1).join(": "));
           if (json.message) return json.message;
         } catch {
-          // Se não for JSON, retorna o texto puro
           return parts.slice(1).join(": ");
         }
       }
     }
-    // Tenta parsear direto caso seja só o JSON
     try {
       const json = JSON.parse(msg);
       if (json.message) return json.message;
     } catch {}
-
     return msg;
   };
 
@@ -259,7 +251,6 @@ export default function SuppliersPage() {
       toast({ title: "Sucesso", description: "Fornecedor cadastrado!" });
       handleCloseDialog();
     },
-    // ✅ TRATAMENTO DE ERRO CORRIGIDO
     onError: (error: Error) => {
       setValidationErrors([parseErrorMessage(error)]);
     },
@@ -381,7 +372,7 @@ export default function SuppliersPage() {
   };
 
   return (
-    <div className="p-6 space-y-6 relative min-h-screen pb-24">
+    <div className="p-6 space-y-6">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">
@@ -394,24 +385,55 @@ export default function SuppliersPage() {
         <Button
           size="lg"
           onClick={handleOpenCreate}
-          className="bg-primary hover:bg-primary/90 shadow-lg transition-all hover:scale-105"
+          className="bg-primary hover:bg-primary/90 shadow-lg transition-all"
         >
           <Plus className="mr-2 h-5 w-5" /> Novo Fornecedor
         </Button>
       </div>
 
-      <Card className="border-l-4 border-l-primary">
+      <Card>
         <CardHeader className="pb-3">
-          <div className="flex items-center gap-2">
-            <div className="relative flex-1">
+          <div className="flex items-center gap-2 justify-between">
+            <div className="relative flex-1 max-w-lg">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder="Buscar por Razão Social, Fantasia ou CNPJ..."
-                className="pl-9 max-w-lg h-12 text-lg"
+                className="pl-9 h-10"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
             </div>
+
+            {/* ✅ BARRA DE AÇÕES EM MASSA (PADRONIZADO NO TOPO) */}
+            {selectedIds.length > 0 && (
+              <div className="flex items-center gap-2 bg-muted/50 p-1.5 rounded-lg border animate-in fade-in slide-in-from-right-5">
+                <span className="text-sm font-medium px-2">
+                  {selectedIds.length} selecionados
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleBulkDelete}
+                  disabled={bulkDeleteMutation.isPending}
+                  className="text-red-600 border-red-200 bg-red-50 hover:bg-red-100"
+                >
+                  {bulkDeleteMutation.isPending ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin mr-2" />
+                  ) : (
+                    <Trash2 className="h-3.5 w-3.5 mr-2" />
+                  )}
+                  Excluir
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setSelectedIds([])}
+                  className="h-8 w-8"
+                >
+                  <XSquare className="h-4 w-4 text-muted-foreground" />
+                </Button>
+              </div>
+            )}
           </div>
         </CardHeader>
 
@@ -448,9 +470,7 @@ export default function SuppliersPage() {
                         }
                       />
                     </TableHead>
-                    <TableHead className="w-[300px] font-bold">
-                      Empresa
-                    </TableHead>
+                    <TableHead>Empresa</TableHead>
                     <TableHead>Contato</TableHead>
                     <TableHead>Localização</TableHead>
                     <TableHead>Condições</TableHead>
@@ -471,21 +491,26 @@ export default function SuppliersPage() {
                           }
                         />
                       </TableCell>
+
+                      {/* ✅ EMPRESA + CNPJ UNIFICADOS */}
                       <TableCell>
-                        <div className="font-bold text-base text-primary/90">
-                          {s.name}
-                        </div>
-                        {s.tradingName && (
-                          <div className="text-sm text-muted-foreground">
-                            {s.tradingName}
-                          </div>
-                        )}
-                        <div className="text-xs text-muted-foreground font-mono mt-1 px-2 py-0.5 bg-secondary inline-block rounded border">
-                          {s.cnpj}
+                        <div className="flex flex-col">
+                          <span className="font-bold text-base text-foreground/90">
+                            {s.name}
+                          </span>
+                          {s.tradingName && s.tradingName !== s.name && (
+                            <span className="text-xs text-muted-foreground">
+                              {s.tradingName}
+                            </span>
+                          )}
+                          <span className="text-xs text-muted-foreground font-mono mt-0.5">
+                            {s.cnpj}
+                          </span>
                         </div>
                       </TableCell>
+
                       <TableCell>
-                        <div className="flex flex-col gap-1.5 text-sm">
+                        <div className="flex flex-col gap-1 text-sm">
                           {s.contact && (
                             <div className="flex items-center gap-2 font-medium">
                               <Contact className="h-3.5 w-3.5 text-primary" />{" "}
@@ -520,7 +545,7 @@ export default function SuppliersPage() {
                         <div className="flex flex-wrap gap-2">
                           {s.leadTime ? (
                             <div className="flex items-center gap-1 text-[10px] font-bold uppercase border px-2 py-1 rounded bg-blue-50 text-blue-700 border-blue-200">
-                              {s.leadTime}d
+                              {s.leadTime}d Entrega
                             </div>
                           ) : null}
                           {s.minOrderValue &&
@@ -568,46 +593,6 @@ export default function SuppliersPage() {
           )}
         </CardContent>
       </Card>
-
-      {selectedIds.length > 0 && (
-        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 animate-in slide-in-from-bottom-5">
-          <Card className="flex items-center gap-6 p-2 pl-4 pr-2 shadow-2xl border-primary/20 bg-card/90 backdrop-blur-sm rounded-xl">
-            <div className="flex items-center gap-3">
-              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground animate-bounce">
-                {selectedIds.length}
-              </span>
-              <span className="text-sm font-medium text-muted-foreground">
-                selecionados
-              </span>
-            </div>
-            <Separator orientation="vertical" className="h-6" />
-            <div className="flex items-center gap-2">
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={handleBulkDelete}
-                disabled={bulkDeleteMutation.isPending}
-                className="h-8 px-4 font-semibold shadow-sm"
-              >
-                {bulkDeleteMutation.isPending ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin mr-2" />
-                ) : (
-                  <Trash2 className="h-3.5 w-3.5 mr-2" />
-                )}{" "}
-                Excluir
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setSelectedIds([])}
-                className="h-8 w-8 rounded-full hover:bg-muted"
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-          </Card>
-        </div>
-      )}
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent className="max-w-4xl h-[90vh] flex flex-col p-0 gap-0">

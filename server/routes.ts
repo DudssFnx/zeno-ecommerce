@@ -107,130 +107,53 @@ export async function registerRoutes(
   // ==========================================
   app.get("/api/company/me", async (req: any, res) => {
     if (!req.isAuthenticated()) return res.status(401).send();
-    const userCompanyId = req.user.companyId;
-
     try {
-      let company;
-      if (userCompanyId) {
-        const targetId = String(userCompanyId).trim();
-        [company] = await db
-          .select()
-          .from(companies)
-          .where(sql`${companies.id}::text = ${targetId}`)
-          .limit(1);
-      }
-      if (!company) {
-        const [firstCompany] = await db.select().from(companies).limit(1);
-        company = firstCompany;
-      }
-      if (!company) {
-        return res
-          .status(404)
-          .json({ message: "Nenhuma empresa cadastrada no sistema." });
-      }
-
-      const companyFrontend = {
-        ...company,
-        id: company.id,
-        name: company.razaoSocial || company.name || "Minha Empresa",
-        tradingName:
-          company.nomeFantasia || company.tradingName || "Nome Fantasia",
-        cnpj: company.cnpj,
-        email: company.email,
-        phone: company.telefone || company.phone,
-        address: company.endereco || company.address,
-        number: company.numero || company.number,
-        complement: company.complemento || company.complement,
-        neighborhood: company.bairro || company.neighborhood,
-        city: company.cidade || company.city,
-        state: company.estado || company.state,
-        cep: company.cep,
-        isActive: company.ativo,
-        logoUrl: company.logoUrl || "",
-        primaryColor: company.primaryColor || "#000000",
-      };
-      res.json(companyFrontend);
+      const [company] = await db.select().from(companies).limit(1);
+      if (!company)
+        return res.status(404).json({ message: "Empresa não encontrada" });
+      res.json(company);
     } catch (error) {
-      res.status(500).json({ message: "Erro interno ao buscar empresa" });
+      res.status(500).json({ message: "Erro ao buscar empresa" });
     }
   });
 
   app.patch("/api/company/me", async (req: any, res) => {
-    if (!req.isAuthenticated())
-      return res.status(401).json({ message: "Sessão expirada." });
-    const userCompanyId = req.user.companyId;
-
+    if (!req.isAuthenticated()) return res.status(401).send();
     try {
-      const updateData: any = { ...req.body, updatedAt: new Date() };
+      const updateData = { ...req.body, updatedAt: new Date() };
       if (req.body.name) updateData.razaoSocial = req.body.name;
-      if (req.body.tradingName) updateData.nomeFantasia = req.body.tradingName;
-      if (req.body.address) updateData.endereco = req.body.address;
-      if (req.body.city) updateData.cidade = req.body.city;
 
-      delete updateData.name;
-      delete updateData.tradingName;
-      delete updateData.address;
-      delete updateData.city;
-
-      let targetId = String(userCompanyId).trim();
-      let [updated] = await db
-        .update(companies)
-        .set(updateData)
-        .where(sql`${companies.id}::text = ${targetId}`)
-        .returning();
-
-      if (!updated) {
-        const [first] = await db.select().from(companies).limit(1);
-        if (first) {
-          [updated] = await db
-            .update(companies)
-            .set(updateData)
-            .where(eq(companies.id, first.id))
-            .returning();
-        }
+      const [first] = await db.select().from(companies).limit(1);
+      let updated;
+      if (first) {
+        [updated] = await db
+          .update(companies)
+          .set(updateData)
+          .where(eq(companies.id, first.id))
+          .returning();
       }
-
-      if (!updated)
-        return res.status(404).json({ message: "Empresa não encontrada." });
       res.json(updated);
     } catch (error: any) {
-      res.status(500).json({ message: "Erro interno: " + error.message });
+      res.status(500).json({ message: "Erro: " + error.message });
     }
   });
 
   // ==========================================
-  // --- 👥 USUÁRIOS E CLIENTES ---
+  // --- 👥 USUÁRIOS ---
   // ==========================================
   app.get("/api/users", async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).send();
-    try {
-      const result = await db
-        .select()
-        .from(users)
-        .orderBy(desc(users.createdAt));
-      // Tradução
-      const mapped = result.map((u) => ({
-        ...u,
-        nome: u.firstName,
-        razaoSocial: u.company,
-      }));
-      res.json(mapped);
-    } catch (error) {
-      res.status(500).json({ message: "Erro ao buscar usuários" });
-    }
+    const result = await db.select().from(users).orderBy(desc(users.createdAt));
+    res.json(result);
   });
 
-  // ✅ POST REGISTER: COM TRATAMENTO DE ERRO AMIGÁVEL
   app.post("/api/register", async (req: any, res) => {
-    if (!req.isAuthenticated())
-      return res.status(401).json({ message: "Não autorizado" });
+    if (!req.isAuthenticated()) return res.status(401).send();
     try {
-      const { email, password } = req.body;
-      const userCompanyId = String(req.user.companyId || "1");
+      const { password, ...body } = req.body;
       const hashedPassword = await bcrypt.hash(password || "123456", 10);
 
-      // Limpeza
-      const cleanData = { ...req.body };
+      const cleanData = { ...body };
       if (cleanData.cnpj) cleanData.cnpj = cleanDocument(cleanData.cnpj);
       if (cleanData.cpf) cleanData.cpf = cleanDocument(cleanData.cpf);
 
@@ -239,330 +162,253 @@ export async function registerRoutes(
         .values({
           ...cleanData,
           password: hashedPassword,
-          role: "customer",
-          companyId: userCompanyId,
-          approved: true,
+          companyId: req.user.companyId || "1",
           createdAt: new Date(),
         })
         .returning();
 
       res.status(201).json(newUser);
     } catch (error: any) {
-      // 🛑 Captura erro de duplicidade e devolve 409
       if (error.code === "23505") {
-        let msg = "Este registro já existe.";
-        if (error.detail?.includes("email"))
-          msg = "Este e-mail já está em uso.";
-        else if (error.detail?.includes("cnpj"))
-          msg = "Este CNPJ já está cadastrado.";
-        else if (error.detail?.includes("cpf"))
-          msg = "Este CPF já está cadastrado.";
-
-        return res.status(409).json({ message: msg });
+        return res
+          .status(409)
+          .json({ message: "Registro duplicado (Email, CPF ou CNPJ)." });
       }
       res.status(500).json({ message: error.message });
     }
   });
 
-  // ✅ PATCH USER: COM TRATAMENTO DE ERRO AMIGÁVEL
   app.patch("/api/users/:id", async (req: any, res) => {
     if (!req.isAuthenticated()) return res.status(401).send();
-    const id = req.params.id;
     try {
-      const body = req.body;
-      const updateData: any = { updatedAt: new Date() };
+      const { password, ...body } = req.body;
+      const updateData: any = { ...body, updatedAt: new Date() };
 
-      if (body.firstName) updateData.firstName = body.firstName;
-      if (body.lastName) updateData.lastName = body.lastName;
-      if (body.email) updateData.email = body.email;
-      if (body.phone) updateData.phone = body.phone;
-      if (body.company) updateData.company = body.company;
-      if (body.tradingName) updateData.tradingName = body.tradingName;
-      if (body.customerType) updateData.customerType = body.customerType;
-
-      if (body.cep) updateData.cep = body.cep;
-      if (body.address) updateData.address = body.address;
-      if (body.addressNumber) updateData.addressNumber = body.addressNumber;
-      if (body.complement) updateData.complement = body.complement;
-      if (body.neighborhood) updateData.neighborhood = body.neighborhood;
-      if (body.city) updateData.city = body.city;
-      if (body.state) updateData.state = body.state;
-
-      if (body.approved !== undefined) updateData.approved = body.approved;
-      if (body.ativo !== undefined) updateData.ativo = body.ativo;
-
-      if (body.cnpj) updateData.cnpj = cleanDocument(body.cnpj);
-      if (body.cpf) updateData.cpf = cleanDocument(body.cpf);
-      if (body.stateRegistration)
-        updateData.stateRegistration = body.stateRegistration;
-
-      if (body.password && body.password.trim() !== "") {
-        updateData.password = await bcrypt.hash(body.password, 10);
+      if (password && password.trim() !== "") {
+        updateData.password = await bcrypt.hash(password, 10);
       }
+
+      if (updateData.cnpj) updateData.cnpj = cleanDocument(updateData.cnpj);
+      if (updateData.cpf) updateData.cpf = cleanDocument(updateData.cpf);
 
       const [updated] = await db
         .update(users)
         .set(updateData)
-        .where(eq(users.id, id))
+        .where(eq(users.id, req.params.id))
         .returning();
 
       if (!updated)
         return res.status(404).json({ message: "Usuário não encontrado" });
-
       res.json(updated);
     } catch (error: any) {
-      // 🛑 Captura erro de duplicidade na edição
       if (error.code === "23505") {
-        let msg = "Conflito de dados.";
-        if (error.detail?.includes("email"))
-          msg = "Este e-mail já pertence a outro usuário.";
-        else if (error.detail?.includes("cnpj"))
-          msg = "Este CNPJ já pertence a outro usuário.";
-        else if (error.detail?.includes("cpf"))
-          msg = "Este CPF já pertence a outro usuário.";
-
-        return res.status(409).json({ message: msg });
+        return res.status(409).json({ message: "Conflito: Dado duplicado." });
       }
-      res.status(500).json({ message: "Erro interno: " + error.message });
+      res.status(500).json({ message: error.message });
     }
   });
 
   app.delete("/api/users/:id", async (req: any, res) => {
     if (!req.isAuthenticated()) return res.status(401).send();
-    try {
-      await db.delete(users).where(eq(users.id, req.params.id));
-      res.json({ message: "Excluído" });
-    } catch (error) {
-      res.status(500).send();
-    }
+    await db.delete(users).where(eq(users.id, req.params.id));
+    res.json({ message: "Excluído" });
   });
 
   // ==========================================
-  // --- 🚚 FORNECEDORES (BLINDADO) ---
+  // --- 🚚 FORNECEDORES ---
   // ==========================================
   app.get("/api/suppliers", async (req: any, res) => {
     if (!req.isAuthenticated()) return res.status(401).send();
-    const userCompanyId = req.user.companyId ? Number(req.user.companyId) : 1;
-    const safeCompanyId = isNaN(userCompanyId) ? 1 : userCompanyId;
-
-    try {
-      const result = await db
-        .select()
-        .from(suppliers)
-        .where(
-          sql`${suppliers.companyId} = ${safeCompanyId} OR ${suppliers.companyId} IS NULL`,
-        )
-        .orderBy(desc(suppliers.id));
-      res.json(result);
-    } catch (error) {
-      res.status(500).json({ message: "Erro ao buscar fornecedores" });
-    }
+    const result = await db
+      .select()
+      .from(suppliers)
+      .orderBy(desc(suppliers.id));
+    res.json(result);
   });
 
-  // ✅ POST FORNECEDORES
   app.post("/api/suppliers", async (req: any, res) => {
     if (!req.isAuthenticated()) return res.status(401).send();
-
-    const docInput = cleanDocument(req.body.cnpj || req.body.cpf);
-    const userCompanyId = req.user.companyId || "1";
-
-    const { id, ...supplierData } = req.body;
-
     try {
-      const allSuppliers = await db
-        .select()
-        .from(suppliers)
-        .where(eq(suppliers.companyId, Number(userCompanyId)));
-
-      if (docInput) {
-        const existing = allSuppliers.find((s) => {
-          const sDoc = cleanDocument(s.cnpj || s.cpf || "");
-          return sDoc === docInput;
-        });
-
-        if (existing) {
-          return res.status(409).json({
-            message: `Este CNPJ já está cadastrado para o fornecedor "${existing.name}".`,
-          });
-        }
+      const doc = cleanDocument(req.body.cnpj || req.body.cpf);
+      if (doc) {
+        const existing = await db
+          .select()
+          .from(suppliers)
+          .where(eq(suppliers.cnpj, doc))
+          .limit(1);
+        if (existing.length > 0)
+          return res.status(409).json({ message: "Fornecedor já cadastrado." });
       }
 
       const [supplier] = await db
         .insert(suppliers)
         .values({
-          ...supplierData,
-          companyId: Number(userCompanyId),
+          ...req.body,
+          companyId: Number(req.user.companyId || 1),
         })
         .returning();
-
       res.status(201).json(supplier);
     } catch (error: any) {
-      if (error.code === "23505") {
-        return res
-          .status(409)
-          .json({ message: "Este CNPJ já está cadastrado no sistema." });
-      }
-      res.status(500).json({ message: "Erro interno no servidor." });
+      res.status(500).json({ message: error.message });
     }
   });
 
   app.patch("/api/suppliers/:id", async (req: any, res) => {
     if (!req.isAuthenticated()) return res.status(401).send();
-    try {
-      const [updated] = await db
-        .update(suppliers)
-        .set(req.body)
-        .where(eq(suppliers.id, parseInt(req.params.id)))
-        .returning();
-      res.json(updated);
-    } catch (error) {
-      res.status(500).json({ message: "Erro ao atualizar fornecedor" });
-    }
+    const [updated] = await db
+      .update(suppliers)
+      .set(req.body)
+      .where(eq(suppliers.id, parseInt(req.params.id)))
+      .returning();
+    res.json(updated);
   });
 
   app.delete("/api/suppliers/:id", async (req: any, res) => {
     if (!req.isAuthenticated()) return res.status(401).send();
-    try {
-      await db
-        .delete(suppliers)
-        .where(eq(suppliers.id, parseInt(req.params.id)));
-      res.json({ message: "Excluído" });
-    } catch (error) {
-      res.status(500).json({ message: "Erro ao excluir" });
-    }
+    await db.delete(suppliers).where(eq(suppliers.id, parseInt(req.params.id)));
+    res.json({ message: "Excluído" });
   });
 
   // ==========================================
-  // --- 🛒 PRODUTOS (COM TRADUÇÃO) ---
+  // --- 🛒 PRODUTOS ---
   // ==========================================
   app.get("/api/products", async (req, res) => {
-    try {
-      const result = await db
-        .select()
-        .from(products)
-        .orderBy(desc(products.id));
-
-      const mappedProducts = result.map((p) => ({
-        ...p,
-        nome: p.name,
-        estoque: p.stock,
-        precoVarejo: p.price,
-        precoAtacado: p.cost,
-        descricao: p.description,
-        imagem: p.image,
-      }));
-
-      res.json({ products: mappedProducts, total: result.length });
-    } catch (error) {
-      res.status(500).send("Erro ao listar produtos");
-    }
+    const result = await db.select().from(products).orderBy(desc(products.id));
+    const mapped = result.map((p) => ({
+      ...p,
+      nome: p.name,
+      estoque: p.stock,
+      precoVarejo: p.price,
+      precoAtacado: p.cost,
+    }));
+    res.json({ products: mapped, total: result.length });
   });
 
   app.post("/api/products", async (req: any, res) => {
     if (!req.isAuthenticated()) return res.status(401).send();
-
     try {
-      const name = req.body.name || req.body.nome;
-      const newProductData: any = {
-        companyId: req.user.companyId || 1,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        name: name,
-        description: req.body.description || req.body.descricao,
-        sku: req.body.sku,
-        stock: Number(req.body.stock || req.body.estoque || 0),
-        price: String(req.body.price || req.body.precoVarejo || "0.00"),
-        cost: String(req.body.cost || req.body.precoAtacado || "0.00"),
-        brand: req.body.brand,
-        categoryId: req.body.categoryId,
-        image: req.body.image || req.body.imagem,
-        images: req.body.images,
-        featured: req.body.featured,
-        weight: req.body.weight ? String(req.body.weight) : null,
-        width: req.body.width ? String(req.body.width) : null,
-        height: req.body.height ? String(req.body.height) : null,
-        depth: req.body.depth ? String(req.body.depth) : null,
-        ncm: req.body.ncm,
-        cest: req.body.cest,
-        origem: req.body.taxOrigin,
-      };
-
       const [product] = await db
         .insert(products)
-        .values(newProductData)
+        .values({
+          ...req.body,
+          companyId: req.user.companyId || 1,
+          stock: Number(req.body.stock || 0),
+          price: String(req.body.price || "0"),
+          cost: String(req.body.cost || "0"),
+          createdAt: new Date(),
+        })
         .returning();
-
       res.status(201).json(product);
     } catch (error: any) {
-      res
-        .status(500)
-        .json({ message: "Erro ao criar produto: " + error.message });
+      res.status(500).json({ message: error.message });
     }
   });
 
   app.patch("/api/products/:id", async (req: any, res) => {
-    if (!req.isAuthenticated())
-      return res.status(401).json({ message: "Não autenticado" });
-    const id = parseInt(req.params.id);
+    if (!req.isAuthenticated()) return res.status(401).send();
     try {
-      const updateData: any = { updatedAt: new Date() };
-
-      if (req.body.name !== undefined) updateData.name = req.body.name;
-      if (req.body.nome !== undefined) updateData.name = req.body.nome;
-      if (req.body.description !== undefined)
-        updateData.description = req.body.description;
-      if (req.body.sku !== undefined) updateData.sku = req.body.sku;
-      if (req.body.stock !== undefined)
-        updateData.stock = Number(req.body.stock);
-      if (req.body.price !== undefined)
-        updateData.price = String(req.body.price);
-      if (req.body.cost !== undefined) updateData.cost = String(req.body.cost);
-
       const [updated] = await db
         .update(products)
-        .set(updateData)
-        .where(eq(products.id, id))
+        .set({ ...req.body, updatedAt: new Date() })
+        .where(eq(products.id, parseInt(req.params.id)))
         .returning();
-
-      if (!updated)
-        return res.status(404).json({ message: "Produto não encontrado" });
       res.json(updated);
     } catch (error: any) {
-      res.status(500).json({ message: "Erro interno ao atualizar produto" });
+      res.status(500).json({ message: error.message });
     }
   });
 
   app.delete("/api/products/:id", async (req: any, res) => {
     if (!req.isAuthenticated()) return res.status(401).send();
+    await db.delete(products).where(eq(products.id, parseInt(req.params.id)));
+    res.json({ message: "Excluído" });
+  });
+
+  // ==========================================
+  // --- 📦 PEDIDOS DE COMPRA (COMPLETO) ---
+  // ==========================================
+
+  // 1. GET: Com JOIN para trazer nome do fornecedor e contagem
+  app.get("/api/purchases", async (req: any, res) => {
+    if (!req.isAuthenticated()) return res.status(401).send();
     try {
-      await db.delete(products).where(eq(products.id, parseInt(req.params.id)));
-      res.json({ message: "Produto excluído" });
-    } catch (error) {
-      res.status(500).json({ message: "Erro ao excluir produto" });
+      const result = await db
+        .select({
+          ...purchaseOrders,
+          supplierName: suppliers.name,
+          itemCount: sql<number>`count(${purchaseOrderItems.id})`.mapWith(
+            Number,
+          ),
+        })
+        .from(purchaseOrders)
+        .leftJoin(suppliers, eq(purchaseOrders.supplierId, suppliers.id))
+        .leftJoin(
+          purchaseOrderItems,
+          eq(purchaseOrders.id, purchaseOrderItems.purchaseOrderId),
+        )
+        .groupBy(purchaseOrders.id, suppliers.name)
+        .orderBy(desc(purchaseOrders.createdAt));
+
+      res.json(result);
+    } catch (error: any) {
+      res
+        .status(500)
+        .json({ message: "Erro ao listar pedidos: " + error.message });
     }
   });
 
-  // ==========================================
-  // --- 📦 PEDIDOS ---
-  // ==========================================
-  app.get("/api/purchases", async (req: any, res) => {
+  // 2. GET ID: Detalhes
+  app.get("/api/purchases/:id", async (req: any, res) => {
     if (!req.isAuthenticated()) return res.status(401).send();
-    const orders = await db
-      .select()
-      .from(purchaseOrders)
-      .orderBy(desc(purchaseOrders.createdAt));
-    res.json(orders);
+    const id = parseInt(req.params.id);
+    try {
+      const [order] = await db
+        .select()
+        .from(purchaseOrders)
+        .where(eq(purchaseOrders.id, id))
+        .limit(1);
+      if (!order) return res.status(404).send();
+
+      const items = await db
+        .select()
+        .from(purchaseOrderItems)
+        .where(eq(purchaseOrderItems.purchaseOrderId, id));
+
+      let supplier = null;
+      if (order.supplierId) {
+        [supplier] = await db
+          .select()
+          .from(suppliers)
+          .where(eq(suppliers.id, order.supplierId))
+          .limit(1);
+      }
+
+      const movements = await db
+        .select()
+        .from(stockMovements)
+        .where(
+          sql`${stockMovements.refType} = 'PURCHASE_ORDER' AND ${stockMovements.refId} = ${id}`,
+        )
+        .orderBy(desc(stockMovements.createdAt));
+
+      res.json({ order, items, supplier, movements });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
   });
 
+  // 3. POST: CRIAÇÃO DE PEDIDO
   app.post("/api/purchases", async (req: any, res) => {
     if (!req.isAuthenticated()) return res.status(401).send();
     try {
-      const { items, ...orderData } = req.body;
+      const { items, supplierId, ...orderData } = req.body;
+
       const result = await db.transaction(async (tx) => {
         const [newOrder] = await tx
           .insert(purchaseOrders)
           .values({
             ...orderData,
+            supplierId: supplierId ? Number(supplierId) : null,
             status: "DRAFT",
             number: orderData.number || `PC-${Date.now()}`,
             totalValue: String(orderData.totalValue || "0.00"),
@@ -594,6 +440,7 @@ export async function registerRoutes(
     }
   });
 
+  // 4. POST STOCK: LANÇAR ESTOQUE (COM COALESCE PARA NÃO FALHAR)
   app.post("/api/purchases/:id/post-stock", async (req: any, res) => {
     if (!req.isAuthenticated()) return res.status(401).send();
     const orderId = parseInt(req.params.id);
@@ -605,7 +452,7 @@ export async function registerRoutes(
           .where(eq(purchaseOrders.id, orderId))
           .limit(1);
         if (!order || order.status === "STOCK_POSTED")
-          throw new Error("Pedido inválido");
+          throw new Error("Pedido inválido ou já processado");
 
         const items = await tx
           .select()
@@ -614,8 +461,9 @@ export async function registerRoutes(
 
         for (const item of items) {
           const qty = parseFloat(item.qty);
+          // COALESCE garante soma correta mesmo se estoque for null
           const updateData: any = {
-            stock: sql`${products.stock} + ${qty}`,
+            stock: sql`COALESCE(${products.stock}, 0) + ${qty}`,
             updatedAt: new Date(),
           };
           if (parseFloat(item.unitCost) > 0)
@@ -636,7 +484,7 @@ export async function registerRoutes(
             productId: item.productId,
             qty: String(item.qty),
             unitCost: String(item.unitCost),
-            notes: `Entrada via Pedido ${order.number}`,
+            notes: `Entrada Pedido ${order.number}`,
           });
         }
         await tx
@@ -644,9 +492,124 @@ export async function registerRoutes(
           .set({ status: "STOCK_POSTED", postedAt: new Date() })
           .where(eq(purchaseOrders.id, orderId));
       });
-      res.json({ message: "Estoque atualizado!" });
+      res.json({ message: "Estoque lançado com sucesso!" });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ✅ 4.1. REVERSE STOCK: ESTORNO SEM EXCLUIR (VOLTAR P/ RASCUNHO)
+  app.post("/api/purchases/:id/reverse-stock", async (req: any, res) => {
+    if (!req.isAuthenticated()) return res.status(401).send();
+    const orderId = parseInt(req.params.id);
+
+    try {
+      await db.transaction(async (tx) => {
+        const [order] = await tx
+          .select()
+          .from(purchaseOrders)
+          .where(eq(purchaseOrders.id, orderId))
+          .limit(1);
+        if (!order || order.status !== "STOCK_POSTED")
+          throw new Error(
+            "Apenas pedidos com estoque lançado podem ser estornados.",
+          );
+
+        const items = await tx
+          .select()
+          .from(purchaseOrderItems)
+          .where(eq(purchaseOrderItems.purchaseOrderId, orderId));
+
+        for (const item of items) {
+          const qty = parseFloat(item.qty);
+          // Subtrai do estoque
+          await tx
+            .update(products)
+            .set({
+              stock: sql`COALESCE(${products.stock}, 0) - ${qty}`,
+              updatedAt: new Date(),
+            })
+            .where(eq(products.id, item.productId));
+
+          // Registra saída
+          await tx.insert(stockMovements).values({
+            type: "OUT",
+            reason: "PURCHASE_REVERSE",
+            refType: "PURCHASE_ORDER",
+            refId: orderId,
+            productId: item.productId,
+            qty: String(item.qty),
+            unitCost: String(item.unitCost),
+            notes: `Estorno manual do pedido ${order.number}`,
+          });
+        }
+
+        // Volta status para DRAFT e limpa data
+        await tx
+          .update(purchaseOrders)
+          .set({ status: "DRAFT", postedAt: null })
+          .where(eq(purchaseOrders.id, orderId));
+      });
+
+      res.json({ message: "Estoque estornado e pedido voltou para Rascunho." });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ✅ 5. DELETE PURCHASE: CORRIGIDO (LIMPA VÍNCULOS ANTES)
+  app.delete("/api/purchases/:id", async (req: any, res) => {
+    if (!req.isAuthenticated()) return res.status(401).send();
+    const orderId = parseInt(req.params.id);
+
+    try {
+      await db.transaction(async (tx) => {
+        const [order] = await tx
+          .select()
+          .from(purchaseOrders)
+          .where(eq(purchaseOrders.id, orderId))
+          .limit(1);
+        if (!order) throw new Error("Pedido não encontrado");
+
+        // Se o estoque já foi lançado, ESTORNAR
+        if (order.status === "STOCK_POSTED") {
+          const items = await tx
+            .select()
+            .from(purchaseOrderItems)
+            .where(eq(purchaseOrderItems.purchaseOrderId, orderId));
+          for (const item of items) {
+            const qty = parseFloat(item.qty);
+            // Subtrai do estoque
+            await tx
+              .update(products)
+              .set({
+                stock: sql`COALESCE(${products.stock}, 0) - ${qty}`,
+                updatedAt: new Date(),
+              })
+              .where(eq(products.id, item.productId));
+          }
+        }
+
+        // 🛑 LIMPEZA IMPORTANTE: Apaga os movimentos de estoque ANTES de apagar o pedido
+        await tx
+          .delete(stockMovements)
+          .where(
+            sql`${stockMovements.refType} = 'PURCHASE_ORDER' AND ${stockMovements.refId} = ${orderId}`,
+          );
+
+        // Apaga os itens
+        await tx
+          .delete(purchaseOrderItems)
+          .where(eq(purchaseOrderItems.purchaseOrderId, orderId));
+
+        // Apaga o pedido
+        await tx.delete(purchaseOrders).where(eq(purchaseOrders.id, orderId));
+      });
+
+      res.json({ message: "Pedido excluído e estoque ajustado com sucesso." });
+    } catch (error: any) {
+      console.error("Erro Delete:", error);
+      res.status(500).json({ message: "Erro ao excluir: " + error.message });
     }
   });
 
