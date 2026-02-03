@@ -43,6 +43,7 @@ import {
   Box,
   Loader2,
   Plus,
+  RefreshCw,
   Search,
   ShoppingCart,
   Trash2,
@@ -72,6 +73,7 @@ interface Installment {
 
 interface OrderWithItems extends SchemaOrder {
   items?: { id: number; quantity: number }[];
+  customerName?: string;
 }
 
 export default function OrdersPage() {
@@ -81,48 +83,48 @@ export default function OrdersPage() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
 
   // --- ESTADOS DO FORMULÁRIO ---
-
-  // 1. Cliente & Vendedor
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>("");
   const [selectedCustomer, setSelectedCustomer] = useState<User | null>(null);
   const [customerSearch, setCustomerSearch] = useState("");
   const [selectedSellerId, setSelectedSellerId] = useState<string>("");
 
-  // 2. Itens
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [productSearch, setProductSearch] = useState("");
 
-  // 3. Totais e Descontos Globais
   const [globalDiscount, setGlobalDiscount] = useState<number>(0);
   const [otherExpenses, setOtherExpenses] = useState<number>(0);
   const [deliveryDeadline, setDeliveryDeadline] = useState<string>("0");
 
-  // 4. Detalhes da Venda
   const [saleDate, setSaleDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [departureDate, setDepartureDate] = useState(
     format(new Date(), "yyyy-MM-dd"),
   );
   const [customerPO, setCustomerPO] = useState("");
 
-  // 5. Pagamento
-  const [paymentCondition, setPaymentCondition] = useState(""); // Ex: "28 59"
+  const [paymentCondition, setPaymentCondition] = useState("");
   const [installments, setInstallments] = useState<Installment[]>([]);
   const [paymentMethod, setPaymentMethod] = useState("Boleto");
 
-  // 6. Transporte
   const [carrierName, setCarrierName] = useState("");
   const [shippingType, setShippingType] = useState("CIF");
   const [shippingCost, setShippingCost] = useState<number>(0);
 
-  // 7. Observações
   const [notes, setNotes] = useState("");
   const [internalNotes, setInternalNotes] = useState("");
 
   const showAllOrders = isAdmin || isSales;
 
   // --- QUERIES ---
-  const { data: ordersData = [], refetch } = useQuery<OrderWithItems[]>({
+  const {
+    data: ordersData = [],
+    isLoading: isLoadingOrders,
+    refetch: refetchOrders,
+  } = useQuery<OrderWithItems[]>({
     queryKey: ["/api/orders"],
+    // Estratégia agressiva de atualização
+    refetchOnWindowFocus: true,
+    staleTime: 0,
+    gcTime: 0,
   });
 
   const { data: usersData = [] } = useQuery<User[]>({
@@ -130,7 +132,6 @@ export default function OrdersPage() {
     enabled: showAllOrders,
   });
 
-  // Filtra listas
   const customersList = usersData.filter(
     (u) => u.role === "customer" || !u.role,
   );
@@ -138,19 +139,17 @@ export default function OrdersPage() {
     (u) => u.role === "admin" || u.role === "sales",
   );
 
-  // Define vendedor padrão ao abrir
   useEffect(() => {
     if (isCreateOpen && user && !selectedSellerId) {
       setSelectedSellerId(user.id);
     }
   }, [isCreateOpen, user]);
 
-  // Busca produtos (traz mais itens para filtrar no front)
   const { data: productsResponse } = useQuery<{
     products: any[];
     total: number;
   }>({
-    queryKey: ["/api/products", { limit: 1000 }], // Traz mais produtos para garantir que a busca funcione
+    queryKey: ["/api/products", { limit: 1000 }],
     queryFn: async ({ queryKey }) => {
       const [_path, params] = queryKey;
       const queryString = new URLSearchParams(params as any).toString();
@@ -163,9 +162,7 @@ export default function OrdersPage() {
 
   const productsData = productsResponse?.products || [];
 
-  // --- 🔍 LÓGICA DE FILTROS APRIMORADA ---
-
-  // Filtro de Clientes (Nome, Email, CPF/CNPJ, Razão Social)
+  // --- FILTROS ---
   const filteredCustomers =
     customerSearch.length >= 2
       ? customersList
@@ -182,7 +179,6 @@ export default function OrdersPage() {
           .slice(0, 15)
       : [];
 
-  // Filtro de Produtos (Nome, SKU)
   const filteredProducts =
     productSearch.length >= 1
       ? productsData
@@ -193,10 +189,10 @@ export default function OrdersPage() {
               p.sku.toLowerCase().includes(search)
             );
           })
-          .slice(0, 50) // Limita a 50 resultados na lista
+          .slice(0, 50)
       : [];
 
-  // --- LÓGICA DE CARRINHO ---
+  // --- CARRINHO ---
   const handleAddProduct = (product: any) => {
     const existing = cartItems.find((item) => item.productId === product.id);
     if (existing) {
@@ -236,12 +232,12 @@ export default function OrdersPage() {
     setCartItems(cartItems.filter((i) => i.productId !== id));
   };
 
-  // --- CÁLCULOS TOTAIS ---
+  // --- CÁLCULOS ---
   const totalItemsValue = cartItems.reduce((acc, i) => acc + i.total, 0);
   const totalOrderValue =
     totalItemsValue - globalDiscount + shippingCost + otherExpenses;
 
-  // --- GERADOR DE PARCELAS ---
+  // --- PARCELAS ---
   const generateInstallments = () => {
     if (!paymentCondition || totalOrderValue <= 0) {
       toast({
@@ -291,13 +287,29 @@ export default function OrdersPage() {
     mutationFn: async (data: any) => {
       await apiRequest("POST", "/api/orders", data);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
+    onSuccess: async () => {
+      // 1. Fecha Modal
       setIsCreateOpen(false);
+
+      // 2. Limpa dados
       setCartItems([]);
       setSelectedCustomer(null);
+      setSelectedCustomerId("");
+      setCustomerSearch("");
       setInstallments([]);
-      toast({ title: "Pedido Salvo!", className: "bg-green-600 text-white" });
+      setPaymentCondition("");
+      setProductSearch("");
+      setNotes("");
+      setInternalNotes("");
+
+      // 3. ATUALIZAÇÃO FORÇADA
+      await queryClient.resetQueries({ queryKey: ["/api/orders"] });
+      await refetchOrders();
+
+      toast({
+        title: "Pedido Salvo com Sucesso!",
+        className: "bg-green-600 text-white",
+      });
     },
     onError: (err: Error) => {
       toast({
@@ -349,14 +361,35 @@ Installments: ${JSON.stringify(installments)}
       shippingCost: shippingCost.toString(),
       total: totalOrderValue.toString(),
       notes: richNotes,
+      status: "ORCAMENTO",
     };
 
     createOrderMutation.mutate(payload);
   };
 
+  // --- PREPARAÇÃO DA LISTA ---
+  const mappedOrders = ordersData
+    .map((o) => ({
+      ...o,
+      id: String(o.id),
+      // Tenta pegar nome do join, depois da lista de usuários, ou fallback
+      customer:
+        o.customerName ||
+        usersData.find((u) => u.id === o.userId)?.nome ||
+        "Cliente Desconhecido",
+      date: format(new Date(o.createdAt), "dd/MM/yyyy"),
+      total: parseFloat(o.total),
+      itemCount: o.items?.length || 0,
+      status: o.status as any,
+      printed: false,
+    }))
+    .filter((o) => {
+      if (activeTab === "all") return true;
+      return o.status === activeTab;
+    });
+
   return (
     <div className="p-6 lg:p-8 space-y-6">
-      {/* HEADER DA PÁGINA */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">
@@ -364,15 +397,29 @@ Installments: ${JSON.stringify(installments)}
           </h1>
           <p className="text-muted-foreground">Gerencie vendas e orçamentos.</p>
         </div>
-        <Button
-          onClick={() => setIsCreateOpen(true)}
-          className="bg-orange-500 hover:bg-orange-600"
-        >
-          <Plus className="mr-2 h-4 w-4" /> Incluir Pedido
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            onClick={() => {
+              queryClient.resetQueries({ queryKey: ["/api/orders"] });
+              refetchOrders();
+            }}
+          >
+            <RefreshCw
+              className={`mr-2 h-4 w-4 ${isLoadingOrders ? "animate-spin" : ""}`}
+            />
+            Atualizar
+          </Button>
+          <Button
+            onClick={() => setIsCreateOpen(true)}
+            className="bg-orange-500 hover:bg-orange-600"
+          >
+            <Plus className="mr-2 h-4 w-4" /> Incluir Pedido
+          </Button>
+        </div>
       </div>
 
-      {/* TABELA DE LISTAGEM */}
+      {/* LISTA DE PEDIDOS */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
           <TabsTrigger value="all">Todos</TabsTrigger>
@@ -381,32 +428,28 @@ Installments: ${JSON.stringify(installments)}
           <TabsTrigger value="FATURADO">Faturados</TabsTrigger>
         </TabsList>
         <TabsContent value={activeTab} className="mt-4">
-          <OrderTable
-            orders={ordersData
-              .map((o) => ({
-                ...o,
-                id: String(o.id),
-                customer: o.customerName || "Cliente",
-                date: format(new Date(o.createdAt), "dd/MM/yyyy"),
-                total: parseFloat(o.total),
-                itemCount: o.items?.length || 0,
-                status: o.status as any,
-                printed: false,
-              }))
-              .filter((o) => activeTab === "all" || o.status === activeTab)}
-            showCustomer={true}
-            selectedOrderIds={new Set()}
-            onSelectionChange={() => {}}
-            onSelectAll={() => {}}
-            onPrintOrder={() => {}}
-          />
+          {isLoadingOrders ? (
+            <div className="flex justify-center py-8">
+              <Loader2 className="animate-spin h-8 w-8 text-muted-foreground" />
+            </div>
+          ) : (
+            <OrderTable
+              key={activeTab} // Força recriar tabela ao mudar aba
+              orders={mappedOrders}
+              showCustomer={true}
+              selectedOrderIds={new Set()}
+              onSelectionChange={() => {}}
+              onSelectAll={() => {}}
+              onPrintOrder={() => {}}
+            />
+          )}
         </TabsContent>
       </Tabs>
 
-      {/* --- MODAL DE CRIAÇÃO --- */}
+      {/* MODAL DE CRIAÇÃO */}
       <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
         <DialogContent className="max-w-[100vw] h-[100vh] p-0 rounded-none bg-background flex flex-col border-none">
-          {/* HEADER DO MODAL */}
+          {/* HEADER */}
           <div className="flex items-center justify-between px-4 py-2 border-b bg-card shadow-sm h-14 shrink-0">
             <div className="flex items-center gap-3">
               <Button
@@ -446,10 +489,10 @@ Installments: ${JSON.stringify(installments)}
             </div>
           </div>
 
-          {/* CORPO DO MODAL */}
+          {/* BODY SCROLLABLE */}
           <ScrollArea className="flex-1 bg-muted/10">
             <div className="p-4 max-w-[1600px] mx-auto space-y-4">
-              {/* 1. DADOS DO CLIENTE E VENDEDOR */}
+              {/* 1. DADOS DO CLIENTE */}
               <Card className="border-l-2 border-l-orange-500 shadow-sm">
                 <CardHeader className="py-2 px-4 border-b bg-muted/20">
                   <CardTitle className="text-sm font-semibold flex items-center gap-2 text-orange-600">
@@ -459,22 +502,33 @@ Installments: ${JSON.stringify(installments)}
                 <CardContent className="py-3 px-4 grid grid-cols-12 gap-3">
                   <div className="col-span-12 md:col-span-6 relative">
                     <Label className="text-xs text-muted-foreground">
-                      Cliente * (Nome, Email, CPF/CNPJ)
+                      Cliente *
                     </Label>
                     {selectedCustomer ? (
-                      <div className="flex gap-2 items-center mt-1">
-                        <div className="flex-1 px-3 py-1.5 bg-green-500/10 border border-green-500/20 rounded text-sm font-medium text-green-700 flex justify-between items-center h-8">
-                          {selectedCustomer.nome || selectedCustomer.firstName}
-                          <X
-                            className="h-3 w-3 cursor-pointer"
-                            onClick={() => setSelectedCustomer(null)}
-                          />
-                        </div>
+                      // ✨ CORRIGIDO: Input simples e legível (SEM CORES ESTRANHAS)
+                      <div className="relative mt-1">
+                        <Input
+                          readOnly
+                          value={`${selectedCustomer.nome || selectedCustomer.firstName} (${selectedCustomer.email})`}
+                          className="h-8 text-sm font-bold bg-background pr-8 border-input text-foreground"
+                        />
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-8 w-8 absolute right-0 top-0 text-muted-foreground hover:text-destructive"
+                          onClick={() => {
+                            setSelectedCustomer(null);
+                            setSelectedCustomerId("");
+                            setCustomerSearch("");
+                          }}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
                       </div>
                     ) : (
                       <div className="relative mt-1">
                         <Input
-                          placeholder="Digite para buscar..."
+                          placeholder="Buscar cliente (Min 2 letras)..."
                           className="pl-8 h-8 text-sm"
                           value={customerSearch}
                           onChange={(e) => setCustomerSearch(e.target.value)}
@@ -486,20 +540,20 @@ Installments: ${JSON.stringify(installments)}
                               {filteredCustomers.map((c) => (
                                 <div
                                   key={c.id}
-                                  className="px-3 py-2 hover:bg-accent cursor-pointer rounded-sm text-sm"
+                                  className="px-3 py-2 hover:bg-accent cursor-pointer rounded-sm text-sm border-b last:border-0"
                                   onClick={() => {
                                     setSelectedCustomer(c);
                                     setSelectedCustomerId(c.id);
                                     setCustomerSearch("");
                                   }}
                                 >
-                                  <span className="font-bold">
+                                  <div className="font-bold">
                                     {c.nome || c.firstName}
-                                  </span>
-                                  <span className="text-muted-foreground text-xs ml-2">
-                                    {c.razaoSocial ? `(${c.razaoSocial})` : ""}{" "}
-                                    - {c.cnpj || c.cpf || c.email}
-                                  </span>
+                                  </div>
+                                  <div className="text-xs text-muted-foreground">
+                                    {c.razaoSocial ? `${c.razaoSocial} | ` : ""}
+                                    {c.cnpj || c.cpf || c.email}
+                                  </div>
                                 </div>
                               ))}
                             </div>
@@ -543,7 +597,7 @@ Installments: ${JSON.stringify(installments)}
                 </CardContent>
               </Card>
 
-              {/* 2. ITENS COM ESTOQUE INTELIGENTE */}
+              {/* 2. ITENS */}
               <Card className="shadow-sm">
                 <CardHeader className="py-2 px-4 border-b bg-muted/20 flex flex-row items-center justify-between h-12">
                   <CardTitle className="text-sm font-semibold flex items-center gap-2 text-orange-600">
@@ -562,7 +616,7 @@ Installments: ${JSON.stringify(installments)}
                         {filteredProducts.map((p) => (
                           <div
                             key={p.id}
-                            className="px-3 py-2 hover:bg-accent cursor-pointer rounded-sm text-sm flex justify-between items-center"
+                            className="px-3 py-2 hover:bg-accent cursor-pointer rounded-sm text-sm flex justify-between items-center border-b last:border-0"
                             onClick={() => handleAddProduct(p)}
                           >
                             <div>
@@ -688,7 +742,7 @@ Installments: ${JSON.stringify(installments)}
                                 />
                               </TableCell>
 
-                              {/* CAIXA DE ESTOQUE INTELIGENTE */}
+                              {/* CAIXA DE ESTOQUE */}
                               <TableCell className="text-center py-1">
                                 <TooltipProvider>
                                   <Tooltip>
@@ -795,7 +849,6 @@ Installments: ${JSON.stringify(installments)}
                                     .split("-")
                                     .map(Number);
                                   const n = [...installments];
-                                  // Cria data sem fuso horário para evitar erro de dia anterior
                                   n[i].date = format(
                                     new Date(y, m - 1, d),
                                     "dd/MM/yyyy",

@@ -1,5 +1,7 @@
 import {
-  companies,
+  companies, // <--- ESSENCIAL
+  orderItems,
+  orders,
   products,
   purchaseOrderItems,
   purchaseOrders,
@@ -8,7 +10,7 @@ import {
   users,
 } from "@shared/schema";
 import bcrypt from "bcryptjs";
-import { desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm"; // <--- ADICIONE "and" AQUI
 import { type Express } from "express";
 import { type Server } from "http";
 import multer from "multer";
@@ -629,6 +631,144 @@ export async function registerRoutes(
       res.status(500).json({ message: "Erro ao excluir: " + error.message });
     }
   });
+  // ==========================================
+  // --- 🛍️ PEDIDOS DE VENDA (NOVO) ---
+  // ==========================================
 
+  // 1. GET: Listar Pedidos (Com filtro de permissão)
+  app.get("/api/orders", async (req: any, res) => {
+    if (!req.isAuthenticated()) return res.status(401).send();
+    try {
+      const conditions = [eq(orders.companyId, req.user.companyId || "1")];
+
+      // Se não for Admin/Vendedor, vê apenas os próprios pedidos
+      if (req.user.role !== "admin" && req.user.role !== "sales") {
+        conditions.push(eq(orders.userId, req.user.id));
+      }
+
+      // Busca os pedidos
+      const ordersList = await db
+        .select()
+        .from(orders)
+        .where(and(...conditions))
+        .orderBy(desc(orders.createdAt));
+
+      // Popula itens e nome do cliente para cada pedido
+      // (Idealmente faríamos com JOIN, mas assim é mais seguro pra evitar conflitos agora)
+      const ordersWithDetails = await Promise.all(
+        ordersList.map(async (order) => {
+          const items = await db
+            .select()
+            .from(orderItems)
+            .where(eq(orderItems.orderId, order.id));
+
+          let customerName = "Cliente";
+          if (order.userId) {
+            const [customer] = await db
+              .select()
+              .from(users)
+              .where(eq(users.id, order.userId));
+            if (customer)
+              customerName = customer.nome || customer.firstName || "Cliente";
+          }
+
+          return {
+            ...order,
+            items,
+            customerName,
+            total: order.total || "0",
+          };
+        }),
+      );
+
+      res.json(ordersWithDetails);
+    } catch (error: any) {
+      res
+        .status(500)
+        .json({ message: "Erro ao buscar pedidos: " + error.message });
+    }
+  });
+
+  // 2. POST: Criar Pedido
+  app.post("/api/orders", async (req: any, res) => {
+    if (!req.isAuthenticated()) return res.status(401).send();
+    try {
+      const { items, ...orderData } = req.body;
+
+      const result = await db.transaction(async (tx) => {
+        // 1. Cria o pedido
+        const [newOrder] = await tx
+          .insert(orders)
+          .values({
+            ...orderData,
+            companyId: req.user.companyId || "1",
+            orderNumber: String(Date.now()).slice(-6), // Gera número simples
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .returning();
+
+        // 2. Insere os itens
+        if (items && items.length > 0) {
+          const itemsToInsert = items.map((item: any) => ({
+            orderId: newOrder.id,
+            productId: item.productId,
+            quantity: item.quantity,
+            price: item.price,
+            // Campos opcionais do schema
+            descriptionSnapshot: "",
+            skuSnapshot: "",
+            lineTotal: String(Number(item.price) * Number(item.quantity)),
+          }));
+          await tx.insert(orderItems).values(itemsToInsert);
+        }
+
+        return newOrder;
+      });
+
+      res.json(result);
+    } catch (error: any) {
+      console.error("Erro ao criar pedido:", error);
+      res
+        .status(500)
+        .json({ message: "Erro ao criar pedido: " + error.message });
+    }
+  });
+
+  // 3. GET ID: Detalhes do Pedido
+  app.get("/api/orders/:id", async (req: any, res) => {
+    if (!req.isAuthenticated()) return res.status(401).send();
+    try {
+      const [order] = await db
+        .select()
+        .from(orders)
+        .where(eq(orders.id, parseInt(req.params.id)))
+        .limit(1);
+
+      if (!order)
+        return res.status(404).json({ message: "Pedido não encontrado" });
+
+      const items = await db
+        .select({
+          id: orderItems.id,
+          productId: orderItems.productId,
+          quantity: orderItems.quantity,
+          price: orderItems.price,
+          product: products, // Traz os dados do produto junto
+        })
+        .from(orderItems)
+        .leftJoin(products, eq(orderItems.productId, products.id))
+        .where(eq(orderItems.orderId, order.id));
+
+      const [customer] = await db
+        .select()
+        .from(users)
+        .where(eq(users.id, order.userId));
+
+      res.json({ ...order, items, customer });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
   return httpServer;
 }
