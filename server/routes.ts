@@ -244,7 +244,7 @@ export async function registerRoutes(
         .insert(suppliers)
         .values({
           ...req.body,
-          companyId: Number(req.user.companyId || 1),
+          companyId: req.user.companyId || "1",
         })
         .returning();
       res.status(201).json(supplier);
@@ -270,7 +270,7 @@ export async function registerRoutes(
   });
 
   // ==========================================
-  // --- 🛒 PRODUTOS ---
+  // --- 🛒 PRODUTOS (ATUALIZADO E SEGURO) ---
   // ==========================================
   app.get("/api/products", async (req, res) => {
     const result = await db.select().from(products).orderBy(desc(products.id));
@@ -291,10 +291,13 @@ export async function registerRoutes(
         .insert(products)
         .values({
           ...req.body,
-          companyId: req.user.companyId || 1,
+          companyId: req.user.companyId || "1",
           stock: Number(req.body.stock || 0),
           price: String(req.body.price || "0"),
           cost: String(req.body.cost || "0"),
+          // 🛡️ BLINDAGEM: Converte strings vazias para null ou número correto
+          categoryId: req.body.categoryId ? Number(req.body.categoryId) : null,
+          supplierId: req.body.supplierId ? Number(req.body.supplierId) : null,
           createdAt: new Date(),
         })
         .returning();
@@ -307,9 +310,23 @@ export async function registerRoutes(
   app.patch("/api/products/:id", async (req: any, res) => {
     if (!req.isAuthenticated()) return res.status(401).send();
     try {
+      const updateData = { ...req.body, updatedAt: new Date() };
+
+      // 🛡️ BLINDAGEM: Mesma segurança do POST
+      if (req.body.categoryId !== undefined) {
+        updateData.categoryId = req.body.categoryId
+          ? Number(req.body.categoryId)
+          : null;
+      }
+      if (req.body.supplierId !== undefined) {
+        updateData.supplierId = req.body.supplierId
+          ? Number(req.body.supplierId)
+          : null;
+      }
+
       const [updated] = await db
         .update(products)
-        .set({ ...req.body, updatedAt: new Date() })
+        .set(updateData)
         .where(eq(products.id, parseInt(req.params.id)))
         .returning();
       res.json(updated);
