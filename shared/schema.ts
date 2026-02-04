@@ -133,6 +133,7 @@ export const categories = pgTable("categories", {
   blingId: integer("bling_id"),
 });
 export type Category = typeof categories.$inferSelect;
+export type InsertCategory = typeof categories.$inferInsert;
 
 // --- SUPPLIERS ---
 export const suppliers = pgTable("suppliers", {
@@ -270,6 +271,8 @@ export const orders = pgTable("orders", {
 });
 export const insertOrderSchema = createInsertSchema(orders);
 export type Order = typeof orders.$inferSelect;
+export type InsertOrder = z.infer<typeof insertOrderSchema>;
+export type InsertB2bOrder = InsertOrder;
 
 export const orderItems = pgTable("order_items", {
   id: serial("id").primaryKey(),
@@ -282,6 +285,26 @@ export const orderItems = pgTable("order_items", {
   skuSnapshot: text("sku_snapshot"),
   lineTotal: decimal("line_total"),
 });
+export type OrderItem = typeof orderItems.$inferSelect;
+export type InsertOrderItem = typeof orderItems.$inferInsert;
+export type InsertB2bOrderItem = InsertOrderItem;
+
+// --- ORDER ITEM DISCOUNTS ---
+export const orderItemDiscounts = pgTable("order_item_discounts", {
+  id: serial("id").primaryKey(),
+  orderItemId: integer("order_item_id").references(() => orderItems.id),
+  value: decimal("value", { precision: 10, scale: 2 }),
+  tipo: text("tipo"),
+  status: text("status").default("PENDENTE"),
+  solicitadoPorUserId: varchar("solicitado_por_user_id"),
+  approvedByUserId: varchar("approved_by_user_id"),
+  approvedBy: varchar("approved_by"),
+  approvedAt: timestamp("approved_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+export type OrderItemDiscount = typeof orderItemDiscounts.$inferSelect;
+export type InsertOrderItemDiscount = typeof orderItemDiscounts.$inferInsert;
 
 // --- TABELAS LEGADO (Mantidas para compatibilidade) ---
 
@@ -387,3 +410,5 @@ export const sessions = pgTable("sessions", {
 // Alias Legado
 export const b2bUsers = users;
 export const b2bProducts = products;
+export const b2bOrders = orders;
+export const b2bOrderItems = orderItems;

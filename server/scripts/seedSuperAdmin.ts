@@ -1,14 +1,15 @@
-import { db } from "../db";
 import { b2bUsers } from "@shared/schema";
 import bcrypt from "bcryptjs";
 import { eq } from "drizzle-orm";
+import { db } from "../db";
 
 const SUPER_ADMIN_EMAILS = (process.env.SUPER_ADMIN_EMAILS || "")
   .split(",")
   .map((e) => e.trim().toLowerCase())
   .filter(Boolean);
 
-const SUPER_ADMIN_PASSWORD = process.env.SUPER_ADMIN_DEFAULT_PASSWORD || "ChangeMe@2024!";
+const SUPER_ADMIN_PASSWORD =
+  process.env.SUPER_ADMIN_DEFAULT_PASSWORD || "ChangeMe@2024!";
 
 export async function seedSuperAdmin() {
   if (SUPER_ADMIN_EMAILS.length === 0) {
@@ -30,15 +31,19 @@ export async function seedSuperAdmin() {
     }
 
     const hashedPassword = await bcrypt.hash(SUPER_ADMIN_PASSWORD, 10);
-    const name = email.split("@")[0].replace(/[^a-zA-Z]/g, " ").trim() || "Super Admin";
+    const name =
+      email
+        .split("@")[0]
+        .replace(/[^a-zA-Z]/g, " ")
+        .trim() || "Super Admin";
 
     const [superAdmin] = await db
       .insert(b2bUsers)
       .values({
-        nome: name,
+        firstName: name,
         email: email,
-        senhaHash: hashedPassword,
-        ativo: true,
+        password: hashedPassword,
+        role: "super_admin",
       })
       .returning();
 

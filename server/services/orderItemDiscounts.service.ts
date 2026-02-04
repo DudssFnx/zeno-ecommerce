@@ -1,6 +1,7 @@
-import { db } from "../db";
-import { orderItemDiscounts } from "@shared/schema";
 import type { InsertOrderItemDiscount } from "@shared/schema";
+import { orderItemDiscounts } from "@shared/schema";
+import { eq } from "drizzle-orm";
+import { db } from "../db";
 
 /**
  * Solicita desconto (fica PENDENTE)
