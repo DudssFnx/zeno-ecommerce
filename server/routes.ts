@@ -472,16 +472,39 @@ export async function registerRoutes(
           .from(purchaseOrderItems)
           .where(eq(purchaseOrderItems.purchaseOrderId, orderId));
 
+        if (items.length === 0) {
+          throw new Error("Pedido não contém itens");
+        }
+
         for (const item of items) {
-          const qty = parseFloat(item.qty);
+          // Usar 'qty' se disponível, caso contrário 'quantity'
+          const qtyStr = String(item.qty || item.quantity || "0");
+          const qty = parseFloat(qtyStr);
+
+          if (isNaN(qty) || qty <= 0) {
+            console.warn(
+              `[PURCHASE] Quantidade inválida para item ${item.id}: ${qtyStr}`,
+            );
+            throw new Error(
+              `Quantidade inválida para produto ${item.productId}`,
+            );
+          }
+
+          console.log(
+            `[PURCHASE] Adicionando ${qty} unidades ao produto ${item.productId}`,
+          );
+
+          const unitCostStr = String(item.unitCost || "0");
+          const unitCost = parseFloat(unitCostStr);
+
           const updateData: any = {
             stock: sql`COALESCE(${products.stock}, 0) + ${qty}`,
             updatedAt: new Date(),
           };
-          if (parseFloat(item.unitCost) > 0)
-            updateData.cost = String(item.unitCost);
-          if (parseFloat(item.sellPrice) > 0)
-            updateData.price = String(item.sellPrice);
+
+          if (unitCost > 0) {
+            updateData.cost = unitCostStr;
+          }
 
           await tx
             .update(products)
@@ -494,18 +517,26 @@ export async function registerRoutes(
             refType: "PURCHASE_ORDER",
             refId: orderId,
             productId: item.productId,
-            qty: String(item.qty),
-            unitCost: String(item.unitCost),
+            qty: qtyStr,
+            unitCost: unitCostStr,
             notes: `Entrada Pedido ${order.number}`,
           });
         }
+
         await tx
           .update(purchaseOrders)
           .set({ status: "STOCK_POSTED", postedAt: new Date() })
           .where(eq(purchaseOrders.id, orderId));
+
+        console.log(
+          `[PURCHASE] Estoque lançado com sucesso para pedido ${orderId}`,
+        );
       });
       res.json({ message: "Estoque lançado com sucesso!" });
     } catch (error: any) {
+      console.error(
+        `[PURCHASE ERROR] Erro ao lançar estoque: ${error.message}`,
+      );
       res.status(500).json({ message: error.message });
     }
   });
@@ -532,7 +563,23 @@ export async function registerRoutes(
           .where(eq(purchaseOrderItems.purchaseOrderId, orderId));
 
         for (const item of items) {
-          const qty = parseFloat(item.qty);
+          // Usar 'qty' se disponível, caso contrário 'quantity'
+          const qtyStr = String(item.qty || item.quantity || "0");
+          const qty = parseFloat(qtyStr);
+
+          if (isNaN(qty) || qty <= 0) {
+            console.warn(
+              `[PURCHASE REVERSE] Quantidade inválida para item ${item.id}: ${qtyStr}`,
+            );
+            throw new Error(
+              `Quantidade inválida para produto ${item.productId}`,
+            );
+          }
+
+          console.log(
+            `[PURCHASE REVERSE] Removendo ${qty} unidades do produto ${item.productId}`,
+          );
+
           await tx
             .update(products)
             .set({
@@ -547,8 +594,8 @@ export async function registerRoutes(
             refType: "PURCHASE_ORDER",
             refId: orderId,
             productId: item.productId,
-            qty: String(item.qty),
-            unitCost: String(item.unitCost),
+            qty: qtyStr,
+            unitCost: String(item.unitCost || "0"),
             notes: `Estorno manual do pedido ${order.number}`,
           });
         }
@@ -557,12 +604,19 @@ export async function registerRoutes(
           .update(purchaseOrders)
           .set({ status: "DRAFT", postedAt: null })
           .where(eq(purchaseOrders.id, orderId));
+
+        console.log(
+          `[PURCHASE REVERSE] Estoque estornado com sucesso para pedido ${orderId}`,
+        );
       });
 
       res.json({
         message: "Estoque estornado e pedido voltou para Rascunho.",
       });
     } catch (error: any) {
+      console.error(
+        `[PURCHASE REVERSE ERROR] Erro ao estornar estoque: ${error.message}`,
+      );
       res.status(500).json({ message: error.message });
     }
   });
