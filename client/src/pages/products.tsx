@@ -513,6 +513,25 @@ export default function ProductsPage() {
 
                 {/* --- ABA 1: CARACTERÍSTICAS --- */}
                 <TabsContent value="dados" className="space-y-6 mt-6">
+                  {/* Alerta de Campos Obrigatórios */}
+                  {(!form.watch("name") ||
+                    !form.watch("sku") ||
+                    !form.watch("price")) && (
+                    <div className="flex items-start gap-3 p-4 rounded-lg border border-amber-200 bg-amber-50">
+                      <AlertCircle className="h-5 w-5 text-amber-600 mt-0.5 flex-shrink-0" />
+                      <div>
+                        <p className="font-semibold text-amber-900">
+                          Campos obrigatórios faltando
+                        </p>
+                        <ul className="text-sm text-amber-800 mt-1 space-y-1">
+                          {!form.watch("name") && <li>• Nome do Produto</li>}
+                          {!form.watch("sku") && <li>• Código (SKU)</li>}
+                          {!form.watch("price") && <li>• Preço de Venda</li>}
+                        </ul>
+                      </div>
+                    </div>
+                  )}
+
                   <Card>
                     <CardHeader>
                       <CardTitle>Informações Básicas</CardTitle>
@@ -544,7 +563,10 @@ export default function ProductsPage() {
                           name="sku"
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel>Código (SKU)</FormLabel>
+                              <FormLabel>
+                                Código (SKU)
+                                <span className="text-red-500">*</span>
+                              </FormLabel>
                               <FormControl>
                                 <Input {...field} />
                               </FormControl>
@@ -737,6 +759,7 @@ export default function ProductsPage() {
                               <FormItem>
                                 <FormLabel className="text-base font-semibold text-blue-600">
                                   Preço de Venda
+                                  <span className="text-red-500">*</span>
                                 </FormLabel>
                                 <FormControl>
                                   <div className="relative">
@@ -877,11 +900,17 @@ export default function ProductsPage() {
                           </div>
                         </div>
                         {isLoss && (
-                          <div className="mt-4 flex items-center gap-2 text-sm text-red-600 bg-red-100 p-2 rounded-md border border-red-200">
-                            <AlertCircle className="h-4 w-4" />
-                            <span>
-                              Atenção: Preço de venda menor que o custo!
-                            </span>
+                          <div className="mt-4 flex items-start gap-3 p-3 rounded-lg border border-red-200 bg-red-50">
+                            <AlertCircle className="h-5 w-5 text-red-600 mt-0.5 flex-shrink-0" />
+                            <div>
+                              <p className="font-semibold text-red-900">
+                                Aviso: Prejuízo
+                              </p>
+                              <p className="text-sm text-red-800 mt-1">
+                                O preço de venda (R$ {watchPrice.toFixed(2)}) é
+                                menor que o custo (R$ {watchCost.toFixed(2)}).
+                              </p>
+                            </div>
                           </div>
                         )}
                         <p className="text-xs text-center text-muted-foreground mt-4">
