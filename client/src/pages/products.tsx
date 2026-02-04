@@ -491,17 +491,7 @@ export default function ProductsPage() {
               onClick={form.handleSubmit(handleSubmit)}
               disabled={
                 createProductMutation.isPending ||
-                updateProductMutation.isPending ||
-                !form.watch("name") ||
-                !form.watch("sku") ||
-                !form.watch("price")
-              }
-              title={
-                !form.watch("name") ||
-                !form.watch("sku") ||
-                !form.watch("price")
-                  ? "Preencha os campos obrigatórios"
-                  : ""
+                updateProductMutation.isPending
               }
             >
               {createProductMutation.isPending ||
