@@ -126,6 +126,7 @@ export default function ProductsPage() {
   const [isUploading, setIsUploading] = useState(false);
   const [activeTab, setActiveTab] = useState("dados");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [showValidationErrors, setShowValidationErrors] = useState(false);
 
   const MAX_IMAGES = 5;
 
@@ -374,6 +375,13 @@ export default function ProductsPage() {
   });
 
   const handleSubmit = (values: ProductFormValues) => {
+    // Validar campos obrigatórios
+    const hasRequiredFields = values.name && values.sku && values.price;
+    if (!hasRequiredFields) {
+      setShowValidationErrors(true);
+      return;
+    }
+
     if (editingProduct) {
       updateProductMutation.mutate({ id: editingProduct.id, data: values });
     } else {
@@ -408,6 +416,7 @@ export default function ProductsPage() {
     setEditingProduct(null);
     setImageUrls([]);
     setActiveTab("dados");
+    setShowValidationErrors(false);
     setViewMode("form");
   };
 
@@ -441,6 +450,7 @@ export default function ProductsPage() {
     setEditingProduct(product);
     setImageUrls(product.images || (product.image ? [product.image] : []));
     setActiveTab("dados");
+    setShowValidationErrors(false);
     setViewMode("form");
   };
 
@@ -481,7 +491,17 @@ export default function ProductsPage() {
               onClick={form.handleSubmit(handleSubmit)}
               disabled={
                 createProductMutation.isPending ||
-                updateProductMutation.isPending
+                updateProductMutation.isPending ||
+                !form.watch("name") ||
+                !form.watch("sku") ||
+                !form.watch("price")
+              }
+              title={
+                !form.watch("name") ||
+                !form.watch("sku") ||
+                !form.watch("price")
+                  ? "Preencha os campos obrigatórios"
+                  : ""
               }
             >
               {createProductMutation.isPending ||
@@ -498,6 +518,26 @@ export default function ProductsPage() {
         <div className="flex-1 overflow-auto p-6">
           <Form {...form}>
             <form className="max-w-5xl mx-auto space-y-8">
+              {/* Alerta de Validação - Aparece em todas as abas */}
+              {showValidationErrors &&
+                (!form.watch("name") ||
+                  !form.watch("sku") ||
+                  !form.watch("price")) && (
+                  <div className="flex items-start gap-3 p-4 rounded-lg border border-red-200 bg-red-50 sticky top-0 z-10">
+                    <AlertCircle className="h-5 w-5 text-red-600 mt-0.5 flex-shrink-0" />
+                    <div>
+                      <p className="font-semibold text-red-900">
+                        Campos obrigatórios não preenchidos
+                      </p>
+                      <ul className="text-sm text-red-800 mt-1 space-y-1">
+                        {!form.watch("name") && <li>• Nome do Produto</li>}
+                        {!form.watch("sku") && <li>• Código (SKU)</li>}
+                        {!form.watch("price") && <li>• Preço de Venda</li>}
+                      </ul>
+                    </div>
+                  </div>
+                )}
+
               <Tabs
                 value={activeTab}
                 onValueChange={setActiveTab}
@@ -513,25 +553,6 @@ export default function ProductsPage() {
 
                 {/* --- ABA 1: CARACTERÍSTICAS --- */}
                 <TabsContent value="dados" className="space-y-6 mt-6">
-                  {/* Alerta de Campos Obrigatórios */}
-                  {(!form.watch("name") ||
-                    !form.watch("sku") ||
-                    !form.watch("price")) && (
-                    <div className="flex items-start gap-3 p-4 rounded-lg border border-amber-200 bg-amber-50">
-                      <AlertCircle className="h-5 w-5 text-amber-600 mt-0.5 flex-shrink-0" />
-                      <div>
-                        <p className="font-semibold text-amber-900">
-                          Campos obrigatórios faltando
-                        </p>
-                        <ul className="text-sm text-amber-800 mt-1 space-y-1">
-                          {!form.watch("name") && <li>• Nome do Produto</li>}
-                          {!form.watch("sku") && <li>• Código (SKU)</li>}
-                          {!form.watch("price") && <li>• Preço de Venda</li>}
-                        </ul>
-                      </div>
-                    </div>
-                  )}
-
                   <Card>
                     <CardHeader>
                       <CardTitle>Informações Básicas</CardTitle>
