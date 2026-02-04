@@ -310,7 +310,7 @@ export type InsertOrderItemDiscount = typeof orderItemDiscounts.$inferInsert;
 
 export const paymentTypes = pgTable("payment_types", {
   id: serial("id").primaryKey(),
-  companyId: varchar("company_id"), // Corrigido
+  companyId: varchar("company_id"),
   name: text("name").notNull(),
   type: text("type"),
   description: text("description"),
@@ -324,9 +324,15 @@ export const paymentTypes = pgTable("payment_types", {
   compensationDays: integer("compensation_days"),
   isStoreCredit: boolean("is_store_credit"),
 
+  // NOVO: Extensão para prazos
+  paymentTermType: text("payment_term_type").default("VISTA"), // VISTA | PRAZO
+  paymentTermId: integer("payment_term_id"), // FK para paymentTerms
+
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at"),
 });
+export type PaymentType = typeof paymentTypes.$inferSelect;
+export type InsertPaymentType = typeof paymentTypes.$inferInsert;
 
 export const purchaseOrders = pgTable("purchase_orders", {
   id: serial("id").primaryKey(),
@@ -406,6 +412,195 @@ export const sessions = pgTable("sessions", {
   sess: jsonb("sess").notNull(),
   expire: timestamp("expire").notNull(),
 });
+
+// ==========================================
+// 💳 FINANCIAL TABLES
+// ==========================================
+
+export const paymentTerms = pgTable("payment_terms", {
+  id: serial("id").primaryKey(),
+  companyId: varchar("company_id").notNull(),
+  name: text("name").notNull(),
+  description: text("description"),
+  installmentCount: integer("installment_count").default(1),
+  intervalDays: integer("interval_days").default(0),
+  firstPaymentDays: integer("first_payment_days").default(0),
+  interestMonthly: decimal("interest_monthly", {
+    precision: 5,
+    scale: 2,
+  }).default("0"),
+  finePercent: decimal("fine_percent", { precision: 5, scale: 2 }).default("0"),
+  discountPercent: decimal("discount_percent", {
+    precision: 5,
+    scale: 2,
+  }).default("0"),
+  active: boolean("active").default(true),
+  sortOrder: integer("sort_order").default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const receivables = pgTable("receivables", {
+  id: serial("id").primaryKey(),
+  companyId: varchar("company_id").notNull(),
+  receivableNumber: text("receivable_number").unique().notNull(),
+  description: text("description"),
+  orderId: integer("order_id"),
+  customerId: varchar("customer_id").notNull(),
+  paymentTypeId: integer("payment_type_id"),
+  paymentTermId: integer("payment_term_id"),
+  amount: decimal("amount", { precision: 12, scale: 2 }).notNull(),
+  amountPaid: decimal("amount_paid", { precision: 12, scale: 2 }).default("0"),
+  amountRemaining: decimal("amount_remaining", {
+    precision: 12,
+    scale: 2,
+  }).notNull(),
+  issueDate: text("issue_date").notNull(),
+  dueDate: text("due_date").notNull(),
+  status: text("status").default("ABERTA"), // ABERTA | VENCIDA | PAGA | CANCELADA | PARCIAL
+  isOverdue: boolean("is_overdue").default(false),
+  paidAt: timestamp("paid_at"),
+  cancelledAt: timestamp("cancelled_at"),
+  cancelledReason: text("cancelled_reason"),
+  cancelledBy: text("cancelled_by"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const receivableInstallments = pgTable("receivable_installments", {
+  id: serial("id").primaryKey(),
+  receivableId: integer("receivable_id").notNull(),
+  installmentNumber: integer("installment_number").notNull(),
+  amount: decimal("amount", { precision: 12, scale: 2 }).notNull(),
+  amountPaid: decimal("amount_paid", { precision: 12, scale: 2 }).default("0"),
+  amountRemaining: decimal("amount_remaining", {
+    precision: 12,
+    scale: 2,
+  }).notNull(),
+  dueDate: text("due_date").notNull(),
+  status: text("status").default("ABERTA"), // ABERTA | VENCIDA | PAGA
+  isOverdue: boolean("is_overdue").default(false),
+  appliedInterest: decimal("applied_interest", {
+    precision: 12,
+    scale: 2,
+  }).default("0"),
+  appliedFine: decimal("applied_fine", { precision: 12, scale: 2 }).default(
+    "0",
+  ),
+  paidAt: timestamp("paid_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const receivablePayments = pgTable("receivable_payments", {
+  id: serial("id").primaryKey(),
+  companyId: varchar("company_id").notNull(),
+  receivableId: integer("receivable_id").notNull(),
+  installmentId: integer("installment_id"),
+  paymentNumber: text("payment_number").unique().notNull(),
+  amount: decimal("amount", { precision: 12, scale: 2 }).notNull(),
+  paymentMethod: text("payment_method"),
+  reference: text("reference"),
+  paymentDate: text("payment_date").notNull(),
+  receivedAt: timestamp("received_at").defaultNow(),
+  notes: text("notes"),
+  receivedBy: text("received_by"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const payables = pgTable("payables", {
+  id: serial("id").primaryKey(),
+  companyId: varchar("company_id").notNull(),
+  payableNumber: text("payable_number").unique().notNull(),
+  description: text("description"),
+  purchaseOrderId: integer("purchase_order_id"),
+  supplierId: integer("supplier_id").notNull(),
+  paymentTypeId: integer("payment_type_id"),
+  paymentTermId: integer("payment_term_id"),
+  amount: decimal("amount", { precision: 12, scale: 2 }).notNull(),
+  amountPaid: decimal("amount_paid", { precision: 12, scale: 2 }).default("0"),
+  amountRemaining: decimal("amount_remaining", {
+    precision: 12,
+    scale: 2,
+  }).notNull(),
+  issueDate: text("issue_date").notNull(),
+  dueDate: text("due_date").notNull(),
+  status: text("status").default("ABERTA"), // ABERTA | VENCIDA | PAGA | CANCELADA | PARCIAL
+  isOverdue: boolean("is_overdue").default(false),
+  paidAt: timestamp("paid_at"),
+  cancelledAt: timestamp("cancelled_at"),
+  cancelledReason: text("cancelled_reason"),
+  cancelledBy: text("cancelled_by"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const payableInstallments = pgTable("payable_installments", {
+  id: serial("id").primaryKey(),
+  payableId: integer("payable_id").notNull(),
+  installmentNumber: integer("installment_number").notNull(),
+  amount: decimal("amount", { precision: 12, scale: 2 }).notNull(),
+  amountPaid: decimal("amount_paid", { precision: 12, scale: 2 }).default("0"),
+  amountRemaining: decimal("amount_remaining", {
+    precision: 12,
+    scale: 2,
+  }).notNull(),
+  dueDate: text("due_date").notNull(),
+  status: text("status").default("ABERTA"), // ABERTA | VENCIDA | PAGA
+  isOverdue: boolean("is_overdue").default(false),
+  appliedInterest: decimal("applied_interest", {
+    precision: 12,
+    scale: 2,
+  }).default("0"),
+  appliedFine: decimal("applied_fine", { precision: 12, scale: 2 }).default(
+    "0",
+  ),
+  paidAt: timestamp("paid_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const payablePayments = pgTable("payable_payments", {
+  id: serial("id").primaryKey(),
+  companyId: varchar("company_id").notNull(),
+  payableId: integer("payable_id").notNull(),
+  installmentId: integer("installment_id"),
+  paymentNumber: text("payment_number").unique().notNull(),
+  amount: decimal("amount", { precision: 12, scale: 2 }).notNull(),
+  paymentMethod: text("payment_method"),
+  reference: text("reference"),
+  paymentDate: text("payment_date").notNull(),
+  paidAt: timestamp("paid_at").defaultNow(),
+  notes: text("notes"),
+  paidBy: text("paid_by"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// ==========================================
+// 📊 TYPES EXPORTS
+// ==========================================
+
+export type PaymentTerm = typeof paymentTerms.$inferSelect;
+export type InsertPaymentTerm = typeof paymentTerms.$inferInsert;
+
+export type Receivable = typeof receivables.$inferSelect;
+export type InsertReceivable = typeof receivables.$inferInsert;
+
+export type ReceivableInstallment = typeof receivableInstallments.$inferSelect;
+export type InsertReceivableInstallment =
+  typeof receivableInstallments.$inferInsert;
+
+export type ReceivablePayment = typeof receivablePayments.$inferSelect;
+export type InsertReceivablePayment = typeof receivablePayments.$inferInsert;
+
+export type Payable = typeof payables.$inferSelect;
+export type InsertPayable = typeof payables.$inferInsert;
+
+export type PayableInstallment = typeof payableInstallments.$inferSelect;
+export type InsertPayableInstallment = typeof payableInstallments.$inferInsert;
+
+export type PayablePayment = typeof payablePayments.$inferSelect;
+export type InsertPayablePayment = typeof payablePayments.$inferInsert;
 
 // Alias Legado
 export const b2bUsers = users;

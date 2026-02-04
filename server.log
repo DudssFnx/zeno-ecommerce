@@ -1,0 +1,29 @@
+
+> rest-express@1.0.0 dev
+> cross-env NODE_ENV=development npx tsx -r dotenv/config server/index.ts
+
+[SEED] No SUPER_ADMIN_EMAILS configured, skipping seed
+[Bling] Initializing tokens from database...
+[Bling] No tokens found in database
+[Bling] No stored tokens found. Authorization required.
+[Bling] No saved connection found - authorization required
+[Financial] Initial overdue accounts status check completed
+1:08:01 AM [express] serving on port 5000
+
+A PostCSS plugin did not pass the `from` option to `postcss.parse`. This may cause imported assets to be incorrectly transformed. If you've recently added a PostCSS plugin that raised this warning, please contact the package author to fix the issue.
+1:08:09 AM [express] GET /api/settings/age_verification_popup 200 in 246ms
+1:08:10 AM [express] GET /api/auth/user 304 in 383ms :: {"id":"8c982566-b236-4121-8bfe-a51be9615f25","companyId":"1","email":"admin@admin.com","password":"$2b$10$xPqEWzdU4oASRT0JJQ1JP.yS1lCF3bd9S4ST4jRQbJNcGDc6DuLGu","firstName":"Admin","lastName":"Zeno","profileImageUrl":null,"role":"admin","allowedBrands":null,"customerType":"varejo","company":null,"approved":true,"phone":null,"personType":null,"cnpj":"00.000.000/0001-00","cpf":null,"tradingName":null,"stateRegistration":null,"cep":null,"address":null,"addressNumber":null,"complement":null,"neighborhood":null,"city":null,"state":null,"tag":null,"instagram":null,"notes":null,"createdAt":"2026-01-28T22:55:38.314Z","updatedAt":"2026-01-28T22:55:38.314Z","isB2bUser":true,"nome":"Admin"}
+1:08:10 AM [express] GET /api/coupons 200 in 248ms
+1:08:10 AM [express] GET /api/user/companies 200 in 251ms
+1:08:10 AM [express] GET /api/company/me 304 in 359ms :: {"id":"1","razaoSocial":"asdadad","fantasyName":null,"nomeFantasia":"Zeno Matriz teste","cnpj":"00.000.000/0001-00","email":"admin@admin.com","phone":null,"telefone":null,"address":null,"cep":"04829020","endereco":null,"numero":null,"complemento":null,"bairro":null,"cidade":null,"estado":null,"inscricaoEstadual":null,"tipoCliente":"VAREJO","approvalStatus":"APROVADO","active":true,"ativo":true,"slug":"matriz","createdAt":"2026-01-27T15:46:55.685Z","updatedAt":"2026-01-30T05:14:00.825Z"}
+1:08:11 AM [express] GET /api/auth/user 304 in 1210ms :: {"id":"8c982566-b236-4121-8bfe-a51be9615f25","companyId":"1","email":"admin@admin.com","password":"$2b$10$xPqEWzdU4oASRT0JJQ1JP.yS1lCF3bd9S4ST4jRQbJNcGDc6DuLGu","firstName":"Admin","lastName":"Zeno","profileImageUrl":null,"role":"admin","allowedBrands":null,"customerType":"varejo","company":null,"approved":true,"phone":null,"personType":null,"cnpj":"00.000.000/0001-00","cpf":null,"tradingName":null,"stateRegistration":null,"cep":null,"address":null,"addressNumber":null,"complement":null,"neighborhood":null,"city":null,"state":null,"tag":null,"instagram":null,"notes":null,"createdAt":"2026-01-28T22:55:38.314Z","updatedAt":"2026-01-28T22:55:38.314Z","isB2bUser":true,"nome":"Admin"}
+1:08:11 AM [express] GET /api/user/companies 200 in 250ms
+1:10:05 AM [express] GET /api/payment-types 200 in 738ms
+1:10:05 AM [express] GET /api/payment-integrations 200 in 731ms
+1:10:09 AM [express] GET /api/payables/dashboard 200 in 1202ms :: {"overview":{"totalPayables":0,"totalPaid":0,"totalPending":0,"totalOverdue":0,"overdueCount":0,"payablesCount":0},"upcomingPayables":[],"overduePayables":[]}
+1:10:09 AM [express] GET /api/payables 200 in 1204ms :: {}
+1:10:10 AM [express] GET /api/credits/dashboard 200 in 248ms
+1:10:10 AM [express] GET /api/users 304 in 367ms :: {"0":{"id":"37201f20-93e1-421a-99e8-60714489e73c","companyId":"1","email":"testevendas@gmail.com","password":"$2b$10$l5voOuFA3iyFXORU7OX6oO3U5nSzYNy6LNJUiD0VUWABHEZLaLy3G","firstName":"vendedor teste ","lastName":null,"profileImageUrl":null,"role":"sales","allowedBrands":null,"customerType":null,"company":null,"approved":true,"phone":"(22) 22222-2222","personType":null,"cnpj":null,"cpf":"99999999999","tradingName":null,"stateRegistration":null,"cep":null,"address":null,"addressNumber":null,"complement":null,"neighborhood":null,"city":null,"state":null,"tag":null,"instagram":null,"notes":null,"createdAt":"2026-02-03T03:48:34.896Z","updatedAt":"2026-02-03T03:48:45.882Z"},"1":{"id":"1415b627-5588-4c03-b60e-1f9f5761e30e","companyId":"1","email":"teste 1 @","password":"$2b$10$/5fjZYOW50GldH8XTcPp1e.wGG0PWD5ONY.oboacIbWWUtV9wYYMy","firstName":"","lastName":null,"profileImageUrl":null,"role":"customer","allowedBrands":null,"customerType":"juridica","company":"teste 1 ","approved":true,"phone":"","personType":"juridica","cnpj":"99999999999999","cpf":null,"tradingName":"","stateRegistration":"","cep":"","address":"","addressNumber":"","complement":"","neighborhood":"","city":"","state":"","tag":null,"instagram":null,"notes":null,"createdAt":"2026-01-29T23:05:11.618Z","updatedAt":"2026-01-29T23:05:36.909Z"},"2":{"id":"8c982566-b236-4121-8bfe-a51be9615f25","companyId":"1","email":"admin@admin.com","password":"$2b$10$xPqEWzdU4oASRT0JJQ1JP.yS1lCF3bd9S4ST4jRQbJNcGDc6DuLGu","firstName":"Admin","lastName":"Zeno","profileImageUrl":null,"role":"admin","allowedBrands":null,"customerType":"varejo","company":null,"approved":true,"phone":null,"personType":null,"cnpj":"00.000.000/0001-00","cpf":null,"tradingName":null,"stateRegistration":null,"cep":null,"address":null,"addressNumber":null,"complement":null,"neighborhood":null,"city":null,"state":null,"tag":null,"instagram":null,"notes":null,"createdAt":"2026-01-28T22:55:38.314Z","updatedAt":"2026-01-28T22:55:38.314Z"}}
+1:10:15 AM [express] GET /api/credits/customer/1415b627-5588-4c03-b60e-1f9f5761e30e 200 in 258ms
+Deseja finalizar o arquivo em lotes (S/N)? Deseja finalizar o arquivo em lotes (S/N)? Deseja finalizar o arquivo em lotes (S/N)? Deseja finalizar o arquivo em lotes (S/N)? Deseja finalizar o arquivo em lotes (S/N)? Deseja finalizar o arquivo em lotes (S/N)? Deseja finalizar o arquivo em lotes (S/N)? 
+^C

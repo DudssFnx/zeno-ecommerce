@@ -5,6 +5,8 @@ import { pool } from "./db";
 import { registerRoutes } from "./routes";
 import { seedSuperAdmin } from "./scripts/seedSuperAdmin";
 import { initializeBlingTokens } from "./services/bling";
+import { updateOverduePayables as updateOverduePayablesService } from "./services/payables.service";
+import { updateOverdueReceivables } from "./services/receivables.service";
 import { serveStatic } from "./static";
 
 const app = express();
@@ -103,6 +105,29 @@ app.use((req, res, next) => {
     }
   } catch (error) {
     console.error("[Bling] Failed to initialize tokens:", error);
+  }
+
+  // 4. Setup cron job para atualizar contas vencidas (executar a cada 1 hora)
+  setInterval(
+    async () => {
+      try {
+        await updateOverdueReceivables();
+        await updateOverduePayablesService();
+        console.log("[Financial] Overdue accounts status updated successfully");
+      } catch (error) {
+        console.error("[Financial] Failed to update overdue accounts:", error);
+      }
+    },
+    60 * 60 * 1000,
+  ); // 1 hora em milissegundos
+
+  // Executar também na inicialização
+  try {
+    await updateOverdueReceivables();
+    await updateOverduePayablesService();
+    console.log("[Financial] Initial overdue accounts status check completed");
+  } catch (error) {
+    console.error("[Financial] Initial overdue status check failed:", error);
   }
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {

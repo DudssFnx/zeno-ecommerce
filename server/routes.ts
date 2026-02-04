@@ -15,7 +15,10 @@ import { type Express } from "express";
 import { type Server } from "http";
 import multer from "multer";
 import { db } from "./db";
+import { registerFinancialRoutes } from "./financialRoutes";
 import { setupAuth } from "./replitAuth";
+import { createPayableFromPurchaseOrder } from "./services/payables.service";
+import { createReceivableFromOrder } from "./services/receivables.service";
 
 // ✅ 1. FUNÇÃO AUXILIAR
 function cleanDocument(doc: string | undefined | null) {
@@ -532,6 +535,22 @@ export async function registerRoutes(
           `[PURCHASE] Estoque lançado com sucesso para pedido ${orderId}`,
         );
       });
+
+      // 🎯 AUTO-CRIAR PAYABLE se o pagamento for PRAZO
+      try {
+        const companyId = req.user.company;
+        await createPayableFromPurchaseOrder(orderId, companyId);
+        console.log(
+          `[Financial] Payable auto-created for purchase order #${orderId}`,
+        );
+      } catch (error: any) {
+        // Se não conseguir criar payable (ex: não é prazo), apenas ignora
+        console.log(
+          `[Financial] Could not auto-create payable for purchase order #${orderId}:`,
+          error.message,
+        );
+      }
+
       res.json({ message: "Estoque lançado com sucesso!" });
     } catch (error: any) {
       console.error(
@@ -1035,6 +1054,20 @@ export async function registerRoutes(
           .set({ status: "FATURADO", updatedAt: new Date() })
           .where(eq(orders.id, id));
       });
+
+      // 🎯 AUTO-CRIAR RECEIVABLE se o pagamento for PRAZO
+      try {
+        const companyId = req.user.company;
+        await createReceivableFromOrder(id, companyId);
+        console.log(`[Financial] Receivable auto-created for order #${id}`);
+      } catch (error: any) {
+        // Se não conseguir criar receivable (ex: não é prazo), apenas ignora
+        console.log(
+          `[Financial] Could not auto-create receivable for order #${id}:`,
+          error.message,
+        );
+      }
+
       res.json({ message: "Pedido faturado e estoque baixado." });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
@@ -1220,5 +1253,9 @@ export async function registerRoutes(
       res.status(500).json({ message: error.message });
     }
   });
+
+  // Registrar rotas financeiras
+  registerFinancialRoutes(app);
+
   return httpServer;
 }
