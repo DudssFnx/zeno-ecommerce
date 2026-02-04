@@ -1,6 +1,6 @@
-import { db } from "../db";
 import { b2bOrderItems, b2bProducts } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
+import { db } from "../db";
 
 /**
  * Reserva estoque ao gerar pedido

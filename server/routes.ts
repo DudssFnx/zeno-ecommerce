@@ -1,5 +1,5 @@
 import {
-  companies, // <--- ESSENCIAL
+  companies,
   orderItems,
   orders,
   products,
@@ -10,7 +10,7 @@ import {
   users,
 } from "@shared/schema";
 import bcrypt from "bcryptjs";
-import { and, desc, eq, sql } from "drizzle-orm"; // <--- ADICIONE "and" AQUI
+import { and, desc, eq, sql } from "drizzle-orm";
 import { type Express } from "express";
 import { type Server } from "http";
 import multer from "multer";
@@ -45,7 +45,7 @@ export async function registerRoutes(
   });
 
   // ==========================================
-  // 🔐 AUTENTICAÇÃO
+  // 🔐 AUTENTICAÇÃO (MANTIDO IGUAL)
   // ==========================================
   app.post("/api/auth/login", async (req: any, res, next) => {
     try {
@@ -105,7 +105,7 @@ export async function registerRoutes(
   });
 
   // ==========================================
-  // 🏢 EMPRESA
+  // 🏢 EMPRESA (MANTIDO IGUAL)
   // ==========================================
   app.get("/api/company/me", async (req: any, res) => {
     if (!req.isAuthenticated()) return res.status(401).send();
@@ -141,7 +141,7 @@ export async function registerRoutes(
   });
 
   // ==========================================
-  // --- 👥 USUÁRIOS ---
+  // --- 👥 USUÁRIOS (MANTIDO IGUAL) ---
   // ==========================================
   app.get("/api/users", async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).send();
@@ -217,7 +217,7 @@ export async function registerRoutes(
   });
 
   // ==========================================
-  // --- 🚚 FORNECEDORES ---
+  // --- 🚚 FORNECEDORES (MANTIDO IGUAL) ---
   // ==========================================
   app.get("/api/suppliers", async (req: any, res) => {
     if (!req.isAuthenticated()) return res.status(401).send();
@@ -272,7 +272,7 @@ export async function registerRoutes(
   });
 
   // ==========================================
-  // --- 🛒 PRODUTOS (ATUALIZADO E SEGURO) ---
+  // --- 🛒 PRODUTOS (MANTIDO IGUAL) ---
   // ==========================================
   app.get("/api/products", async (req, res) => {
     const result = await db.select().from(products).orderBy(desc(products.id));
@@ -314,7 +314,6 @@ export async function registerRoutes(
     try {
       const updateData = { ...req.body, updatedAt: new Date() };
 
-      // 🛡️ BLINDAGEM: Mesma segurança do POST
       if (req.body.categoryId !== undefined) {
         updateData.categoryId = req.body.categoryId
           ? Number(req.body.categoryId)
@@ -344,10 +343,8 @@ export async function registerRoutes(
   });
 
   // ==========================================
-  // --- 📦 PEDIDOS DE COMPRA (COMPLETO) ---
+  // --- 📦 PEDIDOS DE COMPRA (MANTIDO IGUAL) ---
   // ==========================================
-
-  // 1. GET: Com JOIN para trazer nome do fornecedor e contagem
   app.get("/api/purchases", async (req: any, res) => {
     if (!req.isAuthenticated()) return res.status(401).send();
     try {
@@ -376,7 +373,6 @@ export async function registerRoutes(
     }
   });
 
-  // 2. GET ID: Detalhes
   app.get("/api/purchases/:id", async (req: any, res) => {
     if (!req.isAuthenticated()) return res.status(401).send();
     const id = parseInt(req.params.id);
@@ -416,7 +412,6 @@ export async function registerRoutes(
     }
   });
 
-  // 3. POST: CRIAÇÃO DE PEDIDO
   app.post("/api/purchases", async (req: any, res) => {
     if (!req.isAuthenticated()) return res.status(401).send();
     try {
@@ -459,7 +454,6 @@ export async function registerRoutes(
     }
   });
 
-  // 4. POST STOCK: LANÇAR ESTOQUE (COM COALESCE PARA NÃO FALHAR)
   app.post("/api/purchases/:id/post-stock", async (req: any, res) => {
     if (!req.isAuthenticated()) return res.status(401).send();
     const orderId = parseInt(req.params.id);
@@ -480,7 +474,6 @@ export async function registerRoutes(
 
         for (const item of items) {
           const qty = parseFloat(item.qty);
-          // COALESCE garante soma correta mesmo se estoque for null
           const updateData: any = {
             stock: sql`COALESCE(${products.stock}, 0) + ${qty}`,
             updatedAt: new Date(),
@@ -517,7 +510,6 @@ export async function registerRoutes(
     }
   });
 
-  // ✅ 4.1. REVERSE STOCK: ESTORNO SEM EXCLUIR (VOLTAR P/ RASCUNHO)
   app.post("/api/purchases/:id/reverse-stock", async (req: any, res) => {
     if (!req.isAuthenticated()) return res.status(401).send();
     const orderId = parseInt(req.params.id);
@@ -541,7 +533,6 @@ export async function registerRoutes(
 
         for (const item of items) {
           const qty = parseFloat(item.qty);
-          // Subtrai do estoque
           await tx
             .update(products)
             .set({
@@ -550,7 +541,6 @@ export async function registerRoutes(
             })
             .where(eq(products.id, item.productId));
 
-          // Registra saída
           await tx.insert(stockMovements).values({
             type: "OUT",
             reason: "PURCHASE_REVERSE",
@@ -563,20 +553,20 @@ export async function registerRoutes(
           });
         }
 
-        // Volta status para DRAFT e limpa data
         await tx
           .update(purchaseOrders)
           .set({ status: "DRAFT", postedAt: null })
           .where(eq(purchaseOrders.id, orderId));
       });
 
-      res.json({ message: "Estoque estornado e pedido voltou para Rascunho." });
+      res.json({
+        message: "Estoque estornado e pedido voltou para Rascunho.",
+      });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
   });
 
-  // ✅ 5. DELETE PURCHASE: CORRIGIDO (LIMPA VÍNCULOS ANTES)
   app.delete("/api/purchases/:id", async (req: any, res) => {
     if (!req.isAuthenticated()) return res.status(401).send();
     const orderId = parseInt(req.params.id);
@@ -590,7 +580,6 @@ export async function registerRoutes(
           .limit(1);
         if (!order) throw new Error("Pedido não encontrado");
 
-        // Se o estoque já foi lançado, ESTORNAR
         if (order.status === "STOCK_POSTED") {
           const items = await tx
             .select()
@@ -598,7 +587,6 @@ export async function registerRoutes(
             .where(eq(purchaseOrderItems.purchaseOrderId, orderId));
           for (const item of items) {
             const qty = parseFloat(item.qty);
-            // Subtrai do estoque
             await tx
               .update(products)
               .set({
@@ -609,19 +597,16 @@ export async function registerRoutes(
           }
         }
 
-        // 🛑 LIMPEZA IMPORTANTE: Apaga os movimentos de estoque ANTES de apagar o pedido
         await tx
           .delete(stockMovements)
           .where(
             sql`${stockMovements.refType} = 'PURCHASE_ORDER' AND ${stockMovements.refId} = ${orderId}`,
           );
 
-        // Apaga os itens
         await tx
           .delete(purchaseOrderItems)
           .where(eq(purchaseOrderItems.purchaseOrderId, orderId));
 
-        // Apaga o pedido
         await tx.delete(purchaseOrders).where(eq(purchaseOrders.id, orderId));
       });
 
@@ -631,37 +616,31 @@ export async function registerRoutes(
       res.status(500).json({ message: "Erro ao excluir: " + error.message });
     }
   });
+
   // ==========================================
-  // --- 🛍️ PEDIDOS DE VENDA (NOVO) ---
+  // --- 🛍️ PEDIDOS DE VENDA (API REVISADA) ---
   // ==========================================
 
-  // 1. GET: Listar Pedidos (Com filtro de permissão)
+  // 1. GET: Listar Pedidos
   app.get("/api/orders", async (req: any, res) => {
     if (!req.isAuthenticated()) return res.status(401).send();
     try {
       const conditions = [eq(orders.companyId, req.user.companyId || "1")];
-
-      // Se não for Admin/Vendedor, vê apenas os próprios pedidos
       if (req.user.role !== "admin" && req.user.role !== "sales") {
         conditions.push(eq(orders.userId, req.user.id));
       }
-
-      // Busca os pedidos
       const ordersList = await db
         .select()
         .from(orders)
         .where(and(...conditions))
         .orderBy(desc(orders.createdAt));
 
-      // Popula itens e nome do cliente para cada pedido
-      // (Idealmente faríamos com JOIN, mas assim é mais seguro pra evitar conflitos agora)
       const ordersWithDetails = await Promise.all(
         ordersList.map(async (order) => {
           const items = await db
             .select()
             .from(orderItems)
             .where(eq(orderItems.orderId, order.id));
-
           let customerName = "Cliente";
           if (order.userId) {
             const [customer] = await db
@@ -672,20 +651,27 @@ export async function registerRoutes(
               customerName = customer.nome || customer.firstName || "Cliente";
           }
 
+          // VERIFICA SE O ESTOQUE JÁ FOI BAIXADO (IMPORTANTE PARA OS BOTÕES)
+          const [stockLog] = await db
+            .select()
+            .from(stockMovements)
+            .where(
+              sql`${stockMovements.refType} = 'SALES_ORDER' AND ${stockMovements.refId} = ${order.id} AND ${stockMovements.type} = 'OUT'`,
+            )
+            .limit(1);
+
           return {
             ...order,
             items,
             customerName,
             total: order.total || "0",
-          };
+            stockPosted: !!stockLog,
+          }; // Flag para o front
         }),
       );
-
       res.json(ordersWithDetails);
     } catch (error: any) {
-      res
-        .status(500)
-        .json({ message: "Erro ao buscar pedidos: " + error.message });
+      res.status(500).json({ message: "Erro: " + error.message });
     }
   });
 
@@ -694,48 +680,37 @@ export async function registerRoutes(
     if (!req.isAuthenticated()) return res.status(401).send();
     try {
       const { items, ...orderData } = req.body;
-
       const result = await db.transaction(async (tx) => {
-        // 1. Cria o pedido
         const [newOrder] = await tx
           .insert(orders)
           .values({
             ...orderData,
             companyId: req.user.companyId || "1",
-            orderNumber: String(Date.now()).slice(-6), // Gera número simples
+            orderNumber: String(Date.now()).slice(-6),
             createdAt: new Date(),
             updatedAt: new Date(),
           })
           .returning();
 
-        // 2. Insere os itens
         if (items && items.length > 0) {
           const itemsToInsert = items.map((item: any) => ({
             orderId: newOrder.id,
             productId: item.productId,
             quantity: item.quantity,
             price: item.price,
-            // Campos opcionais do schema
-            descriptionSnapshot: "",
-            skuSnapshot: "",
             lineTotal: String(Number(item.price) * Number(item.quantity)),
           }));
           await tx.insert(orderItems).values(itemsToInsert);
         }
-
         return newOrder;
       });
-
       res.json(result);
     } catch (error: any) {
-      console.error("Erro ao criar pedido:", error);
-      res
-        .status(500)
-        .json({ message: "Erro ao criar pedido: " + error.message });
+      res.status(500).json({ message: "Erro: " + error.message });
     }
   });
 
-  // 3. GET ID: Detalhes do Pedido
+  // 3. GET ID
   app.get("/api/orders/:id", async (req: any, res) => {
     if (!req.isAuthenticated()) return res.status(401).send();
     try {
@@ -744,29 +719,450 @@ export async function registerRoutes(
         .from(orders)
         .where(eq(orders.id, parseInt(req.params.id)))
         .limit(1);
-
       if (!order)
         return res.status(404).json({ message: "Pedido não encontrado" });
-
       const items = await db
         .select({
           id: orderItems.id,
           productId: orderItems.productId,
           quantity: orderItems.quantity,
           price: orderItems.price,
-          product: products, // Traz os dados do produto junto
+          product: products,
         })
         .from(orderItems)
         .leftJoin(products, eq(orderItems.productId, products.id))
         .where(eq(orderItems.orderId, order.id));
-
       const [customer] = await db
         .select()
         .from(users)
         .where(eq(users.id, order.userId));
-
       res.json({ ...order, items, customer });
     } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // 4. POST MANUAL STOCK (AÇÃO MANUAL)
+  app.post("/api/orders/:id/stock", async (req: any, res) => {
+    if (!req.isAuthenticated()) return res.status(401).send();
+    const id = parseInt(req.params.id);
+    const { action } = req.body; // 'post' ou 'reverse'
+
+    try {
+      await db.transaction(async (tx) => {
+        const [order] = await tx
+          .select()
+          .from(orders)
+          .where(eq(orders.id, id))
+          .limit(1);
+        if (!order) throw new Error("Pedido não encontrado");
+        const items = await tx
+          .select()
+          .from(orderItems)
+          .where(eq(orderItems.orderId, id));
+
+        const existingLogs = await tx
+          .select()
+          .from(stockMovements)
+          .where(
+            sql`${stockMovements.refType} = 'SALES_ORDER' AND ${stockMovements.refId} = ${id} AND ${stockMovements.type} = 'OUT'`,
+          );
+        const alreadyPosted = existingLogs.length > 0;
+
+        if (action === "post") {
+          if (alreadyPosted) throw new Error("Estoque já baixado.");
+          for (const item of items) {
+            const qty = Number(item.quantity);
+            await tx
+              .update(products)
+              .set({ stock: sql`${products.stock} - ${qty}` })
+              .where(eq(products.id, item.productId));
+            await tx.insert(stockMovements).values({
+              type: "OUT",
+              reason: "SALE_MANUAL",
+              refType: "SALES_ORDER",
+              refId: id,
+              productId: item.productId,
+              qty: String(qty),
+              unitCost: "0",
+              notes: `Baixa Manual Pedido #${order.orderNumber}`,
+            });
+          }
+        } else if (action === "reverse") {
+          if (!alreadyPosted) throw new Error("Não há estoque para estornar.");
+          for (const item of items) {
+            const qty = Number(item.quantity);
+            await tx
+              .update(products)
+              .set({ stock: sql`${products.stock} + ${qty}` })
+              .where(eq(products.id, item.productId));
+          }
+          await tx
+            .delete(stockMovements)
+            .where(
+              sql`${stockMovements.refType} = 'SALES_ORDER' AND ${stockMovements.refId} = ${id}`,
+            );
+        }
+      });
+      res.json({ message: "Movimentação realizada." });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // 4.b POST: Reserve (Endpoint esperado pelo cliente)
+  app.post("/api/orders/:id/reserve", async (req: any, res) => {
+    if (!req.isAuthenticated()) return res.status(401).send();
+    const id = parseInt(req.params.id);
+    try {
+      await db.transaction(async (tx) => {
+        const [order] = await tx
+          .select()
+          .from(orders)
+          .where(eq(orders.id, id))
+          .limit(1);
+        if (!order) throw new Error("Pedido não encontrado");
+
+        const existingLogs = await tx
+          .select()
+          .from(stockMovements)
+          .where(
+            sql`${stockMovements.refType} = 'SALES_ORDER' AND ${stockMovements.refId} = ${id} AND ${stockMovements.type} = 'OUT'`,
+          );
+        if (existingLogs.length > 0) throw new Error("Estoque já baixado.");
+
+        const items = await tx
+          .select()
+          .from(orderItems)
+          .where(eq(orderItems.orderId, id));
+
+        for (const item of items) {
+          const qty = Number(item.quantity);
+          await tx
+            .update(products)
+            .set({
+              stock: sql`${products.stock} - ${qty}`,
+              updatedAt: new Date(),
+            })
+            .where(eq(products.id, item.productId));
+
+          await tx.insert(stockMovements).values({
+            type: "OUT",
+            reason: "SALE",
+            refType: "SALES_ORDER",
+            refId: id,
+            productId: item.productId,
+            qty: String(qty),
+            unitCost: "0",
+            notes: `Venda Pedido #${order.orderNumber}`,
+          });
+        }
+
+        await tx
+          .update(orders)
+          .set({ status: "PEDIDO_GERADO", updatedAt: new Date() })
+          .where(eq(orders.id, id));
+      });
+      res.json({ message: "Estoque reservado e pedido gerado." });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // 4.c POST: Unreserve (endpoint esperado pelo cliente)
+  app.post("/api/orders/:id/unreserve", async (req: any, res) => {
+    if (!req.isAuthenticated()) return res.status(401).send();
+    const id = parseInt(req.params.id);
+    try {
+      await db.transaction(async (tx) => {
+        const [order] = await tx
+          .select()
+          .from(orders)
+          .where(eq(orders.id, id))
+          .limit(1);
+        if (!order) throw new Error("Pedido não encontrado");
+
+        const existingLogs = await tx
+          .select()
+          .from(stockMovements)
+          .where(
+            sql`${stockMovements.refType} = 'SALES_ORDER' AND ${stockMovements.refId} = ${id} AND ${stockMovements.type} = 'OUT'`,
+          );
+        if (existingLogs.length === 0)
+          throw new Error("Não há estoque para estornar.");
+
+        const items = await tx
+          .select()
+          .from(orderItems)
+          .where(eq(orderItems.orderId, id));
+
+        for (const item of items) {
+          const qty = Number(item.quantity);
+          await tx
+            .update(products)
+            .set({
+              stock: sql`${products.stock} + ${qty}`,
+              updatedAt: new Date(),
+            })
+            .where(eq(products.id, item.productId));
+        }
+
+        await tx
+          .delete(stockMovements)
+          .where(
+            sql`${stockMovements.refType} = 'SALES_ORDER' AND ${stockMovements.refId} = ${id}`,
+          );
+
+        await tx
+          .update(orders)
+          .set({ status: "ORCAMENTO", updatedAt: new Date() })
+          .where(eq(orders.id, id));
+      });
+      res.json({
+        message: "Pedido retornado para Orçamento e estoque liberado.",
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // 4.d POST: Invoice - faturar pedido (faz a baixa caso ainda não tenha sido feita)
+  app.post("/api/orders/:id/invoice", async (req: any, res) => {
+    if (!req.isAuthenticated()) return res.status(401).send();
+    const id = parseInt(req.params.id);
+    try {
+      await db.transaction(async (tx) => {
+        const [order] = await tx
+          .select()
+          .from(orders)
+          .where(eq(orders.id, id))
+          .limit(1);
+        if (!order) throw new Error("Pedido não encontrado");
+
+        const existingLogs = await tx
+          .select()
+          .from(stockMovements)
+          .where(
+            sql`${stockMovements.refType} = 'SALES_ORDER' AND ${stockMovements.refId} = ${id} AND ${stockMovements.type} = 'OUT'`,
+          );
+        const alreadyPosted = existingLogs.length > 0;
+
+        if (!alreadyPosted) {
+          const items = await tx
+            .select()
+            .from(orderItems)
+            .where(eq(orderItems.orderId, id));
+
+          for (const item of items) {
+            const qty = Number(item.quantity);
+            await tx
+              .update(products)
+              .set({
+                stock: sql`${products.stock} - ${qty}`,
+                updatedAt: new Date(),
+              })
+              .where(eq(products.id, item.productId));
+
+            await tx.insert(stockMovements).values({
+              type: "OUT",
+              reason: "SALE",
+              refType: "SALES_ORDER",
+              refId: id,
+              productId: item.productId,
+              qty: String(qty),
+              unitCost: "0",
+              notes: `Venda/Fatura Pedido #${order.orderNumber}`,
+            });
+          }
+        }
+
+        await tx
+          .update(orders)
+          .set({ status: "FATURADO", updatedAt: new Date() })
+          .where(eq(orders.id, id));
+      });
+      res.json({ message: "Pedido faturado e estoque baixado." });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // 5. DELETE: Excluir Pedido (Proteção de Estoque)
+  app.delete("/api/orders/:id", async (req: any, res) => {
+    if (!req.isAuthenticated()) return res.status(401).send();
+    const id = parseInt(req.params.id);
+    try {
+      await db.transaction(async (tx) => {
+        const stockLogs = await tx
+          .select()
+          .from(stockMovements)
+          .where(
+            sql`${stockMovements.refType} = 'SALES_ORDER' AND ${stockMovements.refId} = ${id} AND ${stockMovements.type} = 'OUT'`,
+          );
+
+        if (stockLogs.length > 0) {
+          const items = await tx
+            .select()
+            .from(orderItems)
+            .where(eq(orderItems.orderId, id));
+          for (const item of items) {
+            const qty = Number(item.quantity);
+            await tx
+              .update(products)
+              .set({ stock: sql`${products.stock} + ${qty}` })
+              .where(eq(products.id, item.productId));
+          }
+          await tx
+            .delete(stockMovements)
+            .where(
+              sql`${stockMovements.refType} = 'SALES_ORDER' AND ${stockMovements.refId} = ${id}`,
+            );
+        }
+        await tx.delete(orderItems).where(eq(orderItems.orderId, id));
+        await tx.delete(orders).where(eq(orders.id, id));
+      });
+      res.json({ message: "Pedido excluído." });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // 6. PATCH: Status Automático (Híbrido) - COM DEPURADOR
+  app.patch("/api/orders/:id", async (req: any, res) => {
+    if (!req.isAuthenticated()) return res.status(401).send();
+    try {
+      const id = parseInt(req.params.id);
+      const { status, printed } = req.body;
+
+      console.log(`[DEBUG] --- Iniciando atualização do Pedido #${id} ---`);
+      console.log(`[DEBUG] Novo Status recebido: ${status}`);
+
+      await db.transaction(async (tx) => {
+        // 1. Pega pedido atual
+        const [currentOrder] = await tx
+          .select()
+          .from(orders)
+          .where(eq(orders.id, id))
+          .limit(1);
+        if (!currentOrder) throw new Error("Pedido não encontrado");
+
+        console.log(`[DEBUG] Status Antigo: ${currentOrder.status}`);
+
+        // 2. Verifica histórico de estoque
+        const stockLogs = await tx
+          .select()
+          .from(stockMovements)
+          .where(
+            sql`${stockMovements.refType} = 'SALES_ORDER' AND ${stockMovements.refId} = ${id} AND ${stockMovements.type} = 'OUT'`,
+          );
+
+        const isStockPosted = stockLogs.length > 0;
+        console.log(
+          `[DEBUG] Estoque já foi baixado antes? ${isStockPosted ? "SIM" : "NÃO"}`,
+        );
+
+        // ====================================================
+        // LÓGICA DE VENDA (Baixar Estoque)
+        // ====================================================
+        const targetStatusVenda = ["PEDIDO_GERADO", "FATURADO"];
+
+        if (targetStatusVenda.includes(status) && !isStockPosted) {
+          console.log(`[DEBUG] >> ENTRANDO NO MODO BAIXA DE ESTOQUE...`);
+
+          const items = await tx
+            .select()
+            .from(orderItems)
+            .where(eq(orderItems.orderId, id));
+          console.log(
+            `[DEBUG] Itens encontrados neste pedido: ${items.length}`,
+          );
+
+          if (items.length === 0) {
+            console.log(
+              `[DEBUG] ERRO: Pedido não tem itens vinculados na tabela order_items!`,
+            );
+          }
+
+          for (const item of items) {
+            const qty = Number(item.quantity);
+            console.log(
+              `[DEBUG] Baixando Produto ID ${item.productId}: -${qty}`,
+            );
+
+            // ATUALIZAÇÃO DO PRODUTO
+            await tx
+              .update(products)
+              .set({
+                stock: sql`${products.stock} - ${qty}`,
+                updatedAt: new Date(),
+              })
+              .where(eq(products.id, item.productId));
+
+            // LOG DO MOVIMENTO
+            await tx.insert(stockMovements).values({
+              type: "OUT",
+              reason: "SALE",
+              refType: "SALES_ORDER",
+              refId: id,
+              productId: item.productId,
+              qty: String(qty),
+              unitCost: "0",
+              notes: `Venda Automática Pedido #${currentOrder.orderNumber}`,
+            });
+          }
+          console.log(`[DEBUG] >> Baixa concluída.`);
+        } else if (targetStatusVenda.includes(status) && isStockPosted) {
+          console.log(
+            `[DEBUG] IGNORADO: O status mudou para venda, mas o estoque JÁ ESTAVA baixado.`,
+          );
+        }
+
+        // ====================================================
+        // LÓGICA DE ESTORNO (Devolver Estoque)
+        // ====================================================
+        const targetStatusEstorno = ["CANCELADO", "ORCAMENTO"];
+
+        if (targetStatusEstorno.includes(status) && isStockPosted) {
+          console.log(`[DEBUG] >> ENTRANDO NO MODO ESTORNO...`);
+
+          const items = await tx
+            .select()
+            .from(orderItems)
+            .where(eq(orderItems.orderId, id));
+          for (const item of items) {
+            const qty = Number(item.quantity);
+            console.log(
+              `[DEBUG] Devolvendo Produto ID ${item.productId}: +${qty}`,
+            );
+
+            await tx
+              .update(products)
+              .set({
+                stock: sql`${products.stock} + ${qty}`,
+                updatedAt: new Date(),
+              })
+              .where(eq(products.id, item.productId));
+          }
+          // Limpa o log para permitir baixar de novo depois
+          await tx
+            .delete(stockMovements)
+            .where(
+              sql`${stockMovements.refType} = 'SALES_ORDER' AND ${stockMovements.refId} = ${id}`,
+            );
+          console.log(`[DEBUG] >> Estorno concluído.`);
+        }
+
+        // 3. Atualiza status final
+        const updateData: any = { updatedAt: new Date() };
+        if (status) updateData.status = status;
+        if (printed !== undefined) updateData.printed = printed;
+        await tx.update(orders).set(updateData).where(eq(orders.id, id));
+      });
+
+      const [updated] = await db.select().from(orders).where(eq(orders.id, id));
+      res.json(updated);
+    } catch (error: any) {
+      console.error("[DEBUG] ERRO CRÍTICO NA ROTA:", error);
       res.status(500).json({ message: error.message });
     }
   });

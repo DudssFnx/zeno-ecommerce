@@ -1,10 +1,36 @@
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { StatusBadge, StageBadge } from "./StatusBadge";
-import { Eye, Printer, Edit2 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  ArrowRightCircle,
+  CheckCircle,
+  Edit2,
+  Eye,
+  MoreHorizontal,
+  PackageMinus,
+  PackagePlus,
+  Trash2,
+  XCircle,
+} from "lucide-react";
 import { SiWhatsapp } from "react-icons/si";
 import { Link } from "wouter";
-import { Checkbox } from "@/components/ui/checkbox";
+import { StageBadge, StatusBadge } from "./StatusBadge";
 
 const STORE_WHATSAPP = "5511992845596";
 
@@ -23,144 +49,220 @@ export interface Order {
   total: number;
   itemCount: number;
   printed?: boolean;
+  stockPosted?: boolean; // Novo campo
 }
 
 interface OrderTableProps {
   orders: Order[];
   showCustomer?: boolean;
-  selectedOrderIds?: Set<string>;
-  onSelectionChange?: (orderId: string, selected: boolean) => void;
-  onSelectAll?: (selected: boolean) => void;
+  selectedIds: string[];
+  onToggleSelect: (id: string) => void;
+  onToggleSelectAll: () => void;
   onPrintOrder?: (order: Order) => void;
   onEditOrder?: (order: Order) => void;
+  onStatusChange?: (orderId: string, newStatus: string) => void;
+  onStockAction?: (orderId: string, action: "post" | "reverse") => void; // Ação Manual
+  onDeleteOrder?: (orderId: string) => void; // Ação Excluir
   canEdit?: boolean;
 }
 
-
-export function OrderTable({ 
-  orders, 
+export function OrderTable({
+  orders,
   showCustomer = true,
-  selectedOrderIds,
-  onSelectionChange,
-  onSelectAll,
-  onPrintOrder,
-  onEditOrder,
-  canEdit = false,
+  selectedIds,
+  onToggleSelect,
+  onToggleSelectAll,
+  onStatusChange,
+  onStockAction,
+  onDeleteOrder,
 }: OrderTableProps) {
-  const allSelected = orders.length > 0 && selectedOrderIds && orders.every(o => selectedOrderIds.has(o.id));
-  const someSelected = selectedOrderIds && orders.some(o => selectedOrderIds.has(o.id)) && !allSelected;
+  const allSelected =
+    orders.length > 0 &&
+    selectedIds &&
+    orders.every((o) => selectedIds.includes(o.id));
 
   return (
-    <div className="rounded-lg border overflow-hidden">
+    <div className="rounded-lg border overflow-hidden pb-20 bg-background">
       <Table>
         <TableHeader>
-          <TableRow className="bg-muted/50">
-            {onSelectionChange && (
-              <TableHead className="w-[50px]">
+          <TableRow className="bg-muted/50 hover:bg-muted/50">
+            {selectedIds && (
+              <TableHead className="w-[50px] text-center">
                 <Checkbox
                   checked={allSelected}
-                  onCheckedChange={(checked) => onSelectAll?.(!!checked)}
-                  data-testid="checkbox-select-all"
-                  className={someSelected ? "data-[state=checked]:bg-primary/50" : ""}
+                  onCheckedChange={onToggleSelectAll}
                 />
               </TableHead>
             )}
             <TableHead className="font-semibold">Pedido #</TableHead>
-            {showCustomer && <TableHead className="font-semibold">Cliente</TableHead>}
+            {showCustomer && (
+              <TableHead className="font-semibold">Cliente</TableHead>
+            )}
             <TableHead className="font-semibold">Data</TableHead>
             <TableHead className="font-semibold">Itens</TableHead>
             <TableHead className="font-semibold">Status</TableHead>
-            <TableHead className="font-semibold">Etapa</TableHead>
+            <TableHead className="font-semibold">Etapa (Ações)</TableHead>
             <TableHead className="font-semibold text-right">Total</TableHead>
             <TableHead className="w-[80px]"></TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
-          {orders.map((order, idx) => (
-            <TableRow 
-              key={order.id} 
-              className={idx % 2 === 0 ? "bg-background" : "bg-muted/30"}
-              data-testid={`row-order-${order.id}`}
-            >
-              {onSelectionChange && (
-                <TableCell>
-                  <Checkbox
-                    checked={selectedOrderIds?.has(order.id) || false}
-                    onCheckedChange={(checked) => onSelectionChange(order.id, !!checked)}
-                    data-testid={`checkbox-order-${order.id}`}
-                  />
-                </TableCell>
-              )}
-              <TableCell className="font-medium" data-testid={`text-order-number-${order.id}`}>
-                {order.orderNumber}
-              </TableCell>
-              {showCustomer && (
-                <TableCell>{order.customer}</TableCell>
-              )}
-              <TableCell className="text-muted-foreground">{order.date}</TableCell>
-              <TableCell>{order.itemCount} itens</TableCell>
-              <TableCell>
-                <StatusBadge status={order.status as any} />
-              </TableCell>
-              <TableCell>
-                <div className="flex items-center gap-2">
-                  <StageBadge printed={order.printed || false} />
-                  {!order.printed && onPrintOrder && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => onPrintOrder(order)}
-                      className="gap-1"
-                      data-testid={`button-print-${order.id}`}
-                    >
-                      <Printer className="h-3 w-3" />
-                      <span className="hidden sm:inline">Imprimir</span>
-                    </Button>
-                  )}
-                </div>
-              </TableCell>
-              <TableCell className="text-right font-medium">
-                R$ {order.total.toFixed(2)}
-              </TableCell>
-              <TableCell>
-                <div className="flex items-center gap-1 justify-end">
-                  {canEdit && onEditOrder && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => onEditOrder(order)}
-                      data-testid={`button-edit-order-${order.id}`}
-                    >
-                      <Edit2 className="h-4 w-4" />
-                    </Button>
-                  )}
-                  <Link href={`/orders/${order.id}`}>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      data-testid={`button-view-order-${order.id}`}
-                    >
-                      <Eye className="h-4 w-4" />
-                    </Button>
-                  </Link>
-                  <a 
-                    href={getWhatsAppLink(order)} 
-                    target="_blank" 
-                    rel="noopener noreferrer"
+          {orders.map((order, idx) => {
+            const isSelected = selectedIds?.includes(order.id);
+
+            return (
+              <TableRow
+                key={order.id}
+                className={
+                  isSelected
+                    ? "bg-orange-500/10 hover:bg-orange-500/20 transition-colors"
+                    : idx % 2 === 0
+                      ? "bg-background"
+                      : "bg-muted/30"
+                }
+              >
+                {selectedIds && (
+                  <TableCell
+                    className="text-center"
+                    onClick={(e) => e.stopPropagation()}
                   >
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="text-green-600 dark:text-green-500"
-                      data-testid={`button-whatsapp-order-${order.id}`}
+                    <Checkbox
+                      checked={isSelected}
+                      onCheckedChange={() => onToggleSelect(order.id)}
+                    />
+                  </TableCell>
+                )}
+                <TableCell className="font-medium">
+                  {order.orderNumber}
+                </TableCell>
+                {showCustomer && <TableCell>{order.customer}</TableCell>}
+                <TableCell className="text-muted-foreground">
+                  {order.date}
+                </TableCell>
+                <TableCell>{order.itemCount} itens</TableCell>
+                <TableCell>
+                  <div className="flex items-center gap-2">
+                    <StatusBadge status={order.status as any} />
+                    {/* INDICADOR VISUAL "E" DE ESTOQUE */}
+                    {order.stockPosted && (
+                      <Badge
+                        variant="secondary"
+                        className="bg-blue-100 text-blue-700 hover:bg-blue-100 border-blue-200 px-1.5 py-0 h-5 text-[10px] font-bold"
+                        title="Estoque Baixado"
+                      >
+                        E
+                      </Badge>
+                    )}
+                  </div>
+                </TableCell>
+
+                {/* MENU DE AÇÕES E STATUS */}
+                <TableCell>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        className="h-8 p-0 hover:bg-transparent justify-start font-normal"
+                      >
+                        <div className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity">
+                          <StageBadge printed={order.printed || false} />
+                          {order.stockPosted && (
+                            <div title="Estoque já baixado">
+                              <PackageMinus className="h-3 w-3 text-orange-600" />
+                            </div>
+                          )}
+                          <MoreHorizontal className="h-4 w-4 text-muted-foreground" />
+                        </div>
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start" className="w-56">
+                      <DropdownMenuLabel>Estoque & Ações</DropdownMenuLabel>
+                      {/* BOTÕES DE ESTOQUE MANUAL */}
+                      {!order.stockPosted ? (
+                        <DropdownMenuItem
+                          onClick={() => onStockAction?.(order.id, "post")}
+                        >
+                          <PackageMinus className="mr-2 h-4 w-4 text-orange-500" />{" "}
+                          Lançar Estoque (Manual)
+                        </DropdownMenuItem>
+                      ) : (
+                        <DropdownMenuItem
+                          onClick={() => onStockAction?.(order.id, "reverse")}
+                        >
+                          <PackagePlus className="mr-2 h-4 w-4 text-blue-500" />{" "}
+                          Estornar Estoque
+                        </DropdownMenuItem>
+                      )}
+
+                      <DropdownMenuSeparator />
+                      <DropdownMenuLabel>Mudar Status</DropdownMenuLabel>
+                      <DropdownMenuItem
+                        onClick={() => onStatusChange?.(order.id, "ORCAMENTO")}
+                      >
+                        <Edit2 className="mr-2 h-4 w-4" /> Voltar para Orçamento
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() =>
+                          onStatusChange?.(order.id, "PEDIDO_GERADO")
+                        }
+                      >
+                        <CheckCircle className="mr-2 h-4 w-4 text-green-500" />{" "}
+                        Virar Venda (Gerado)
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => onStatusChange?.(order.id, "FATURADO")}
+                      >
+                        <ArrowRightCircle className="mr-2 h-4 w-4 text-blue-500" />{" "}
+                        Faturar Pedido
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        onClick={() => onStatusChange?.(order.id, "CANCELADO")}
+                      >
+                        <XCircle className="mr-2 h-4 w-4 text-red-500" />{" "}
+                        Cancelar
+                      </DropdownMenuItem>
+
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        onClick={() => onDeleteOrder?.(order.id)}
+                        className="text-red-600 focus:text-red-600 focus:bg-red-50"
+                      >
+                        <Trash2 className="mr-2 h-4 w-4" /> Excluir Pedido
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </TableCell>
+
+                <TableCell className="text-right font-medium">
+                  R$ {order.total.toFixed(2)}
+                </TableCell>
+                <TableCell>
+                  <div className="flex items-center gap-1 justify-end">
+                    <Link href={`/orders/${order.id}`}>
+                      <Button variant="ghost" size="icon" title="Ver Detalhes">
+                        <Eye className="h-4 w-4" />
+                      </Button>
+                    </Link>
+                    <a
+                      href={getWhatsAppLink(order)}
+                      target="_blank"
+                      rel="noopener noreferrer"
                     >
-                      <SiWhatsapp className="h-4 w-4" />
-                    </Button>
-                  </a>
-                </div>
-              </TableCell>
-            </TableRow>
-          ))}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="text-green-600 hover:text-green-700"
+                        title="WhatsApp"
+                      >
+                        <SiWhatsapp className="h-4 w-4" />
+                      </Button>
+                    </a>
+                  </div>
+                </TableCell>
+              </TableRow>
+            );
+          })}
         </TableBody>
       </Table>
     </div>

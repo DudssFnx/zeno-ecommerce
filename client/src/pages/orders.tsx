@@ -33,12 +33,13 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type {
-  B2bProduct as Product,
   Order as SchemaOrder,
-  B2bUser as User,
+  b2bProducts,
+  b2bUsers,
 } from "@shared/schema";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { addDays, format } from "date-fns";
+import { type InferSelectModel } from "drizzle-orm";
 import {
   Box,
   Loader2,
@@ -51,6 +52,9 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useState } from "react";
+
+type User = InferSelectModel<typeof b2bUsers>;
+type Product = InferSelectModel<typeof b2bProducts>;
 
 // --- TIPOS ---
 interface CartItem {
@@ -82,33 +86,30 @@ export default function OrdersPage() {
   const [activeTab, setActiveTab] = useState("all");
   const [isCreateOpen, setIsCreateOpen] = useState(false);
 
+  // --- ESTADO DE SELEÇÃO (ARRAY) ---
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+
   // --- ESTADOS DO FORMULÁRIO ---
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>("");
   const [selectedCustomer, setSelectedCustomer] = useState<User | null>(null);
   const [customerSearch, setCustomerSearch] = useState("");
   const [selectedSellerId, setSelectedSellerId] = useState<string>("");
-
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [productSearch, setProductSearch] = useState("");
-
   const [globalDiscount, setGlobalDiscount] = useState<number>(0);
   const [otherExpenses, setOtherExpenses] = useState<number>(0);
   const [deliveryDeadline, setDeliveryDeadline] = useState<string>("0");
-
   const [saleDate, setSaleDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [departureDate, setDepartureDate] = useState(
     format(new Date(), "yyyy-MM-dd"),
   );
   const [customerPO, setCustomerPO] = useState("");
-
   const [paymentCondition, setPaymentCondition] = useState("");
   const [installments, setInstallments] = useState<Installment[]>([]);
   const [paymentMethod, setPaymentMethod] = useState("Boleto");
-
   const [carrierName, setCarrierName] = useState("");
   const [shippingType, setShippingType] = useState("CIF");
   const [shippingCost, setShippingCost] = useState<number>(0);
-
   const [notes, setNotes] = useState("");
   const [internalNotes, setInternalNotes] = useState("");
 
@@ -121,10 +122,8 @@ export default function OrdersPage() {
     refetch: refetchOrders,
   } = useQuery<OrderWithItems[]>({
     queryKey: ["/api/orders"],
-    // Estratégia agressiva de atualização
     refetchOnWindowFocus: true,
     staleTime: 0,
-    gcTime: 0,
   });
 
   const { data: usersData = [] } = useQuery<User[]>({
@@ -162,7 +161,79 @@ export default function OrdersPage() {
 
   const productsData = productsResponse?.products || [];
 
-  // --- FILTROS ---
+  // --- LÓGICA DE SELEÇÃO ---
+  const mappedOrders = ordersData
+    .map((o) => ({
+      ...o,
+      id: String(o.id),
+      customer:
+        o.customerName ||
+        usersData.find((u) => u.id === o.userId)?.firstName ||
+        "Cliente Desconhecido",
+      date: format(new Date(o.createdAt || new Date()), "dd/MM/yyyy"),
+      total: parseFloat(o.total),
+      itemCount: o.items?.length || 0,
+      status: o.status as any,
+      printed: false,
+    }))
+    .filter((o) => {
+      if (activeTab === "all") return true;
+      return o.status === activeTab;
+    });
+
+  const toggleSelect = (id: string) => {
+    if (selectedIds.includes(id)) {
+      setSelectedIds(selectedIds.filter((item) => item !== id));
+    } else {
+      setSelectedIds([...selectedIds, id]);
+    }
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.length === mappedOrders.length) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(mappedOrders.map((o) => o.id));
+    }
+  };
+
+  // --- MUTAÇÕES DE STATUS (COM REFRESH EM PRODUTOS) ---
+  const updateStatusMutation = useMutation({
+    mutationFn: async ({ id, status }: { id: string; status: string }) => {
+      await apiRequest("PATCH", `/api/orders/${id}`, { status });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/products"] }); // <--- IMPORTANTE
+      refetchOrders();
+      toast({
+        title: "Status Atualizado",
+        className: "bg-green-600 text-white",
+      });
+    },
+  });
+
+  const handleSingleStatusChange = (id: string, newStatus: string) => {
+    updateStatusMutation.mutate({ id, status: newStatus });
+  };
+
+  const handleBulkStatusChange = async (newStatus: string) => {
+    const promises = selectedIds.map((id) =>
+      apiRequest("PATCH", `/api/orders/${id}`, { status: newStatus }),
+    );
+    await Promise.all(promises);
+
+    queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/products"] }); // <--- IMPORTANTE
+    refetchOrders();
+    setSelectedIds([]);
+    toast({
+      title: `Status alterado para ${newStatus}`,
+      description: `${selectedIds.length} pedidos atualizados.`,
+    });
+  };
+
+  // --- FILTROS E OUTROS ---
   const filteredCustomers =
     customerSearch.length >= 2
       ? customersList
@@ -192,7 +263,6 @@ export default function OrdersPage() {
           .slice(0, 50)
       : [];
 
-  // --- CARRINHO ---
   const handleAddProduct = (product: any) => {
     const existing = cartItems.find((item) => item.productId === product.id);
     if (existing) {
@@ -232,12 +302,10 @@ export default function OrdersPage() {
     setCartItems(cartItems.filter((i) => i.productId !== id));
   };
 
-  // --- CÁLCULOS ---
   const totalItemsValue = cartItems.reduce((acc, i) => acc + i.total, 0);
   const totalOrderValue =
     totalItemsValue - globalDiscount + shippingCost + otherExpenses;
 
-  // --- PARCELAS ---
   const generateInstallments = () => {
     if (!paymentCondition || totalOrderValue <= 0) {
       toast({
@@ -250,7 +318,6 @@ export default function OrdersPage() {
       .split(" ")
       .map((d) => parseInt(d))
       .filter((n) => !isNaN(n));
-
     if (daysArray.length === 0) {
       setInstallments([
         {
@@ -264,7 +331,6 @@ export default function OrdersPage() {
       ]);
       return;
     }
-
     const valuePerInst = totalOrderValue / daysArray.length;
     const newInsts = daysArray.map((days, idx) => ({
       number: idx + 1,
@@ -274,24 +340,18 @@ export default function OrdersPage() {
       method: paymentMethod,
       obs: "",
     }));
-
     const sum = newInsts.reduce((a, b) => a + b.value, 0);
     const diff = totalOrderValue - sum;
     if (diff !== 0) newInsts[newInsts.length - 1].value += diff;
-
     setInstallments(newInsts);
   };
 
-  // --- SALVAR ---
   const createOrderMutation = useMutation({
     mutationFn: async (data: any) => {
       await apiRequest("POST", "/api/orders", data);
     },
     onSuccess: async () => {
-      // 1. Fecha Modal
       setIsCreateOpen(false);
-
-      // 2. Limpa dados
       setCartItems([]);
       setSelectedCustomer(null);
       setSelectedCustomerId("");
@@ -301,11 +361,8 @@ export default function OrdersPage() {
       setProductSearch("");
       setNotes("");
       setInternalNotes("");
-
-      // 3. ATUALIZAÇÃO FORÇADA
       await queryClient.resetQueries({ queryKey: ["/api/orders"] });
       await refetchOrders();
-
       toast({
         title: "Pedido Salvo com Sucesso!",
         className: "bg-green-600 text-white",
@@ -329,10 +386,8 @@ export default function OrdersPage() {
       toast({ title: "Adicione itens ao pedido", variant: "destructive" });
       return;
     }
-
     const sellerName =
       sellersList.find((s) => s.id === selectedSellerId)?.nome || "Admin";
-
     const richNotes = `
 ${notes}
 [INTERNAL_DATA]
@@ -350,7 +405,6 @@ InternalNotes: ${internalNotes}
 Installments: ${JSON.stringify(installments)}
 [/INTERNAL_DATA]
     `.trim();
-
     const payload = {
       userId: selectedCustomerId,
       items: cartItems.map((i) => ({
@@ -363,33 +417,11 @@ Installments: ${JSON.stringify(installments)}
       notes: richNotes,
       status: "ORCAMENTO",
     };
-
     createOrderMutation.mutate(payload);
   };
 
-  // --- PREPARAÇÃO DA LISTA ---
-  const mappedOrders = ordersData
-    .map((o) => ({
-      ...o,
-      id: String(o.id),
-      // Tenta pegar nome do join, depois da lista de usuários, ou fallback
-      customer:
-        o.customerName ||
-        usersData.find((u) => u.id === o.userId)?.nome ||
-        "Cliente Desconhecido",
-      date: format(new Date(o.createdAt), "dd/MM/yyyy"),
-      total: parseFloat(o.total),
-      itemCount: o.items?.length || 0,
-      status: o.status as any,
-      printed: false,
-    }))
-    .filter((o) => {
-      if (activeTab === "all") return true;
-      return o.status === activeTab;
-    });
-
   return (
-    <div className="p-6 lg:p-8 space-y-6">
+    <div className="p-6 lg:p-8 space-y-6 relative">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">
@@ -419,7 +451,49 @@ Installments: ${JSON.stringify(installments)}
         </div>
       </div>
 
-      {/* LISTA DE PEDIDOS */}
+      {selectedIds.length > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-card border shadow-xl rounded-full px-6 py-3 flex items-center gap-4 z-50 animate-in slide-in-from-bottom-5">
+          <span className="font-semibold text-sm">
+            {selectedIds.length} selecionado(s)
+          </span>
+          <Separator orientation="vertical" className="h-4" />
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => handleBulkStatusChange("PEDIDO_GERADO")}
+              className="hover:bg-green-500/10 hover:text-green-600"
+            >
+              Virar Venda
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => handleBulkStatusChange("FATURADO")}
+              className="hover:bg-blue-500/10 hover:text-blue-600"
+            >
+              Faturar
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => handleBulkStatusChange("CANCELADO")}
+              className="hover:bg-red-500/10 hover:text-red-600"
+            >
+              Cancelar
+            </Button>
+            <Separator orientation="vertical" className="h-4 mx-2" />
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setSelectedIds([])}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      )}
+
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
           <TabsTrigger value="all">Todos</TabsTrigger>
@@ -434,22 +508,21 @@ Installments: ${JSON.stringify(installments)}
             </div>
           ) : (
             <OrderTable
-              key={activeTab} // Força recriar tabela ao mudar aba
+              key={activeTab}
               orders={mappedOrders}
               showCustomer={true}
-              selectedOrderIds={new Set()}
-              onSelectionChange={() => {}}
-              onSelectAll={() => {}}
+              selectedIds={selectedIds}
+              onToggleSelect={toggleSelect}
+              onToggleSelectAll={toggleSelectAll}
               onPrintOrder={() => {}}
+              onStatusChange={handleSingleStatusChange}
             />
           )}
         </TabsContent>
       </Tabs>
 
-      {/* MODAL DE CRIAÇÃO */}
       <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
         <DialogContent className="max-w-[100vw] h-[100vh] p-0 rounded-none bg-background flex flex-col border-none">
-          {/* HEADER */}
           <div className="flex items-center justify-between px-4 py-2 border-b bg-card shadow-sm h-14 shrink-0">
             <div className="flex items-center gap-3">
               <Button
@@ -489,10 +562,8 @@ Installments: ${JSON.stringify(installments)}
             </div>
           </div>
 
-          {/* BODY SCROLLABLE */}
           <ScrollArea className="flex-1 bg-muted/10">
             <div className="p-4 max-w-[1600px] mx-auto space-y-4">
-              {/* 1. DADOS DO CLIENTE */}
               <Card className="border-l-2 border-l-orange-500 shadow-sm">
                 <CardHeader className="py-2 px-4 border-b bg-muted/20">
                   <CardTitle className="text-sm font-semibold flex items-center gap-2 text-orange-600">
@@ -505,7 +576,6 @@ Installments: ${JSON.stringify(installments)}
                       Cliente *
                     </Label>
                     {selectedCustomer ? (
-                      // ✨ CORRIGIDO: Input simples e legível (SEM CORES ESTRANHAS)
                       <div className="relative mt-1">
                         <Input
                           readOnly
@@ -561,7 +631,6 @@ Installments: ${JSON.stringify(installments)}
                       </div>
                     )}
                   </div>
-
                   <div className="col-span-12 md:col-span-4">
                     <Label className="text-xs text-muted-foreground">
                       Vendedor
@@ -582,7 +651,6 @@ Installments: ${JSON.stringify(installments)}
                       </SelectContent>
                     </Select>
                   </div>
-
                   <div className="col-span-6 md:col-span-2">
                     <Label className="text-xs text-muted-foreground">
                       Data Emissão
@@ -597,7 +665,6 @@ Installments: ${JSON.stringify(installments)}
                 </CardContent>
               </Card>
 
-              {/* 2. ITENS */}
               <Card className="shadow-sm">
                 <CardHeader className="py-2 px-4 border-b bg-muted/20 flex flex-row items-center justify-between h-12">
                   <CardTitle className="text-sm font-semibold flex items-center gap-2 text-orange-600">
@@ -682,7 +749,6 @@ Installments: ${JSON.stringify(installments)}
                           const finalStock =
                             (item.product.stock || 0) - item.quantity;
                           const hasStock = finalStock >= 0;
-
                           return (
                             <TableRow
                               key={item.productId}
@@ -741,8 +807,6 @@ Installments: ${JSON.stringify(installments)}
                                   }
                                 />
                               </TableCell>
-
-                              {/* CAIXA DE ESTOQUE */}
                               <TableCell className="text-center py-1">
                                 <TooltipProvider>
                                   <Tooltip>
@@ -771,7 +835,6 @@ Installments: ${JSON.stringify(installments)}
                                   </Tooltip>
                                 </TooltipProvider>
                               </TableCell>
-
                               <TableCell className="text-right pr-4 py-1 font-bold text-sm">
                                 {item.total.toFixed(2)}
                               </TableCell>
@@ -794,10 +857,8 @@ Installments: ${JSON.stringify(installments)}
                 </CardContent>
               </Card>
 
-              {/* 3. TOTAIS E INFOS */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-4">
-                  {/* PAGAMENTO E FRETE */}
                   <Card className="shadow-sm">
                     <CardHeader className="py-2 px-3 border-b bg-muted/20">
                       <CardTitle className="text-xs font-semibold text-muted-foreground uppercase">
@@ -826,7 +887,6 @@ Installments: ${JSON.stringify(installments)}
                           Gerar
                         </Button>
                       </div>
-
                       {installments.length > 0 && (
                         <div className="border rounded bg-muted/10 p-2">
                           <div className="text-[10px] font-bold text-muted-foreground mb-1 grid grid-cols-4 gap-2 px-2">
@@ -881,9 +941,7 @@ Installments: ${JSON.stringify(installments)}
                           ))}
                         </div>
                       )}
-
                       <Separator className="my-1" />
-
                       <div className="grid grid-cols-2 gap-2">
                         <div className="space-y-1">
                           <Label className="text-[10px]">Transportadora</Label>
@@ -916,8 +974,6 @@ Installments: ${JSON.stringify(installments)}
                     </CardContent>
                   </Card>
                 </div>
-
-                {/* Direita: Totais Limpos */}
                 <Card className="bg-muted/10 border-none shadow-none h-full">
                   <CardContent className="p-4 space-y-4">
                     <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
@@ -969,9 +1025,7 @@ Installments: ${JSON.stringify(installments)}
                         />
                       </div>
                     </div>
-
                     <Separator className="bg-muted-foreground/20" />
-
                     <div className="flex justify-between items-end pt-2">
                       <div className="text-right w-full">
                         <div className="text-xs text-muted-foreground mb-1">
@@ -986,7 +1040,6 @@ Installments: ${JSON.stringify(installments)}
                 </Card>
               </div>
 
-              {/* 4. OBSERVAÇÕES */}
               <Card className="shadow-sm">
                 <CardHeader className="py-2 px-4 border-b bg-muted/20">
                   <CardTitle className="text-xs font-semibold text-muted-foreground uppercase">
