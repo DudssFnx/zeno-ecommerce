@@ -143,16 +143,6 @@ export function OrderTable({
                 <TableCell>
                   <div className="flex items-center gap-2">
                     <StatusBadge status={order.status as any} />
-                    {/* INDICADOR VISUAL "E" DE ESTOQUE */}
-                    {order.stockPosted && (
-                      <Badge
-                        variant="secondary"
-                        className="bg-blue-100 text-blue-700 hover:bg-blue-100 border-blue-200 px-1.5 py-0 h-5 text-[10px] font-bold"
-                        title="Estoque Baixado"
-                      >
-                        E
-                      </Badge>
-                    )}
                   </div>
                 </TableCell>
 
