@@ -1428,9 +1428,7 @@ export async function registerRoutes(
                 accountsPostedBy: userName,
               })
               .where(eq(orders.id, id));
-            console.log(
-              `[Financial] Receivable auto-created for order #${id}`,
-            );
+            console.log(`[Financial] Receivable auto-created for order #${id}`);
           } else {
             console.log(
               `[Financial] Receivable não criado para pedido #${id} - provavelmente pagamento não é PRAZO`,
@@ -1443,7 +1441,6 @@ export async function registerRoutes(
           `[Financial] Could not auto-create receivable for order #${id}:`,
           error.message,
         );
-      }
       }
 
       res.json({ message: "Pedido faturado e estoque baixado." });
@@ -1610,7 +1607,9 @@ export async function registerRoutes(
         })
         .where(eq(orders.id, id));
 
-      console.log(`[POST-ACCOUNTS] Contas lançadas com sucesso para pedido #${id}`);
+      console.log(
+        `[POST-ACCOUNTS] Contas lançadas com sucesso para pedido #${id}`,
+      );
 
       res.json({
         message: "Contas a receber lançadas com sucesso",
