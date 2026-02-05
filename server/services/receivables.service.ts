@@ -41,21 +41,37 @@ export async function createReceivableFromOrder(
 
     if (!order) throw new Error("Pedido não encontrado");
 
-    // 2. Buscar forma de pagamento
+    // 2. Verificar se tem forma de pagamento definida
+    if (!order.paymentTypeId) {
+      console.log(
+        `[Receivables] Pedido #${orderId} não tem forma de pagamento definida`,
+      );
+      return null;
+    }
+
+    // 3. Buscar forma de pagamento
     const [paymentType] = await tx
       .select()
       .from(paymentTypes)
       .where(eq(paymentTypes.id, order.paymentTypeId))
       .limit(1);
 
-    if (!paymentType) throw new Error("Forma de pagamento não encontrada");
-
-    // 3. Se não é prazo, não cria receivable
-    if (paymentType.paymentTermType !== "PRAZO") {
+    if (!paymentType) {
+      console.log(
+        `[Receivables] Forma de pagamento ID ${order.paymentTypeId} não encontrada`,
+      );
       return null;
     }
 
-    // 4. Buscar condição de prazo
+    // 4. Se não é prazo, não cria receivable
+    if (paymentType.paymentTermType !== "PRAZO") {
+      console.log(
+        `[Receivables] Forma de pagamento "${paymentType.name}" é ${paymentType.paymentTermType}, não gera contas a receber`,
+      );
+      return null;
+    }
+
+    // 5. Buscar condição de prazo
     const [paymentTerm] = await tx
       .select()
       .from(paymentTerms)

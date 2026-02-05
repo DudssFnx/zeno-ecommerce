@@ -3,6 +3,8 @@ import {
   companies,
   orderItems,
   orders,
+  paymentTerms,
+  paymentTypes,
   products,
   purchaseOrderItems,
   purchaseOrders,
@@ -1388,7 +1390,7 @@ export async function registerRoutes(
 
       // 🎯 AUTO-CRIAR RECEIVABLE se o pagamento for PRAZO
       try {
-        const companyId = req.user.company;
+        const companyId = req.user.companyId || "1";
         await createReceivableFromOrder(id, companyId);
         console.log(`[Financial] Receivable auto-created for order #${id}`);
       } catch (error: any) {
@@ -1600,6 +1602,8 @@ export async function registerRoutes(
         discount,
         sellerId,
         saleDate,
+        paymentMethod,
+        paymentTypeId,
       } = req.body;
       const companyId = req.user.companyId || "1";
 
@@ -1732,6 +1736,16 @@ export async function registerRoutes(
         if (printed !== undefined) updateData.printed = printed;
         if (notes !== undefined) updateData.notes = notes;
         if (shippingCost !== undefined) updateData.shippingCost = shippingCost;
+        // paymentMethod - salvar mesmo se for string vazia
+        if (paymentMethod !== undefined)
+          updateData.paymentMethod = paymentMethod || null;
+        // paymentTypeId - salvar ID da forma de pagamento
+        if (paymentTypeId !== undefined)
+          updateData.paymentTypeId = paymentTypeId || null;
+
+        console.log(`[DEBUG] PaymentMethod recebido: "${paymentMethod}"`);
+        console.log(`[DEBUG] PaymentTypeId recebido: "${paymentTypeId}"`);
+        console.log(`[DEBUG] UpdateData:`, JSON.stringify(updateData));
         // discount e sellerId não existem no schema atual, seriam ignorados
 
         await tx.update(orders).set(updateData).where(eq(orders.id, id));
@@ -2036,6 +2050,266 @@ export async function registerRoutes(
     try {
       // Retorna configuração padrão - pode ser customizado para ler do banco
       res.json({ enabled: false, minAge: 18 });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ==========================================
+  // 💳 TIPOS DE PAGAMENTO (PaymentTypes)
+  // ==========================================
+
+  // GET: Listar todos os tipos de pagamento
+  app.get("/api/payment-types", async (req: any, res) => {
+    if (!req.isAuthenticated()) return res.status(401).send();
+    try {
+      const companyId = req.user.companyId || "1";
+      const result = await db
+        .select()
+        .from(paymentTypes)
+        .where(eq(paymentTypes.companyId, companyId))
+        .orderBy(paymentTypes.sortOrder, paymentTypes.name);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // GET: Listar tipos de pagamento ativos
+  app.get("/api/payment-types/active", async (req: any, res) => {
+    if (!req.isAuthenticated()) return res.status(401).send();
+    try {
+      const companyId = req.user.companyId || "1";
+      const result = await db
+        .select()
+        .from(paymentTypes)
+        .where(
+          and(
+            eq(paymentTypes.companyId, companyId),
+            eq(paymentTypes.active, true),
+          ),
+        )
+        .orderBy(paymentTypes.sortOrder, paymentTypes.name);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // POST: Criar tipo de pagamento
+  app.post("/api/payment-types", async (req: any, res) => {
+    if (!req.isAuthenticated()) return res.status(401).send();
+    try {
+      const companyId = req.user.companyId || "1";
+      const [created] = await db
+        .insert(paymentTypes)
+        .values({
+          companyId,
+          name: req.body.name,
+          type: req.body.type,
+          description: req.body.description,
+          active: req.body.active ?? true,
+          feeType: req.body.feeType,
+          feeValue: req.body.feeValue,
+          compensationDays: req.body.compensationDays,
+          isStoreCredit: req.body.isStoreCredit ?? false,
+          paymentTermType: req.body.paymentTermType || "VISTA",
+          paymentTermId: req.body.paymentTermId,
+          sortOrder: req.body.sortOrder,
+          createdAt: new Date(),
+        })
+        .returning();
+      res.status(201).json(created);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // PATCH: Atualizar tipo de pagamento
+  app.patch("/api/payment-types/:id", async (req: any, res) => {
+    if (!req.isAuthenticated()) return res.status(401).send();
+    try {
+      const id = parseInt(req.params.id);
+      const companyId = req.user.companyId || "1";
+
+      const updateData: any = { updatedAt: new Date() };
+      if (req.body.name !== undefined) updateData.name = req.body.name;
+      if (req.body.type !== undefined) updateData.type = req.body.type;
+      if (req.body.description !== undefined)
+        updateData.description = req.body.description;
+      if (req.body.active !== undefined) updateData.active = req.body.active;
+      if (req.body.feeType !== undefined) updateData.feeType = req.body.feeType;
+      if (req.body.feeValue !== undefined)
+        updateData.feeValue = req.body.feeValue;
+      if (req.body.compensationDays !== undefined)
+        updateData.compensationDays = req.body.compensationDays;
+      if (req.body.isStoreCredit !== undefined)
+        updateData.isStoreCredit = req.body.isStoreCredit;
+      if (req.body.paymentTermType !== undefined)
+        updateData.paymentTermType = req.body.paymentTermType;
+      if (req.body.paymentTermId !== undefined)
+        updateData.paymentTermId = req.body.paymentTermId;
+      if (req.body.sortOrder !== undefined)
+        updateData.sortOrder = req.body.sortOrder;
+
+      const [updated] = await db
+        .update(paymentTypes)
+        .set(updateData)
+        .where(
+          and(eq(paymentTypes.id, id), eq(paymentTypes.companyId, companyId)),
+        )
+        .returning();
+
+      if (!updated)
+        return res
+          .status(404)
+          .json({ message: "Tipo de pagamento não encontrado" });
+      res.json(updated);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // DELETE: Remover tipo de pagamento
+  app.delete("/api/payment-types/:id", async (req: any, res) => {
+    if (!req.isAuthenticated()) return res.status(401).send();
+    try {
+      const id = parseInt(req.params.id);
+      const companyId = req.user.companyId || "1";
+
+      const [deleted] = await db
+        .delete(paymentTypes)
+        .where(
+          and(eq(paymentTypes.id, id), eq(paymentTypes.companyId, companyId)),
+        )
+        .returning();
+
+      if (!deleted)
+        return res
+          .status(404)
+          .json({ message: "Tipo de pagamento não encontrado" });
+      res.json({ message: "Tipo de pagamento removido com sucesso" });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ============ PAYMENT TERMS (Condições de Prazo) ============
+  // GET: Listar condições de prazo
+  app.get("/api/payment-terms", async (req: any, res) => {
+    if (!req.isAuthenticated()) return res.status(401).send();
+    try {
+      const companyId = req.user.companyId || "1";
+      const terms = await db
+        .select()
+        .from(paymentTerms)
+        .where(eq(paymentTerms.companyId, companyId))
+        .orderBy(paymentTerms.sortOrder);
+      res.json(terms);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // POST: Criar tipos de pagamento padrão para a empresa
+  app.post("/api/payment-types/seed-defaults", async (req: any, res) => {
+    if (!req.isAuthenticated()) return res.status(401).send();
+    try {
+      const companyId = req.user.companyId || "1";
+
+      // Verificar se já existem tipos para esta empresa
+      const existing = await db
+        .select()
+        .from(paymentTypes)
+        .where(eq(paymentTypes.companyId, companyId))
+        .limit(1);
+
+      if (existing.length > 0) {
+        return res
+          .status(400)
+          .json({ message: "Já existem tipos de pagamento cadastrados" });
+      }
+
+      // 1. Criar condições de prazo padrão primeiro
+      const defaultTerms = [
+        {
+          name: "30 dias (1x)",
+          installmentCount: 1,
+          firstPaymentDays: 30,
+          intervalDays: 30,
+        },
+        {
+          name: "30/60 dias (2x)",
+          installmentCount: 2,
+          firstPaymentDays: 30,
+          intervalDays: 30,
+        },
+        {
+          name: "30/60/90 dias (3x)",
+          installmentCount: 3,
+          firstPaymentDays: 30,
+          intervalDays: 30,
+        },
+      ];
+
+      const createdTerms = await db
+        .insert(paymentTerms)
+        .values(
+          defaultTerms.map((t) => ({
+            companyId,
+            name: t.name,
+            installmentCount: t.installmentCount,
+            firstPaymentDays: t.firstPaymentDays,
+            intervalDays: t.intervalDays,
+            active: true,
+            createdAt: new Date(),
+          })),
+        )
+        .returning();
+
+      // Pegar o ID da condição "30 dias (1x)" para vincular ao Boleto 30 dias
+      const term30days = createdTerms.find((t) => t.name === "30 dias (1x)");
+
+      // 2. Criar tipos padrão
+      const defaults = [
+        { name: "Dinheiro", paymentTermType: "VISTA", sortOrder: 1 },
+        { name: "Pix", paymentTermType: "VISTA", sortOrder: 2 },
+        { name: "Cartão de Débito", paymentTermType: "VISTA", sortOrder: 3 },
+        { name: "Cartão de Crédito", paymentTermType: "VISTA", sortOrder: 4 },
+        { name: "Boleto à Vista", paymentTermType: "VISTA", sortOrder: 5 },
+        {
+          name: "Boleto 30 dias",
+          paymentTermType: "PRAZO",
+          sortOrder: 6,
+          paymentTermId: term30days?.id,
+        },
+        {
+          name: "Fiado",
+          paymentTermType: "PRAZO",
+          sortOrder: 7,
+          isStoreCredit: true,
+        },
+      ];
+
+      const created = await db
+        .insert(paymentTypes)
+        .values(
+          defaults.map((d) => ({
+            companyId,
+            name: d.name,
+            paymentTermType: d.paymentTermType,
+            sortOrder: d.sortOrder,
+            paymentTermId: (d as any).paymentTermId || null,
+            isStoreCredit: (d as any).isStoreCredit || false,
+            active: true,
+            createdAt: new Date(),
+          })),
+        )
+        .returning();
+
+      res
+        .status(201)
+        .json({ paymentTypes: created, paymentTerms: createdTerms });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
