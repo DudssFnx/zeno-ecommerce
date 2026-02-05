@@ -1604,6 +1604,7 @@ export async function registerRoutes(
         saleDate,
         paymentMethod,
         paymentTypeId,
+        paymentNotes,
       } = req.body;
       const companyId = req.user.companyId || "1";
 
@@ -1742,10 +1743,10 @@ export async function registerRoutes(
         // paymentTypeId - salvar ID da forma de pagamento
         if (paymentTypeId !== undefined)
           updateData.paymentTypeId = paymentTypeId || null;
+        // paymentNotes - salvar condição de pagamento (ex: "30 60 90")
+        if (paymentNotes !== undefined)
+          updateData.paymentNotes = paymentNotes || null;
 
-        console.log(`[DEBUG] PaymentMethod recebido: "${paymentMethod}"`);
-        console.log(`[DEBUG] PaymentTypeId recebido: "${paymentTypeId}"`);
-        console.log(`[DEBUG] UpdateData:`, JSON.stringify(updateData));
         // discount e sellerId não existem no schema atual, seriam ignorados
 
         await tx.update(orders).set(updateData).where(eq(orders.id, id));

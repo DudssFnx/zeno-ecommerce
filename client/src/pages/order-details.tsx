@@ -188,9 +188,14 @@ export default function OrderDetailsPage() {
     number | null
   >(null);
 
-  const { data: orderData, isLoading } = useQuery<OrderWithDetails>({
+  const {
+    data: orderData,
+    isLoading,
+    refetch: refetchOrder,
+  } = useQuery<OrderWithDetails>({
     queryKey: ["/api/orders", orderId],
     enabled: !!orderId,
+    staleTime: 0, // Sempre buscar dados frescos para este pedido
   });
 
   const { data: productsData } = useQuery<{
@@ -292,6 +297,37 @@ export default function OrderDetailsPage() {
       setShippingCost(parseFloat(orderData.shippingCost || "0"));
       setPaymentMethod(orderData.paymentMethod || "");
       setSelectedPaymentTypeId(orderData.paymentTypeId || null);
+      // Carregar condição de pagamento (ex: "30 60 90 120")
+      // Só atualiza se tiver valor no banco OU se ainda não tiver valor local
+      const savedCondition = orderData.paymentNotes || "";
+      if (savedCondition || !paymentCondition) {
+        setPaymentCondition(savedCondition);
+      }
+
+      // Gerar parcelas automaticamente se tiver condição de pagamento salva
+      if (savedCondition) {
+        const days = savedCondition
+          .trim()
+          .split(/\s+/)
+          .map(Number)
+          .filter((n) => !isNaN(n) && n > 0);
+        if (days.length > 0) {
+          const orderTotal = parseFloat(orderData.total || "0");
+          const installmentValue = orderTotal / days.length;
+          const baseDate = orderData.createdAt
+            ? new Date(orderData.createdAt)
+            : new Date();
+          const newInstallments: Installment[] = days.map((d, i) => ({
+            number: i + 1,
+            days: d,
+            date: format(addDays(baseDate, d), "dd/MM/yyyy"),
+            value: installmentValue,
+            method: orderData.paymentMethod || "Boleto",
+            obs: "",
+          }));
+          setInstallments(newInstallments);
+        }
+      }
       // Não existe campo discount global no schema
       setGlobalDiscount(0);
     }
@@ -378,9 +414,10 @@ export default function OrderDetailsPage() {
   const generateInstallments = () => {
     if (!paymentCondition.trim()) return;
     const days = paymentCondition
+      .trim()
       .split(/\s+/)
       .map(Number)
-      .filter((n) => !isNaN(n));
+      .filter((n) => !isNaN(n) && n > 0);
     if (days.length === 0) return;
 
     const installmentValue = totalOrderValue / days.length;
@@ -406,6 +443,7 @@ export default function OrderDetailsPage() {
       saleDate?: string;
       paymentMethod?: string;
       paymentTypeId?: number | null;
+      paymentNotes?: string;
     }) => {
       // Try to update items (may fail if stock is reserved)
       try {
@@ -426,11 +464,19 @@ export default function OrderDetailsPage() {
         saleDate: data.saleDate,
         paymentMethod: data.paymentMethod,
         paymentTypeId: data.paymentTypeId,
+        paymentNotes: data.paymentNotes,
       });
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/orders", orderId] });
+    onSuccess: async () => {
+      // Invalidar cache
+      queryClient.invalidateQueries({
+        queryKey: ["/api/orders", orderId],
+      });
       queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
+      // Forçar refetch usando a função do hook
+      await refetchOrder();
+      // Pequeno delay para garantir que o React processe os novos dados
+      await new Promise((resolve) => setTimeout(resolve, 100));
       setIsEditMode(false);
       toast({
         title: "Pedido Atualizado",
@@ -608,6 +654,8 @@ export default function OrderDetailsPage() {
       selectedPaymentTypeId,
       "paymentMethod:",
       paymentMethodName,
+      "paymentNotes:",
+      paymentCondition.trim(),
     );
 
     updateOrderMutation.mutate({
@@ -619,6 +667,7 @@ export default function OrderDetailsPage() {
       saleDate,
       paymentMethod: paymentMethodName,
       paymentTypeId: selectedPaymentTypeId,
+      paymentNotes: paymentCondition.trim(),
     });
   };
 
@@ -1150,13 +1199,15 @@ export default function OrderDetailsPage() {
                 <CardContent className="p-3 space-y-3">
                   {isEditMode ? (
                     <>
-                      <div className="grid grid-cols-3 gap-2 items-end">
-                        <div className="col-span-2 space-y-1">
-                          <Label className="text-[10px]">
-                            Condição Pagamento (Dias ex: 30 60)
+                      <div className="flex gap-2 items-end">
+                        <div className="flex-1 space-y-1">
+                          <Label className="text-[10px] flex items-center gap-1">
+                            Condição de pagamento
+                            <span className="text-muted-foreground">(i)</span>
                           </Label>
                           <Input
                             className="h-7 text-xs"
+                            placeholder="Ex: 30 60 90"
                             value={paymentCondition}
                             onChange={(e) =>
                               setPaymentCondition(e.target.value)
@@ -1165,23 +1216,34 @@ export default function OrderDetailsPage() {
                         </div>
                         <Button
                           variant="outline"
-                          className="h-7 text-xs border-green-600 text-green-600"
+                          className="h-7 text-xs border-green-600 text-green-600 hover:bg-green-600 hover:text-white"
                           onClick={generateInstallments}
                         >
                           Gerar
                         </Button>
                       </div>
                       {installments.length > 0 && (
-                        <div className="border rounded bg-muted/10 p-2">
-                          <div className="text-[10px] font-bold text-muted-foreground mb-1 grid grid-cols-2 gap-2 px-2">
-                            <span>DATA</span>
-                            <span>VALOR</span>
+                        <div className="border rounded-md overflow-hidden">
+                          {/* Header da tabela estilo Bling */}
+                          <div className="grid grid-cols-[60px_1fr_1fr_1fr_80px] gap-1 bg-muted/40 px-2 py-1.5 text-[10px] font-semibold text-muted-foreground border-b">
+                            <span>Dias</span>
+                            <span>Data</span>
+                            <span>Valor</span>
+                            <span>Forma</span>
+                            <span>Obs</span>
                           </div>
+                          {/* Linhas das parcelas */}
                           {installments.map((inst, i) => (
                             <div
                               key={i}
-                              className="grid grid-cols-2 gap-2 items-center mb-1"
+                              className="grid grid-cols-[60px_1fr_1fr_1fr_80px] gap-1 items-center px-2 py-1 border-b last:border-b-0 hover:bg-muted/20"
                             >
+                              <div className="flex items-center gap-1">
+                                <span className="w-4 h-4 rounded-full bg-primary/20 text-primary text-[9px] flex items-center justify-center font-medium">
+                                  {i + 1}
+                                </span>
+                                <span className="text-xs">{inst.days}</span>
+                              </div>
                               <Input
                                 type="date"
                                 className="h-6 text-xs px-1"
@@ -1202,6 +1264,36 @@ export default function OrderDetailsPage() {
                                 className="h-6 text-xs px-1"
                                 value={inst.value.toFixed(2)}
                                 readOnly
+                              />
+                              <Select
+                                value={inst.method}
+                                onValueChange={(v) => {
+                                  const n = [...installments];
+                                  n[i].method = v;
+                                  setInstallments(n);
+                                }}
+                              >
+                                <SelectTrigger className="h-6 text-xs">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="Boleto">Boleto</SelectItem>
+                                  <SelectItem value="Pix">Pix</SelectItem>
+                                  <SelectItem value="Cartão">Cartão</SelectItem>
+                                  <SelectItem value="Depósito">
+                                    Depósito
+                                  </SelectItem>
+                                </SelectContent>
+                              </Select>
+                              <Input
+                                className="h-6 text-xs px-1"
+                                placeholder={`${orderData?.orderNumber || ""}/${i + 1}`}
+                                value={inst.obs}
+                                onChange={(e) => {
+                                  const n = [...installments];
+                                  n[i].obs = e.target.value;
+                                  setInstallments(n);
+                                }}
                               />
                             </div>
                           ))}
@@ -1271,95 +1363,111 @@ export default function OrderDetailsPage() {
                       </div>
                     </>
                   ) : (
-                    <div className="space-y-2 text-sm">
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">
-                          Forma de Pagamento:
-                        </span>
-                        <span>
+                    <div className="space-y-3 text-sm">
+                      {/* Mostrar condição de pagamento - sempre usa o estado local que é sincronizado */}
+                      {paymentCondition && (
+                        <>
+                          <div className="space-y-1">
+                            <Label className="text-[10px] flex items-center gap-1 text-muted-foreground">
+                              Condição de pagamento
+                              <span>(i)</span>
+                            </Label>
+                            <div className="h-7 text-xs bg-muted/30 border rounded px-2 flex items-center">
+                              {paymentCondition}
+                            </div>
+                          </div>
+                          {/* Mostrar parcelas baseadas na condição de pagamento */}
                           {(() => {
-                            const pt = activePaymentTypes.find(
-                              (p) => p.id === orderData.paymentTypeId,
-                            );
-                            if (pt) {
-                              return `${pt.name} ${pt.paymentTermType === "PRAZO" ? "(A Prazo)" : "(À Vista)"}`;
-                            }
-                            return orderData.paymentMethod || "Não informado";
-                          })()}
-                        </span>
-                      </div>
-                      {/* Mostrar parcelas se for pagamento a prazo */}
-                      {(() => {
-                        const pt = activePaymentTypes.find(
-                          (p) => p.id === orderData.paymentTypeId,
-                        );
-                        if (
-                          pt?.paymentTermType === "PRAZO" &&
-                          pt.paymentTermId
-                        ) {
-                          const term = paymentTermsData?.find(
-                            (t) => t.id === pt.paymentTermId,
-                          );
-                          if (term) {
+                            const days = paymentCondition
+                              .trim()
+                              .split(/\s+/)
+                              .map(Number)
+                              .filter((n) => !isNaN(n) && n > 0);
+                            if (days.length === 0) return null;
+
                             const total = parseFloat(orderData.total || "0");
-                            const installmentValue =
-                              total / term.installmentCount;
+                            const installmentValue = total / days.length;
                             const baseDate = orderData.createdAt
                               ? new Date(orderData.createdAt)
                               : new Date();
 
                             return (
-                              <div className="mt-2 p-2 bg-muted/30 rounded-md">
-                                <div className="text-xs text-muted-foreground mb-1">
-                                  Parcelas ({term.installmentCount}x de R${" "}
-                                  {installmentValue.toFixed(2)}):
+                              <div className="border rounded-md overflow-hidden">
+                                {/* Header da tabela estilo Bling */}
+                                <div className="grid grid-cols-[60px_1fr_1fr_1fr_80px] gap-1 bg-muted/40 px-2 py-1.5 text-[10px] font-semibold text-muted-foreground border-b">
+                                  <span>Dias</span>
+                                  <span>Data</span>
+                                  <span>Valor</span>
+                                  <span>Forma</span>
+                                  <span>Obs</span>
                                 </div>
-                                <div className="space-y-1">
-                                  {Array.from(
-                                    { length: term.installmentCount },
-                                    (_, i) => {
-                                      const dueDate = new Date(baseDate);
-                                      dueDate.setDate(
-                                        dueDate.getDate() +
-                                          term.firstPaymentDays +
-                                          i * term.intervalDays,
-                                      );
-                                      return (
-                                        <div
-                                          key={i}
-                                          className="flex justify-between text-xs"
-                                        >
-                                          <span className="text-muted-foreground">
-                                            {i + 1}ª Parcela:
-                                          </span>
-                                          <span>
-                                            R$ {installmentValue.toFixed(2)} -{" "}
-                                            {dueDate.toLocaleDateString(
-                                              "pt-BR",
-                                            )}
-                                          </span>
-                                        </div>
-                                      );
-                                    },
-                                  )}
-                                </div>
+                                {/* Linhas das parcelas */}
+                                {days.map((d, i) => {
+                                  const dueDate = new Date(baseDate);
+                                  dueDate.setDate(dueDate.getDate() + d);
+                                  return (
+                                    <div
+                                      key={i}
+                                      className="grid grid-cols-[60px_1fr_1fr_1fr_80px] gap-1 items-center px-2 py-1.5 border-b last:border-b-0 text-xs"
+                                    >
+                                      <div className="flex items-center gap-1">
+                                        <span className="w-4 h-4 rounded-full bg-primary/20 text-primary text-[9px] flex items-center justify-center font-medium">
+                                          {i + 1}
+                                        </span>
+                                        <span>{d}</span>
+                                      </div>
+                                      <span>
+                                        {dueDate.toLocaleDateString("pt-BR")}
+                                      </span>
+                                      <span>{installmentValue.toFixed(2)}</span>
+                                      <span>
+                                        {orderData.paymentMethod || "Boleto"}
+                                      </span>
+                                      <span className="text-muted-foreground">
+                                        {orderData.orderNumber}/{i + 1}
+                                      </span>
+                                    </div>
+                                  );
+                                })}
                               </div>
                             );
-                          }
-                        }
-                        return null;
-                      })()}
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">
-                          Transportadora:
-                        </span>
-                        <span>Não informado</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">
-                          Tipo Frete:
-                        </span>
-                        <span>CIF</span>
+                          })()}
+                        </>
+                      )}
+                      <Separator className="my-1" />
+                      <div className="grid grid-cols-3 gap-2">
+                        <div className="space-y-1">
+                          <Label className="text-[10px] text-muted-foreground">
+                            Forma Pagamento
+                          </Label>
+                          <div className="h-7 text-xs bg-muted/30 border rounded px-2 flex items-center">
+                            {(() => {
+                              const pt = activePaymentTypes.find(
+                                (p) => p.id === orderData.paymentTypeId,
+                              );
+                              if (pt) {
+                                return `${pt.name} ${pt.paymentTermType === "PRAZO" ? "(A Prazo)" : "(À Vista)"}`;
+                              }
+                              return orderData.paymentMethod || "Não informado";
+                            })()}
+                          </div>
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-[10px] text-muted-foreground">
+                            Transportadora
+                          </Label>
+                          <div className="h-7 text-xs bg-muted/30 border rounded px-2 flex items-center">
+                            Não informado
+                          </div>
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-[10px] text-muted-foreground">
+                            Tipo Frete
+                          </Label>
+                          <div className="h-7 text-xs bg-muted/30 border rounded px-2 flex items-center">
+                            CIF (Emitente)
+                          </div>
+                        </div>
                       </div>
                     </div>
                   )}

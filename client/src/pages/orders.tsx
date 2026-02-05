@@ -453,9 +453,10 @@ export default function OrdersPage() {
       return;
     }
     const daysArray = paymentCondition
-      .split(" ")
+      .trim()
+      .split(/\s+/)
       .map((d) => parseInt(d))
-      .filter((n) => !isNaN(n));
+      .filter((n) => !isNaN(n) && n > 0);
     if (daysArray.length === 0) {
       setInstallments([
         {
@@ -536,6 +537,7 @@ export default function OrdersPage() {
       shippingCost: shippingCost.toString(),
       total: totalOrderValue.toString(),
       notes: notes.trim() || null, // Apenas as observações do vendedor
+      paymentNotes: paymentCondition.trim() || null, // Condição de pagamento (ex: "30 60 90 120")
       status: "ORCAMENTO",
     };
     createOrderMutation.mutate(payload);
@@ -1057,13 +1059,15 @@ export default function OrdersPage() {
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="p-3 space-y-3">
-                      <div className="grid grid-cols-3 gap-2 items-end">
-                        <div className="col-span-2 space-y-1">
-                          <Label className="text-[10px]">
-                            Condição Pagamento (Dias ex: 30 60)
+                      <div className="flex gap-2 items-end">
+                        <div className="flex-1 space-y-1">
+                          <Label className="text-[10px] flex items-center gap-1">
+                            Condição de pagamento
+                            <span className="text-muted-foreground">(i)</span>
                           </Label>
                           <Input
                             className="h-7 text-xs"
+                            placeholder="Ex: 30 60 90"
                             value={paymentCondition}
                             onChange={(e) =>
                               setPaymentCondition(e.target.value)
@@ -1072,25 +1076,34 @@ export default function OrdersPage() {
                         </div>
                         <Button
                           variant="outline"
-                          className="h-7 text-xs border-green-600 text-green-600"
+                          className="h-7 text-xs border-green-600 text-green-600 hover:bg-green-600 hover:text-white"
                           onClick={generateInstallments}
                         >
                           Gerar
                         </Button>
                       </div>
                       {installments.length > 0 && (
-                        <div className="border rounded bg-muted/10 p-2">
-                          <div className="text-[10px] font-bold text-muted-foreground mb-1 grid grid-cols-4 gap-2 px-2">
-                            <span>DATA</span>
-                            <span>VALOR</span>
-                            <span>FORMA</span>
-                            <span></span>
+                        <div className="border rounded-md overflow-hidden">
+                          {/* Header da tabela estilo Bling */}
+                          <div className="grid grid-cols-[60px_1fr_1fr_1fr_80px] gap-1 bg-muted/40 px-2 py-1.5 text-[10px] font-semibold text-muted-foreground border-b">
+                            <span>Dias</span>
+                            <span>Data</span>
+                            <span>Valor</span>
+                            <span>Forma</span>
+                            <span>Obs</span>
                           </div>
+                          {/* Linhas das parcelas */}
                           {installments.map((inst, i) => (
                             <div
                               key={i}
-                              className="grid grid-cols-4 gap-2 items-center mb-1"
+                              className="grid grid-cols-[60px_1fr_1fr_1fr_80px] gap-1 items-center px-2 py-1 border-b last:border-b-0 hover:bg-muted/20"
                             >
+                              <div className="flex items-center gap-1">
+                                <span className="w-4 h-4 rounded-full bg-primary/20 text-primary text-[9px] flex items-center justify-center font-medium">
+                                  {i + 1}
+                                </span>
+                                <span className="text-xs">{inst.days}</span>
+                              </div>
                               <Input
                                 type="date"
                                 className="h-6 text-xs px-1"
@@ -1126,8 +1139,22 @@ export default function OrdersPage() {
                                 <SelectContent>
                                   <SelectItem value="Boleto">Boleto</SelectItem>
                                   <SelectItem value="Pix">Pix</SelectItem>
+                                  <SelectItem value="Cartão">Cartão</SelectItem>
+                                  <SelectItem value="Depósito">
+                                    Depósito
+                                  </SelectItem>
                                 </SelectContent>
                               </Select>
+                              <Input
+                                className="h-6 text-xs px-1"
+                                placeholder=""
+                                value={inst.obs}
+                                onChange={(e) => {
+                                  const n = [...installments];
+                                  n[i].obs = e.target.value;
+                                  setInstallments(n);
+                                }}
+                              />
                             </div>
                           ))}
                         </div>
