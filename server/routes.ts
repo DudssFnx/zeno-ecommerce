@@ -157,6 +157,48 @@ export async function registerRoutes(
     res.json(result);
   });
 
+  // Rota para listar vendedores (users com role 'sales' ou 'admin')
+  app.get("/api/sellers", async (req: any, res) => {
+    if (!req.isAuthenticated()) return res.status(401).send();
+    try {
+      const companyId = req.user.companyId || "1";
+      const result = await db
+        .select()
+        .from(users)
+        .where(
+          and(
+            eq(users.companyId, companyId),
+            sql`${users.role} IN ('sales', 'admin')`,
+          ),
+        )
+        .orderBy(users.firstName);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Rota para listar empresas do usuário logado
+  app.get("/api/user/companies", async (req: any, res) => {
+    if (!req.isAuthenticated()) return res.status(401).send();
+    try {
+      const userCompanyId = req.user.companyId;
+      // Por enquanto retorna apenas a empresa do usuário
+      // Futuramente pode ser expandido para multi-company
+      if (userCompanyId) {
+        const result = await db
+          .select()
+          .from(companies)
+          .where(eq(companies.id, userCompanyId));
+        res.json(result);
+      } else {
+        res.json([]);
+      }
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   app.post("/api/register", async (req: any, res) => {
     if (!req.isAuthenticated()) return res.status(401).send();
     try {
@@ -1479,12 +1521,86 @@ export async function registerRoutes(
     }
   });
 
+  // 5.b PUT: Atualizar itens do pedido
+  app.put("/api/orders/:id/items", async (req: any, res) => {
+    if (!req.isAuthenticated()) return res.status(401).send();
+    const id = parseInt(req.params.id);
+    const companyId = req.user.companyId || "1";
+    const { items } = req.body;
+
+    try {
+      await db.transaction(async (tx) => {
+        // Verificar se o pedido existe e pertence à empresa
+        const [order] = await tx
+          .select()
+          .from(orders)
+          .where(and(eq(orders.id, id), eq(orders.companyId, companyId)))
+          .limit(1);
+
+        if (!order) throw new Error("Pedido não encontrado");
+
+        // Verificar se tem estoque reservado - se tiver, não pode editar itens
+        const stockLogs = await tx
+          .select()
+          .from(stockMovements)
+          .where(
+            sql`${stockMovements.refType} = 'SALES_ORDER' AND ${stockMovements.refId} = ${id} AND ${stockMovements.type} = 'OUT'`,
+          );
+
+        if (stockLogs.length > 0) {
+          throw new Error(
+            "Não é possível editar itens com estoque reservado. Retorne para Orçamento primeiro.",
+          );
+        }
+
+        // Remover itens antigos
+        await tx.delete(orderItems).where(eq(orderItems.orderId, id));
+
+        // Inserir novos itens e calcular total
+        let total = 0;
+        for (const item of items) {
+          const lineTotal = parseFloat(item.price) * item.quantity;
+          total += lineTotal;
+          await tx.insert(orderItems).values({
+            orderId: id,
+            productId: item.productId,
+            quantity: item.quantity,
+            price: item.price,
+            lineTotal: lineTotal.toFixed(2),
+          });
+        }
+
+        // Atualizar total do pedido
+        await tx
+          .update(orders)
+          .set({
+            subtotal: total.toFixed(2),
+            total: (total + parseFloat(order.shippingCost || "0")).toFixed(2),
+            updatedAt: new Date(),
+          })
+          .where(eq(orders.id, id));
+      });
+
+      res.json({ message: "Itens atualizados com sucesso." });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // 6. PATCH: Status Automático (Híbrido) - COM DEPURADOR
   app.patch("/api/orders/:id", async (req: any, res) => {
     if (!req.isAuthenticated()) return res.status(401).send();
     try {
       const id = parseInt(req.params.id);
-      const { status, printed } = req.body;
+      const {
+        status,
+        printed,
+        notes,
+        shippingCost,
+        discount,
+        sellerId,
+        saleDate,
+      } = req.body;
       const companyId = req.user.companyId || "1";
 
       console.log(`[DEBUG] --- Iniciando atualização do Pedido #${id} ---`);
@@ -1610,10 +1726,14 @@ export async function registerRoutes(
           console.log(`[DEBUG] >> Estorno concluído.`);
         }
 
-        // 3. Atualiza status final
+        // 3. Atualiza status final e outros campos
         const updateData: any = { updatedAt: new Date() };
         if (status) updateData.status = status;
         if (printed !== undefined) updateData.printed = printed;
+        if (notes !== undefined) updateData.notes = notes;
+        if (shippingCost !== undefined) updateData.shippingCost = shippingCost;
+        // discount e sellerId não existem no schema atual, seriam ignorados
+
         await tx.update(orders).set(updateData).where(eq(orders.id, id));
       });
 

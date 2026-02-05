@@ -612,7 +612,8 @@ export default function OrderDetailsPage() {
     orderData.status === "PEDIDO_FATURADO" || orderData.status === "FATURADO";
   const isPedidoGerado = orderData.status === "PEDIDO_GERADO";
   const hasStockPosted = orderData.stockPosted === true;
-  const canEdit = isOrcamento || (!hasStockPosted && !isFaturado);
+  // Permite edição em orçamento ou em pedido gerado (não faturado)
+  const canEdit = isOrcamento || isPedidoGerado;
 
   return (
     <div className="max-w-[100vw] min-h-[100vh] bg-background flex flex-col">
