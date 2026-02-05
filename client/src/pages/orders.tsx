@@ -238,8 +238,17 @@ export default function OrdersPage() {
 
   // --- AÇÕES DE ESTOQUE MANUAL ---
   const stockActionMutation = useMutation({
-    mutationFn: async ({ id, action }: { id: string; action: "post" | "reverse" }) => {
-      const endpoint = action === "post" ? `/api/orders/${id}/reserve` : `/api/orders/${id}/unreserve`;
+    mutationFn: async ({
+      id,
+      action,
+    }: {
+      id: string;
+      action: "post" | "reverse";
+    }) => {
+      const endpoint =
+        action === "post"
+          ? `/api/orders/${id}/reserve`
+          : `/api/orders/${id}/unreserve`;
       await apiRequest("POST", endpoint, {});
     },
     onSuccess: (_data, variables) => {
@@ -247,14 +256,16 @@ export default function OrdersPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/products"] });
       refetchOrders();
       toast({
-        title: variables.action === "post" ? "Estoque Lançado" : "Estoque Estornado",
+        title:
+          variables.action === "post" ? "Estoque Lançado" : "Estoque Estornado",
         className: "bg-green-600 text-white",
       });
     },
     onError: (error: any) => {
       toast({
         title: "Erro",
-        description: error.message || "Não foi possível executar a ação de estoque.",
+        description:
+          error.message || "Não foi possível executar a ação de estoque.",
         variant: "destructive",
       });
     },
@@ -266,8 +277,17 @@ export default function OrdersPage() {
 
   // --- AÇÕES DE CONTAS A RECEBER MANUAL ---
   const accountsActionMutation = useMutation({
-    mutationFn: async ({ id, action }: { id: string; action: "post" | "reverse" }) => {
-      const endpoint = action === "post" ? `/api/orders/${id}/post-accounts` : `/api/orders/${id}/reverse-accounts`;
+    mutationFn: async ({
+      id,
+      action,
+    }: {
+      id: string;
+      action: "post" | "reverse";
+    }) => {
+      const endpoint =
+        action === "post"
+          ? `/api/orders/${id}/post-accounts`
+          : `/api/orders/${id}/reverse-accounts`;
       await apiRequest("POST", endpoint, {});
     },
     onSuccess: (_data, variables) => {
@@ -275,7 +295,8 @@ export default function OrdersPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/receivables"] });
       refetchOrders();
       toast({
-        title: variables.action === "post" ? "Contas Lançadas" : "Contas Estornadas",
+        title:
+          variables.action === "post" ? "Contas Lançadas" : "Contas Estornadas",
         className: "bg-green-600 text-white",
       });
     },

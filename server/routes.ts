@@ -1131,7 +1131,13 @@ export async function registerRoutes(
         )
         .limit(1);
 
-      res.json({ ...order, items, customer, stockPosted: !!stockLog, accountsPosted: !!order.accountsPosted });
+      res.json({
+        ...order,
+        items,
+        customer,
+        stockPosted: !!stockLog,
+        accountsPosted: !!order.accountsPosted,
+      });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
@@ -1393,19 +1399,43 @@ export async function registerRoutes(
       try {
         const companyId = req.user.companyId || "1";
         const userName = req.user.firstName || req.user.email || "Sistema";
-        const receivable = await createReceivableFromOrder(id, companyId);
 
-        if (receivable) {
-          // Marcar pedido como contas lançadas
-          await db
-            .update(orders)
-            .set({
-              accountsPosted: true,
-              accountsPostedAt: new Date(),
-              accountsPostedBy: userName,
-            })
-            .where(eq(orders.id, id));
-          console.log(`[Financial] Receivable auto-created for order #${id}`);
+        // Buscar o pedido para verificar forma de pagamento
+        const [orderForReceivable] = await db
+          .select()
+          .from(orders)
+          .where(eq(orders.id, id))
+          .limit(1);
+
+        console.log(
+          `[Financial] Verificando receivable para pedido #${id}, paymentTypeId: ${orderForReceivable?.paymentTypeId}`,
+        );
+
+        if (!orderForReceivable?.paymentTypeId) {
+          console.log(
+            `[Financial] Pedido #${id} não tem forma de pagamento - receivable não criado`,
+          );
+        } else {
+          const receivable = await createReceivableFromOrder(id, companyId);
+
+          if (receivable) {
+            // Marcar pedido como contas lançadas
+            await db
+              .update(orders)
+              .set({
+                accountsPosted: true,
+                accountsPostedAt: new Date(),
+                accountsPostedBy: userName,
+              })
+              .where(eq(orders.id, id));
+            console.log(
+              `[Financial] Receivable auto-created for order #${id}`,
+            );
+          } else {
+            console.log(
+              `[Financial] Receivable não criado para pedido #${id} - provavelmente pagamento não é PRAZO`,
+            );
+          }
         }
       } catch (error: any) {
         // Se não conseguir criar receivable (ex: não é prazo), apenas ignora
@@ -1413,6 +1443,7 @@ export async function registerRoutes(
           `[Financial] Could not auto-create receivable for order #${id}:`,
           error.message,
         );
+      }
       }
 
       res.json({ message: "Pedido faturado e estoque baixado." });
@@ -1489,10 +1520,15 @@ export async function registerRoutes(
 
   // 4.f POST: Lançar Contas - gera contas a receber manualmente
   app.post("/api/orders/:id/post-accounts", async (req: any, res) => {
-    if (!req.isAuthenticated()) return res.status(401).send();
+    if (!req.isAuthenticated())
+      return res.status(401).json({ message: "Não autenticado" });
     const id = parseInt(req.params.id);
     const companyId = req.user.companyId || "1";
     const userName = req.user.firstName || req.user.email || "Sistema";
+
+    console.log(
+      `[POST-ACCOUNTS] Iniciando lançamento de contas para pedido #${id}`,
+    );
 
     try {
       const [order] = await db
@@ -1501,19 +1537,66 @@ export async function registerRoutes(
         .where(eq(orders.id, id))
         .limit(1);
 
-      if (!order) throw new Error("Pedido não encontrado");
+      if (!order) {
+        console.log(`[POST-ACCOUNTS] Pedido #${id} não encontrado`);
+        return res.status(404).json({ message: "Pedido não encontrado" });
+      }
 
       if (order.accountsPosted) {
-        throw new Error("Contas já foram lançadas para este pedido");
+        console.log(`[POST-ACCOUNTS] Pedido #${id} já tem contas lançadas`);
+        return res.status(400).json({
+          message: "Contas já foram lançadas para este pedido",
+        });
+      }
+
+      // Verificar se tem forma de pagamento definida
+      if (!order.paymentTypeId) {
+        console.log(
+          `[POST-ACCOUNTS] Pedido #${id} não tem forma de pagamento definida`,
+        );
+        return res.status(400).json({
+          message:
+            "O pedido não possui forma de pagamento definida. Edite o pedido e selecione uma forma de pagamento do tipo A PRAZO.",
+        });
+      }
+
+      // Buscar forma de pagamento para verificar o tipo
+      const [paymentType] = await db
+        .select()
+        .from(paymentTypes)
+        .where(eq(paymentTypes.id, order.paymentTypeId))
+        .limit(1);
+
+      if (!paymentType) {
+        console.log(
+          `[POST-ACCOUNTS] Forma de pagamento ID ${order.paymentTypeId} não encontrada`,
+        );
+        return res.status(400).json({
+          message:
+            "A forma de pagamento selecionada não foi encontrada. Verifique as configurações.",
+        });
+      }
+
+      if (paymentType.paymentTermType !== "PRAZO") {
+        console.log(
+          `[POST-ACCOUNTS] Forma de pagamento "${paymentType.name}" é ${paymentType.paymentTermType}, não é PRAZO`,
+        );
+        return res.status(400).json({
+          message: `A forma de pagamento "${paymentType.name}" é do tipo À VISTA e não gera contas a receber. Selecione uma forma de pagamento do tipo A PRAZO.`,
+        });
       }
 
       // Criar receivable
       const receivable = await createReceivableFromOrder(id, companyId);
 
       if (!receivable) {
-        throw new Error(
-          "Não foi possível criar contas a receber. Verifique se a forma de pagamento é do tipo PRAZO.",
+        console.log(
+          `[POST-ACCOUNTS] Falha ao criar receivable para pedido #${id}`,
         );
+        return res.status(500).json({
+          message:
+            "Erro ao criar contas a receber. Verifique se a condição de pagamento está configurada corretamente.",
+        });
       }
 
       // Marcar pedido como contas lançadas
@@ -1527,18 +1610,22 @@ export async function registerRoutes(
         })
         .where(eq(orders.id, id));
 
+      console.log(`[POST-ACCOUNTS] Contas lançadas com sucesso para pedido #${id}`);
+
       res.json({
         message: "Contas a receber lançadas com sucesso",
         receivable,
       });
     } catch (error: any) {
+      console.error(`[POST-ACCOUNTS] Erro para pedido #${id}:`, error);
       res.status(500).json({ message: error.message });
     }
   });
 
   // 4.g POST: Estornar Contas - cancela receivables do pedido
   app.post("/api/orders/:id/reverse-accounts", async (req: any, res) => {
-    if (!req.isAuthenticated()) return res.status(401).send();
+    if (!req.isAuthenticated())
+      return res.status(401).json({ message: "Não autenticado" });
     const id = parseInt(req.params.id);
     const userName = req.user.firstName || req.user.email || "Sistema";
 
