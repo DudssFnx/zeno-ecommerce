@@ -2,6 +2,7 @@ import "dotenv/config"; // Carrega as variáveis do .env logo no início
 import express, { NextFunction, type Request, Response } from "express";
 import { createServer } from "http";
 import { pool } from "./db";
+import { setupAuth } from "./replitAuth";
 import { registerRoutes } from "./routes";
 import { seedSuperAdmin } from "./scripts/seedSuperAdmin";
 import { initializeBlingTokens } from "./services/bling";
@@ -85,7 +86,10 @@ app.use((req, res, next) => {
 });
 
 (async () => {
-  // 1. Registrar rotas (Isso vai chamar o replitAuth que já corrigimos)
+  // 0. Configurar autenticação (Passport + Session) ANTES das rotas
+  await setupAuth(app);
+
+  // 1. Registrar rotas da API
   await registerRoutes(httpServer, app);
 
   // 2. Seed SUPER_ADMIN

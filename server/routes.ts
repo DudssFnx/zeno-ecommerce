@@ -1,4 +1,5 @@
 import {
+  categories,
   companies,
   orderItems,
   orders,
@@ -13,10 +14,8 @@ import bcrypt from "bcryptjs";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { type Express } from "express";
 import { type Server } from "http";
-import multer from "multer";
 import { db } from "./db";
 import { registerFinancialRoutes } from "./financialRoutes";
-import { setupAuth } from "./replitAuth";
 import { createPayableFromPurchaseOrder } from "./services/payables.service";
 import { createReceivableFromOrder } from "./services/receivables.service";
 
@@ -30,66 +29,6 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express,
 ): Promise<Server> {
-  await setupAuth(app);
-
-  const upload = multer({
-    storage: multer.memoryStorage(),
-    limits: { fileSize: 5 * 1024 * 1024 },
-  });
-
-  // --- HEALTH CHECK ---
-  app.get("/api/health/db", async (_req, res) => {
-    try {
-      await db.execute(sql`SELECT 1`);
-      res.json({ status: "ok", database: "connected" });
-    } catch (error) {
-      res.status(500).json({ status: "error" });
-    }
-  });
-
-  // ==========================================
-  // 🔐 AUTENTICAÇÃO (MANTIDO IGUAL)
-  // ==========================================
-  app.post("/api/auth/login", async (req: any, res, next) => {
-    try {
-      const { email, password } = req.body;
-      const [user] = await db
-        .select()
-        .from(users)
-        .where(eq(users.email, email))
-        .limit(1);
-
-      if (!user) {
-        return res.status(401).json({ message: "Usuário não encontrado" });
-      }
-
-      let isValid = false;
-      if (user.password) {
-        isValid = await bcrypt
-          .compare(password, user.password)
-          .catch(() => false);
-        if (!isValid && password === user.password) isValid = true;
-      }
-
-      if (!isValid) {
-        return res.status(401).json({ message: "Senha incorreta" });
-      }
-
-      req.login(user, (err: any) => {
-        if (err) return next(err);
-        const userResponse = {
-          ...user,
-          isB2bUser: true,
-          nome: user.firstName,
-          company: user.company,
-        };
-        return res.json(userResponse);
-      });
-    } catch (error) {
-      res.status(500).json({ message: "Erro interno no servidor" });
-    }
-  });
-
   app.get("/api/auth/user", async (req: any, res) => {
     if (!req.isAuthenticated())
       return res.status(401).json({ message: "Não autenticado" });
@@ -103,13 +42,68 @@ export async function registerRoutes(
     res.json({ ...user, isB2bUser: true, nome: user.firstName });
   });
 
+  // Login local com email/senha
+  app.post("/api/auth/login", async (req: any, res) => {
+    try {
+      const { email, password } = req.body;
+
+      if (!email || !password) {
+        return res
+          .status(400)
+          .json({ message: "Email e senha são obrigatórios" });
+      }
+
+      const [user] = await db
+        .select()
+        .from(users)
+        .where(eq(users.email, email))
+        .limit(1);
+
+      if (!user) {
+        return res.status(401).json({ message: "Email ou senha incorretos" });
+      }
+
+      const isValidPassword = await bcrypt.compare(
+        password,
+        user.password || "",
+      );
+      if (!isValidPassword) {
+        return res.status(401).json({ message: "Email ou senha incorretos" });
+      }
+
+      // Login usando Passport
+      req.login(user, (err: any) => {
+        if (err) {
+          return res.status(500).json({ message: "Erro ao fazer login" });
+        }
+        res.json({
+          user: { ...user, isB2bUser: true, nome: user.firstName },
+          message: "Login realizado com sucesso",
+        });
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   app.post("/api/auth/logout", (req: any, res) => {
     req.logout(() => res.json({ message: "Logout efetuado" }));
   });
 
   // ==========================================
-  // 🏢 EMPRESA (MANTIDO IGUAL)
+  // 🏢 EMPRESA
   // ==========================================
+
+  // Função auxiliar para gerar slug
+  function generateSlug(text: string): string {
+    return text
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+  }
+
   app.get("/api/company/me", async (req: any, res) => {
     if (!req.isAuthenticated()) return res.status(401).send();
     try {
@@ -131,6 +125,17 @@ export async function registerRoutes(
       const [first] = await db.select().from(companies).limit(1);
       let updated;
       if (first) {
+        // Gerar slug baseado em razaoSocial ou fantasyName
+        if (req.body.name || req.body.razaoSocial || req.body.fantasyName) {
+          const nameForSlug =
+            req.body.name ||
+            req.body.razaoSocial ||
+            req.body.fantasyName ||
+            first.razaoSocial ||
+            first.fantasyName;
+          updateData.slug = generateSlug(nameForSlug);
+        }
+
         [updated] = await db
           .update(companies)
           .set(updateData)
@@ -783,14 +788,273 @@ export async function registerRoutes(
     }
   });
 
+  // ==========================================
+  // ROTAS ESPECÍFICAS (devem vir ANTES de :id)
+  // ==========================================
+
+  // GET: Lista pedidos guest da empresa autenticada
+  app.get("/api/orders/guest", async (req: any, res) => {
+    if (!req.isAuthenticated()) return res.status(401).send();
+    try {
+      const companyId = req.user.companyId || "1";
+      const result = await db
+        .select()
+        .from(orders)
+        .where(
+          and(eq(orders.companyId, companyId), eq(orders.isGuestOrder, true)),
+        )
+        .orderBy(desc(orders.createdAt));
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // GET: Contar pedidos guest não visualizados
+  app.get("/api/orders/guest/count", async (req: any, res) => {
+    if (!req.isAuthenticated()) return res.status(401).send();
+    try {
+      const companyId = req.user.companyId || "1";
+      const result = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(orders)
+        .where(
+          and(eq(orders.companyId, companyId), eq(orders.isGuestOrder, true)),
+        );
+      res.json({ guestOrderCount: result[0]?.count || 0 });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // DEBUG: endpoint que ecoa os IDs enviados (sem tocar no BD)
+  app.post("/api/orders/bulk/echo", async (req: any, res) => {
+    if (!req.isAuthenticated())
+      return res.status(401).json({ message: "Unauthorized" });
+    try {
+      const raw = req.body?.ids;
+      let rawIds: any[] = [];
+      if (Array.isArray(raw)) {
+        rawIds = raw;
+      } else if (raw && typeof raw === "object") {
+        rawIds = Object.values(raw).map((v: any) => {
+          if (v == null) return v;
+          if (typeof v === "object")
+            return v.id ?? v.orderId ?? v.orderNumber ?? v;
+          return v;
+        });
+      } else if (typeof raw === "string") {
+        rawIds = raw.split(",").map((s: string) => s.trim());
+      }
+      const parsedIds = rawIds
+        .map((v: any) => (typeof v === "number" ? v : parseInt(String(v))))
+        .filter((n: number) => Number.isInteger(n) && !Number.isNaN(n));
+      res.json({ raw, rawIds, parsedIds });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // DELETE: Excluir Pedidos em Massa (bulk)
+  app.delete("/api/orders/bulk", async (req: any, res) => {
+    if (!req.isAuthenticated())
+      return res.status(401).json({ message: "Unauthorized" });
+    try {
+      console.log(`[BULK DELETE] incoming ids raw:`, req.body?.ids);
+      const raw = req.body?.ids;
+      let rawIds: any[] = [];
+      if (Array.isArray(raw)) {
+        rawIds = raw;
+      } else if (raw && typeof raw === "object") {
+        rawIds = Object.values(raw).map((v: any) => {
+          if (v == null) return v;
+          if (typeof v === "object")
+            return v.id ?? v.orderId ?? v.orderNumber ?? v;
+          return v;
+        });
+      } else if (typeof raw === "string") {
+        rawIds = raw.split(",").map((s: string) => s.trim());
+      }
+      const parsedIds = rawIds
+        .map((v: any) => (typeof v === "number" ? v : parseInt(String(v))))
+        .filter((n: number) => Number.isInteger(n) && !Number.isNaN(n));
+      console.log(`[BULK DELETE] parsedIds:`, parsedIds);
+
+      if (!parsedIds.length)
+        return res.status(400).json({ message: "Nenhum ID válido informado" });
+
+      const companyId = req.user.companyId || "1";
+      const processed: number[] = [];
+      const ignored: number[] = [];
+
+      await db.transaction(async (tx) => {
+        for (const id of parsedIds) {
+          const [order] = await tx
+            .select()
+            .from(orders)
+            .where(and(eq(orders.id, id), eq(orders.companyId, companyId)))
+            .limit(1);
+          if (!order) {
+            ignored.push(id);
+            continue;
+          }
+
+          const stockLogs = await tx
+            .select()
+            .from(stockMovements)
+            .where(
+              sql`${stockMovements.refType} = 'SALES_ORDER' AND ${stockMovements.refId} = ${id} AND ${stockMovements.type} = 'OUT'`,
+            );
+          if (stockLogs.length > 0) {
+            const items = await tx
+              .select()
+              .from(orderItems)
+              .where(eq(orderItems.orderId, id));
+            for (const item of items) {
+              await tx
+                .update(products)
+                .set({
+                  stock: sql`${products.stock} + ${Number(item.quantity)}`,
+                })
+                .where(eq(products.id, item.productId));
+            }
+            await tx
+              .delete(stockMovements)
+              .where(
+                sql`${stockMovements.refType} = 'SALES_ORDER' AND ${stockMovements.refId} = ${id}`,
+              );
+          }
+          await tx.delete(orderItems).where(eq(orderItems.orderId, id));
+          await tx.delete(orders).where(eq(orders.id, id));
+          processed.push(id);
+        }
+      });
+
+      res.json({ message: "Pedidos processados.", processed, ignored });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // POST: Excluir Pedidos em Massa (bulk) - alternativa
+  app.post("/api/orders/bulk", async (req: any, res) => {
+    if (!req.isAuthenticated())
+      return res.status(401).json({ message: "Unauthorized" });
+    try {
+      const raw = req.body?.ids;
+      const reverseStock = req.body?.reverseStock !== false; // default true se não informado
+      let rawIds: any[] = [];
+      if (Array.isArray(raw)) {
+        rawIds = raw;
+      } else if (raw && typeof raw === "object") {
+        rawIds = Object.values(raw).map((v: any) => {
+          if (v == null) return v;
+          if (typeof v === "object")
+            return v.id ?? v.orderId ?? v.orderNumber ?? v;
+          return v;
+        });
+      } else if (typeof raw === "string") {
+        rawIds = raw.split(",").map((s: string) => s.trim());
+      }
+      const parsedIds = rawIds
+        .map((v: any) => (typeof v === "number" ? v : parseInt(String(v))))
+        .filter((n: number) => Number.isInteger(n) && !Number.isNaN(n));
+
+      console.log(`[BULK POST] incoming ids raw:`, raw);
+      console.log(`[BULK POST] parsedIds:`, parsedIds);
+      console.log(`[BULK POST] reverseStock:`, reverseStock);
+
+      if (!parsedIds.length)
+        return res.status(400).json({ message: "Nenhum ID válido informado" });
+
+      const companyId = req.user.companyId || "1";
+      const processed: number[] = [];
+      const ignored: number[] = [];
+      const stockReversed: number[] = [];
+
+      await db.transaction(async (tx) => {
+        for (const id of parsedIds) {
+          const [order] = await tx
+            .select()
+            .from(orders)
+            .where(and(eq(orders.id, id), eq(orders.companyId, companyId)))
+            .limit(1);
+          if (!order) {
+            ignored.push(id);
+            continue;
+          }
+
+          const stockLogs = await tx
+            .select()
+            .from(stockMovements)
+            .where(
+              sql`${stockMovements.refType} = 'SALES_ORDER' AND ${stockMovements.refId} = ${id} AND ${stockMovements.type} = 'OUT'`,
+            );
+
+          // Só estorna estoque se reverseStock=true E houver movimentações
+          if (stockLogs.length > 0 && reverseStock) {
+            const items = await tx
+              .select()
+              .from(orderItems)
+              .where(eq(orderItems.orderId, id));
+            for (const item of items) {
+              await tx
+                .update(products)
+                .set({
+                  stock: sql`${products.stock} + ${Number(item.quantity)}`,
+                })
+                .where(eq(products.id, item.productId));
+            }
+            await tx
+              .delete(stockMovements)
+              .where(
+                sql`${stockMovements.refType} = 'SALES_ORDER' AND ${stockMovements.refId} = ${id}`,
+              );
+            stockReversed.push(id);
+          } else if (stockLogs.length > 0 && !reverseStock) {
+            // Apenas remove os registros de movimento sem devolver estoque
+            await tx
+              .delete(stockMovements)
+              .where(
+                sql`${stockMovements.refType} = 'SALES_ORDER' AND ${stockMovements.refId} = ${id}`,
+              );
+          }
+
+          await tx.delete(orderItems).where(eq(orderItems.orderId, id));
+          await tx.delete(orders).where(eq(orders.id, id));
+          processed.push(id);
+        }
+      });
+
+      res.json({
+        message: "Pedidos processados.",
+        processed,
+        ignored,
+        stockReversed,
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ==========================================
+  // ROTAS PARAMETRIZADAS (devem vir DEPOIS)
+  // ==========================================
+
   // 3. GET ID
   app.get("/api/orders/:id", async (req: any, res) => {
     if (!req.isAuthenticated()) return res.status(401).send();
     try {
+      const companyId = req.user.companyId || "1";
       const [order] = await db
         .select()
         .from(orders)
-        .where(eq(orders.id, parseInt(req.params.id)))
+        .where(
+          and(
+            eq(orders.id, parseInt(req.params.id)),
+            eq(orders.companyId, companyId), // ✅ VALIDAÇÃO ADICIONADA
+          ),
+        )
         .limit(1);
       if (!order)
         return res.status(404).json({ message: "Pedido não encontrado" });
@@ -820,13 +1084,19 @@ export async function registerRoutes(
     if (!req.isAuthenticated()) return res.status(401).send();
     const id = parseInt(req.params.id);
     const { action } = req.body; // 'post' ou 'reverse'
+    const companyId = req.user.companyId || "1";
 
     try {
       await db.transaction(async (tx) => {
         const [order] = await tx
           .select()
           .from(orders)
-          .where(eq(orders.id, id))
+          .where(
+            and(
+              eq(orders.id, id),
+              eq(orders.companyId, companyId), // ✅ VALIDAÇÃO ADICIONADA
+            ),
+          )
           .limit(1);
         if (!order) throw new Error("Pedido não encontrado");
         const items = await tx
@@ -887,12 +1157,18 @@ export async function registerRoutes(
   app.post("/api/orders/:id/reserve", async (req: any, res) => {
     if (!req.isAuthenticated()) return res.status(401).send();
     const id = parseInt(req.params.id);
+    const companyId = req.user.companyId || "1";
     try {
       await db.transaction(async (tx) => {
         const [order] = await tx
           .select()
           .from(orders)
-          .where(eq(orders.id, id))
+          .where(
+            and(
+              eq(orders.id, id),
+              eq(orders.companyId, companyId), // ✅ VALIDAÇÃO ADICIONADA
+            ),
+          )
           .limit(1);
         if (!order) throw new Error("Pedido não encontrado");
 
@@ -1078,8 +1354,18 @@ export async function registerRoutes(
   app.delete("/api/orders/:id", async (req: any, res) => {
     if (!req.isAuthenticated()) return res.status(401).send();
     const id = parseInt(req.params.id);
+    const companyId = req.user.companyId || "1";
     try {
       await db.transaction(async (tx) => {
+        // ✅ VALIDAÇÃO ADICIONADA
+        const [order] = await tx
+          .select()
+          .from(orders)
+          .where(and(eq(orders.id, id), eq(orders.companyId, companyId)))
+          .limit(1);
+
+        if (!order) throw new Error("Pedido não encontrado");
+
         const stockLogs = await tx
           .select()
           .from(stockMovements)
@@ -1120,6 +1406,7 @@ export async function registerRoutes(
     try {
       const id = parseInt(req.params.id);
       const { status, printed } = req.body;
+      const companyId = req.user.companyId || "1";
 
       console.log(`[DEBUG] --- Iniciando atualização do Pedido #${id} ---`);
       console.log(`[DEBUG] Novo Status recebido: ${status}`);
@@ -1129,7 +1416,12 @@ export async function registerRoutes(
         const [currentOrder] = await tx
           .select()
           .from(orders)
-          .where(eq(orders.id, id))
+          .where(
+            and(
+              eq(orders.id, id),
+              eq(orders.companyId, companyId), // ✅ VALIDAÇÃO ADICIONADA
+            ),
+          )
           .limit(1);
         if (!currentOrder) throw new Error("Pedido não encontrado");
 
@@ -1254,6 +1546,303 @@ export async function registerRoutes(
     }
   });
 
+  // ==========================================
+  // 🔗 CATÁLOGO COMPARTILHÁVEL POR SLUG
+  // ==========================================
+
+  // GET: Informações da empresa por slug
+  app.get("/api/catalogs/:slug/info", async (req, res) => {
+    try {
+      const { slug } = req.params;
+      const [company] = await db
+        .select()
+        .from(companies)
+        .where(eq(companies.slug, slug))
+        .limit(1);
+
+      if (!company) {
+        return res.status(404).json({ message: "Catálogo não encontrado" });
+      }
+
+      res.json({
+        id: company.id,
+        name: company.razaoSocial || company.fantasyName,
+        fantasyName: company.fantasyName,
+        slug: company.slug,
+        phone: company.phone || company.telefone,
+        email: company.email,
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // GET: Categorias por slug da empresa (público)
+  app.get("/api/catalogs/:slug/categories", async (req, res) => {
+    try {
+      const { slug } = req.params;
+      const [company] = await db
+        .select()
+        .from(companies)
+        .where(eq(companies.slug, slug))
+        .limit(1);
+
+      if (!company) {
+        return res.status(404).json({ message: "Catálogo não encontrado" });
+      }
+
+      const result = await db
+        .select()
+        .from(categories)
+        .where(eq(categories.companyId, company.id));
+
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // GET: Produtos por slug da empresa (público)
+  app.get("/api/catalogs/:slug/products", async (req, res) => {
+    try {
+      const { slug } = req.params;
+      const { page = "1", limit = "24", categoryId, search } = req.query;
+
+      const [company] = await db
+        .select()
+        .from(companies)
+        .where(eq(companies.slug, slug))
+        .limit(1);
+
+      if (!company) {
+        return res.status(404).json({ message: "Catálogo não encontrado" });
+      }
+
+      const pageNum = Math.max(1, parseInt(page as string) || 1);
+      const limitNum = Math.min(100, parseInt(limit as string) || 24);
+      const offset = (pageNum - 1) * limitNum;
+
+      let query = db
+        .select()
+        .from(products)
+        .where(eq(products.companyId, company.id));
+
+      // Filtro por categoria
+      if (categoryId) {
+        query = query.where(
+          eq(products.categoryId, parseInt(categoryId as string)),
+        );
+      }
+
+      // Filtro por busca
+      if (search && typeof search === "string") {
+        query = query.where(
+          sql`(${products.name} ILIKE '%' || ${search} || '%' OR ${products.sku} ILIKE '%' || ${search} || '%')`,
+        );
+      }
+
+      const total = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(products)
+        .where(eq(products.companyId, company.id));
+
+      const countQuery = await query;
+      const totalCount = countQuery.length;
+
+      const result = await query
+        .orderBy(desc(products.featured), desc(products.createdAt))
+        .limit(limitNum)
+        .offset(offset);
+
+      const totalPages = Math.ceil(totalCount / limitNum);
+
+      res.json({
+        products: result,
+        total: totalCount,
+        page: pageNum,
+        totalPages,
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ==========================================
+  // 📋 CATÁLOGO PÚBLICO (SEM AUTENTICAÇÃO)
+  // ==========================================
+
+  // POST: Criar pedido guest (sem autenticação)
+  app.post("/api/orders/guest/create", async (req, res) => {
+    try {
+      const {
+        companySlug,
+        items,
+        guestName,
+        guestEmail,
+        guestPhone,
+        guestCpf,
+        shippingMethod,
+        paymentMethod,
+        notes,
+      } = req.body;
+
+      if (!companySlug || !items || items.length === 0) {
+        return res.status(400).json({
+          message: "Slug da empresa e itens são obrigatórios",
+        });
+      }
+
+      // Buscar empresa pelo slug
+      const [company] = await db
+        .select()
+        .from(companies)
+        .where(eq(companies.slug, companySlug))
+        .limit(1);
+
+      if (!company) {
+        return res.status(404).json({ message: "Empresa não encontrada" });
+      }
+
+      let subtotal = 0;
+      const validatedItems = [];
+
+      // Validar e calcular subtotal
+      for (const item of items) {
+        const [product] = await db
+          .select()
+          .from(products)
+          .where(eq(products.id, item.productId))
+          .limit(1);
+
+        if (!product || product.companyId !== company.id) {
+          return res.status(400).json({
+            message: `Produto ${item.productId} não encontrado neste catálogo`,
+          });
+        }
+
+        const qty = parseInt(item.quantity) || 0;
+        const price = parseFloat(product.price);
+        subtotal += qty * price;
+
+        validatedItems.push({
+          productId: item.productId,
+          quantity: qty,
+          price: String(price),
+          descriptionSnapshot: product.name,
+          skuSnapshot: product.sku,
+          lineTotal: String(qty * price),
+        });
+      }
+
+      // Criar pedido no banco de dados
+      const orderResult = await db.transaction(async (tx) => {
+        const [newOrder] = await tx
+          .insert(orders)
+          .values({
+            companyId: company.id,
+            orderNumber: `GUEST-${Date.now()}`,
+            status: "ORCAMENTO",
+            isGuestOrder: true,
+            guestName: guestName || "",
+            guestEmail: guestEmail || "",
+            guestPhone: guestPhone || "",
+            guestCpf: guestCpf || "",
+            subtotal: String(subtotal),
+            shippingCost: "0",
+            total: String(subtotal),
+            shippingMethod: shippingMethod || "",
+            paymentMethod: paymentMethod || "",
+            notes: notes || "",
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .returning();
+
+        // Inserir itens do pedido
+        for (const item of validatedItems) {
+          await tx.insert(orderItems).values({
+            orderId: newOrder.id,
+            productId: item.productId,
+            quantity: item.quantity,
+            price: item.price,
+            descriptionSnapshot: item.descriptionSnapshot,
+            skuSnapshot: item.skuSnapshot,
+            lineTotal: item.lineTotal,
+          });
+        }
+
+        return newOrder;
+      });
+
+      res.status(201).json({
+        success: true,
+        orderNumber: orderResult.orderNumber,
+        message: "Orçamento criado com sucesso!",
+      });
+    } catch (error: any) {
+      console.error("[GUEST ORDER]", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ==========================================
+  // 🌐 ROTAS PÚBLICAS (SEM AUTENTICAÇÃO)
+  // ==========================================
+
+  // GET: Categorias públicas
+  app.get("/api/public/categories", async (_req, res) => {
+    try {
+      const result = await db
+        .select()
+        .from(categories)
+        .orderBy(categories.name);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // GET: Produtos públicos
+  app.get("/api/public/products", async (req, res) => {
+    try {
+      const { limit = "12", categoryId, search } = req.query;
+      const limitNum = Math.min(100, parseInt(limit as string) || 12);
+
+      let query = db.select().from(products);
+
+      if (categoryId) {
+        query = query.where(
+          eq(products.categoryId, parseInt(categoryId as string)),
+        );
+      }
+
+      if (search && typeof search === "string") {
+        query = query.where(
+          sql`(${products.name} ILIKE '%' || ${search} || '%' OR ${products.sku} ILIKE '%' || ${search} || '%')`,
+        );
+      }
+
+      const result = await query
+        .orderBy(desc(products.featured), desc(products.createdAt))
+        .limit(limitNum);
+
+      res.json({ products: result, total: result.length });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // GET: Configurações públicas (age verification popup, etc.)
+  app.get("/api/settings/age_verification_popup", async (_req, res) => {
+    try {
+      // Retorna configuração padrão - pode ser customizado para ler do banco
+      res.json({ enabled: false, minAge: 18 });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ==========================================
   // Registrar rotas financeiras
   registerFinancialRoutes(app);
 

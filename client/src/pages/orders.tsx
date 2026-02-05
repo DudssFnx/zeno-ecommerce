@@ -1,6 +1,17 @@
 import { OrderTable } from "@/components/OrderTable";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -41,6 +52,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { addDays, format } from "date-fns";
 import { type InferSelectModel } from "drizzle-orm";
 import {
+  AlertTriangle,
   Box,
   Loader2,
   Plus,
@@ -88,6 +100,11 @@ export default function OrdersPage() {
 
   // --- ESTADO DE SELEÇÃO (ARRAY) ---
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+
+  // --- MODAL DE CONFIRMAÇÃO DE EXCLUSÃO ---
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [reverseStock, setReverseStock] = useState(true);
+  const [ordersWithStock, setOrdersWithStock] = useState<number>(0);
 
   // --- ESTADOS DO FORMULÁRIO ---
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>("");
@@ -231,6 +248,127 @@ export default function OrdersPage() {
       title: `Status alterado para ${newStatus}`,
       description: `${selectedIds.length} pedidos atualizados.`,
     });
+  };
+
+  // --- EXCLUSÃO EM MASSA ---
+  const handleBulkDeleteClick = () => {
+    if (selectedIds.length === 0) return;
+
+    // Conta quantos pedidos selecionados têm estoque lançado
+    const selectedOrders = (ordersData || []).filter((o: any) =>
+      selectedIds.includes(String(o.id)),
+    );
+    const withStock = selectedOrders.filter((o: any) => o.stockPosted).length;
+    setOrdersWithStock(withStock);
+    setReverseStock(true); // reset default
+    setIsDeleteModalOpen(true);
+  };
+
+  const handleBulkDelete = async () => {
+    setIsDeleteModalOpen(false);
+
+    try {
+      const ids = selectedIds
+        .map((i) => {
+          const n = parseInt(i);
+          return Number.isFinite(n) ? n : NaN;
+        })
+        .filter((n) => Number.isInteger(n) && !Number.isNaN(n));
+
+      if (ids.length === 0) {
+        toast({
+          title: "Nenhum ID válido selecionado",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Use fetch diretamente para ter controle total da resposta
+      const res = await fetch("/api/orders/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ ids, reverseStock }),
+      });
+
+      // Lê o body uma única vez
+      let body: any = null;
+      try {
+        body = await res.json();
+      } catch (e) {
+        body = null;
+      }
+
+      // Se não autenticado, mostra erro específico
+      if (res.status === 401) {
+        toast({
+          title: "Sessão expirada",
+          description: "Faça login novamente para continuar.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Se outro erro, mostra mensagem
+      if (!res.ok) {
+        toast({
+          title: "Erro ao excluir pedidos",
+          description: body?.message || `Erro ${res.status}`,
+          variant: "destructive",
+        });
+        return;
+      }
+
+      if (body && Array.isArray(body.processed) && body.processed.length > 0) {
+        // atualiza cache do react-query removendo os pedidos processados
+        queryClient.setQueryData(["/api/orders"], (old: any) => {
+          if (!old) return old;
+          return (old as any[]).filter((o: any) => {
+            const oid = typeof o.id === "string" ? parseInt(o.id) : o.id;
+            return !body.processed.includes(oid);
+          });
+        });
+      } else {
+        // fallback: invalidar cache e refetch
+        queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
+      }
+
+      queryClient.invalidateQueries({ queryKey: ["/api/products"] });
+      refetchOrders();
+      setSelectedIds([]);
+      // mensagem detalhada com contagem de processados/ignorados
+      const processedCount = Array.isArray(body?.processed)
+        ? body.processed.length
+        : 0;
+      const ignoredCount = Array.isArray(body?.ignored)
+        ? body.ignored.length
+        : 0;
+      const title =
+        processedCount > 0
+          ? "Pedidos excluídos com sucesso"
+          : "Nenhum pedido excluído";
+      const description =
+        processedCount > 0
+          ? `${processedCount} excluído(s)${ignoredCount > 0 ? `, ${ignoredCount} ignorado(s)` : ""}`
+          : ignoredCount > 0
+            ? `${ignoredCount} ignorado(s)`
+            : undefined;
+
+      toast({
+        title,
+        description,
+        className:
+          processedCount > 0
+            ? "bg-green-600 text-white"
+            : "bg-yellow-600 text-white",
+      });
+    } catch (err: any) {
+      toast({
+        title: "Erro ao excluir pedidos",
+        description: err.message,
+        variant: "destructive",
+      });
+    }
   };
 
   // --- FILTROS E OUTROS ---
@@ -422,6 +560,68 @@ Installments: ${JSON.stringify(installments)}
 
   return (
     <div className="p-6 lg:p-8 space-y-6 relative">
+      {/* Modal de confirmação de exclusão em massa */}
+      <AlertDialog open={isDeleteModalOpen} onOpenChange={setIsDeleteModalOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-destructive" />
+              Confirmar Exclusão
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-4">
+                <p>
+                  Você está prestes a excluir{" "}
+                  <strong>{selectedIds.length} pedido(s)</strong>. Esta ação não
+                  pode ser desfeita.
+                </p>
+
+                {ordersWithStock > 0 && (
+                  <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg p-4">
+                    <p className="text-amber-800 dark:text-amber-200 font-medium mb-3">
+                      ⚠️ {ordersWithStock} pedido(s) selecionado(s) possuem
+                      estoque já lançado.
+                    </p>
+                    <div className="flex items-center space-x-3">
+                      <Checkbox
+                        id="reverseStock"
+                        checked={reverseStock}
+                        onCheckedChange={(checked) =>
+                          setReverseStock(checked === true)
+                        }
+                      />
+                      <label
+                        htmlFor="reverseStock"
+                        className="text-sm text-amber-700 dark:text-amber-300 cursor-pointer select-none"
+                      >
+                        <strong>Estornar estoque</strong> - devolver as
+                        quantidades aos produtos
+                      </label>
+                    </div>
+                    {!reverseStock && (
+                      <p className="text-xs text-amber-600 dark:text-amber-400 mt-2 ml-6">
+                        Os pedidos serão excluídos mas o estoque{" "}
+                        <strong>não</strong> será devolvido.
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleBulkDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              Excluir {selectedIds.length} pedido(s)
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">
@@ -481,6 +681,14 @@ Installments: ${JSON.stringify(installments)}
               className="hover:bg-red-500/10 hover:text-red-600"
             >
               Cancelar
+            </Button>
+            <Button
+              size="sm"
+              variant="destructive"
+              onClick={handleBulkDeleteClick}
+              className="ml-2"
+            >
+              <Trash2 className="mr-2 h-4 w-4" /> Excluir
             </Button>
             <Separator orientation="vertical" className="h-4 mx-2" />
             <Button
