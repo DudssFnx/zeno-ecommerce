@@ -19,12 +19,14 @@ import {
 import {
   ArrowRightCircle,
   CheckCircle,
+  DollarSign,
   Edit2,
   Eye,
   MoreHorizontal,
   PackageMinus,
   PackagePlus,
   Trash2,
+  Undo2,
   XCircle,
 } from "lucide-react";
 import { SiWhatsapp } from "react-icons/si";
@@ -48,7 +50,8 @@ export interface Order {
   total: number;
   itemCount: number;
   printed?: boolean;
-  stockPosted?: boolean; // Novo campo
+  stockPosted?: boolean;
+  accountsPosted?: boolean;
 }
 
 interface OrderTableProps {
@@ -60,8 +63,9 @@ interface OrderTableProps {
   onPrintOrder?: (order: Order) => void;
   onEditOrder?: (order: Order) => void;
   onStatusChange?: (orderId: string, newStatus: string) => void;
-  onStockAction?: (orderId: string, action: "post" | "reverse") => void; // Ação Manual
-  onDeleteOrder?: (orderId: string) => void; // Ação Excluir
+  onStockAction?: (orderId: string, action: "post" | "reverse") => void;
+  onAccountsAction?: (orderId: string, action: "post" | "reverse") => void;
+  onDeleteOrder?: (orderId: string) => void;
   canEdit?: boolean;
 }
 
@@ -73,6 +77,7 @@ export function OrderTable({
   onToggleSelectAll,
   onStatusChange,
   onStockAction,
+  onAccountsAction,
   onDeleteOrder,
 }: OrderTableProps) {
   const [, navigate] = useLocation();
@@ -166,6 +171,11 @@ export function OrderTable({
                               <PackageMinus className="h-3 w-3 text-orange-600" />
                             </div>
                           )}
+                          {order.accountsPosted && (
+                            <div title="Contas lançadas">
+                              <DollarSign className="h-3 w-3 text-green-600" />
+                            </div>
+                          )}
                           <MoreHorizontal className="h-4 w-4 text-muted-foreground" />
                         </div>
                       </Button>
@@ -186,6 +196,21 @@ export function OrderTable({
                         >
                           <PackagePlus className="mr-2 h-4 w-4 text-blue-500" />{" "}
                           Estornar Estoque
+                        </DropdownMenuItem>
+                      )}
+                      {!order.accountsPosted ? (
+                        <DropdownMenuItem
+                          onClick={() => onAccountsAction?.(order.id, "post")}
+                        >
+                          <DollarSign className="mr-2 h-4 w-4 text-green-500" />{" "}
+                          Lançar Contas (Manual)
+                        </DropdownMenuItem>
+                      ) : (
+                        <DropdownMenuItem
+                          onClick={() => onAccountsAction?.(order.id, "reverse")}
+                        >
+                          <Undo2 className="mr-2 h-4 w-4 text-red-500" />{" "}
+                          Estornar Contas
                         </DropdownMenuItem>
                       )}
 

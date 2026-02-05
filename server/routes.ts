@@ -788,6 +788,7 @@ export async function registerRoutes(
             customerName,
             total: order.total || "0",
             stockPosted: !!stockLog,
+            accountsPosted: !!order.accountsPosted,
           }; // Flag para o front
         }),
       );
@@ -1130,7 +1131,7 @@ export async function registerRoutes(
         )
         .limit(1);
 
-      res.json({ ...order, items, customer, stockPosted: !!stockLog });
+      res.json({ ...order, items, customer, stockPosted: !!stockLog, accountsPosted: !!order.accountsPosted });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }

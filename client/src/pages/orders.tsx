@@ -192,6 +192,8 @@ export default function OrdersPage() {
       itemCount: o.items?.length || 0,
       status: o.status as any,
       printed: false,
+      stockPosted: o.stockPosted || false,
+      accountsPosted: o.accountsPosted || false,
     }))
     .filter((o) => {
       if (activeTab === "all") return true;
@@ -232,6 +234,73 @@ export default function OrdersPage() {
 
   const handleSingleStatusChange = (id: string, newStatus: string) => {
     updateStatusMutation.mutate({ id, status: newStatus });
+  };
+
+  // --- AÇÕES DE ESTOQUE MANUAL ---
+  const stockActionMutation = useMutation({
+    mutationFn: async ({ id, action }: { id: string; action: "post" | "reverse" }) => {
+      const endpoint = action === "post" ? `/api/orders/${id}/reserve` : `/api/orders/${id}/unreserve`;
+      await apiRequest("POST", endpoint, {});
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/products"] });
+      refetchOrders();
+      toast({
+        title: variables.action === "post" ? "Estoque Lançado" : "Estoque Estornado",
+        className: "bg-green-600 text-white",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Erro",
+        description: error.message || "Não foi possível executar a ação de estoque.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleStockAction = (id: string, action: "post" | "reverse") => {
+    stockActionMutation.mutate({ id, action });
+  };
+
+  // --- AÇÕES DE CONTAS A RECEBER MANUAL ---
+  const accountsActionMutation = useMutation({
+    mutationFn: async ({ id, action }: { id: string; action: "post" | "reverse" }) => {
+      const endpoint = action === "post" ? `/api/orders/${id}/post-accounts` : `/api/orders/${id}/reverse-accounts`;
+      await apiRequest("POST", endpoint, {});
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/receivables"] });
+      refetchOrders();
+      toast({
+        title: variables.action === "post" ? "Contas Lançadas" : "Contas Estornadas",
+        className: "bg-green-600 text-white",
+      });
+    },
+    onError: (error: any) => {
+      let desc = error.message || "Não foi possível executar a ação de contas.";
+      const errorMsg = error.message || "";
+      const match = errorMsg.match(/\d+:\s*(.+)/);
+      if (match) {
+        try {
+          const parsed = JSON.parse(match[1]);
+          if (parsed.message) desc = parsed.message;
+        } catch {
+          desc = match[1];
+        }
+      }
+      toast({
+        title: "Erro",
+        description: desc,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleAccountsAction = (id: string, action: "post" | "reverse") => {
+    accountsActionMutation.mutate({ id, action });
   };
 
   const handleBulkStatusChange = async (newStatus: string) => {
@@ -709,6 +778,8 @@ export default function OrdersPage() {
               onToggleSelectAll={toggleSelectAll}
               onPrintOrder={() => {}}
               onStatusChange={handleSingleStatusChange}
+              onStockAction={handleStockAction}
+              onAccountsAction={handleAccountsAction}
             />
           )}
         </TabsContent>
