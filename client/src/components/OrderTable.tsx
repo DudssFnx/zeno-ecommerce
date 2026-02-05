@@ -28,7 +28,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { SiWhatsapp } from "react-icons/si";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { StageBadge, StatusBadge } from "./StatusBadge";
 
 const STORE_WHATSAPP = "5511992845596";
@@ -75,10 +75,15 @@ export function OrderTable({
   onStockAction,
   onDeleteOrder,
 }: OrderTableProps) {
+  const [, navigate] = useLocation();
   const allSelected =
     orders.length > 0 &&
     selectedIds &&
     orders.every((o) => selectedIds.includes(o.id));
+
+  const handleRowClick = (orderId: string) => {
+    navigate(`/orders/${orderId}`);
+  };
 
   return (
     <div className="rounded-lg border overflow-hidden pb-20 bg-background">
@@ -112,13 +117,14 @@ export function OrderTable({
             return (
               <TableRow
                 key={order.id}
-                className={
+                onClick={() => handleRowClick(order.id)}
+                className={`cursor-pointer ${
                   isSelected
                     ? "bg-orange-500/10 hover:bg-orange-500/20 transition-colors"
                     : idx % 2 === 0
-                      ? "bg-background"
-                      : "bg-muted/30"
-                }
+                      ? "bg-background hover:bg-muted/50"
+                      : "bg-muted/30 hover:bg-muted/50"
+                }`}
               >
                 {selectedIds && (
                   <TableCell
@@ -146,7 +152,7 @@ export function OrderTable({
                 </TableCell>
 
                 {/* MENU DE AÇÕES E STATUS */}
-                <TableCell>
+                <TableCell onClick={(e) => e.stopPropagation()}>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button
@@ -226,7 +232,7 @@ export function OrderTable({
                 <TableCell className="text-right font-medium">
                   R$ {order.total.toFixed(2)}
                 </TableCell>
-                <TableCell>
+                <TableCell onClick={(e) => e.stopPropagation()}>
                   <div className="flex items-center gap-1 justify-end">
                     <Link href={`/orders/${order.id}`}>
                       <Button variant="ghost" size="icon" title="Ver Detalhes">

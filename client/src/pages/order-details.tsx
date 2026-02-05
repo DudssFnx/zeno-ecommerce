@@ -1,20 +1,54 @@
-import { useState, useMemo } from "react";
-import { useParams, Link } from "wouter";
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { useAuth } from "@/contexts/AuthContext";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Separator } from "@/components/ui/separator";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, Loader2, Package, User, Calendar, FileText, DollarSign, Printer, MapPin, Download, Pencil, Plus, Trash2, Search, X, AlertTriangle, AlertCircle, ChevronDown, MessageCircle, Settings, CalendarDays } from "lucide-react";
-import { format } from "date-fns";
-import { ptBR } from "date-fns/locale";
-import type { Order, OrderItem, Product as SchemaProduct, PaymentType } from "@shared/schema";
-import { CreditCard } from "lucide-react";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import type { Order, OrderItem, b2bUsers } from "@shared/schema";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { addDays, format } from "date-fns";
+import { type InferSelectModel } from "drizzle-orm";
+import {
+  AlertTriangle,
+  Box,
+  Loader2,
+  Pencil,
+  Search,
+  ShoppingCart,
+  Trash2,
+  User as UserIcon,
+  X,
+} from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Link, useParams } from "wouter";
+
+type User = InferSelectModel<typeof b2bUsers>;
 
 interface ProductInfo {
   id: number;
@@ -22,6 +56,8 @@ interface ProductInfo {
   sku: string;
   image: string | null;
   price: string;
+  stock?: number;
+  unit?: string;
 }
 
 interface CustomerInfo {
@@ -43,6 +79,8 @@ interface CustomerInfo {
   neighborhood: string | null;
   city: string | null;
   state: string | null;
+  nome?: string;
+  razaoSocial?: string;
 }
 
 interface PrintedByUser {
@@ -52,16 +90,30 @@ interface PrintedByUser {
   email: string | null;
 }
 
-interface FiadoInstallment {
-  installment: number;
-  dueDate: string;
-  amount: number;
-}
-
 interface OrderWithDetails extends Order {
   items: (OrderItem & { product: ProductInfo })[];
   customer: CustomerInfo;
   printedByUser: PrintedByUser | null;
+  stockPosted?: boolean;
+  seller?: User | null;
+}
+
+interface CartItem {
+  productId: number;
+  product: ProductInfo;
+  quantity: number;
+  unitPrice: number;
+  discountPercent: number;
+  total: number;
+}
+
+interface Installment {
+  number: number;
+  days: number;
+  date: string;
+  value: number;
+  method: string;
+  obs: string;
 }
 
 const statusLabels: Record<string, string> = {
@@ -80,7 +132,10 @@ const statusLabels: Record<string, string> = {
   cancelled: "Cancelado",
 };
 
-const statusVariants: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
+const statusVariants: Record<
+  string,
+  "default" | "secondary" | "destructive" | "outline"
+> = {
   ORCAMENTO: "secondary",
   ORCAMENTO_ABERTO: "secondary",
   ORCAMENTO_CONCLUIDO: "outline",
@@ -96,104 +151,244 @@ const statusVariants: Record<string, "default" | "secondary" | "destructive" | "
   cancelled: "destructive",
 };
 
+// Função para limpar dados internos do campo notes (para pedidos antigos)
+function cleanInternalData(notes: string | null): string {
+  if (!notes) return "";
+  // Remove o bloco [INTERNAL_DATA]...[/INTERNAL_DATA]
+  const cleanedNotes = notes
+    .replace(/\[INTERNAL_DATA\][\s\S]*?\[\/INTERNAL_DATA\]/g, "")
+    .trim();
+  return cleanedNotes;
+}
+
 export default function OrderDetailsPage() {
   const params = useParams<{ id: string }>();
   const orderId = params.id;
   const { isAdmin, isSales } = useAuth();
   const { toast } = useToast();
   const canEditStatus = isAdmin || isSales;
-  
+
   const [isEditMode, setIsEditMode] = useState(false);
-  const [editItems, setEditItems] = useState<Map<number, { productId: number; quantity: number; price: string; originalPrice: string; product: ProductInfo }>>(new Map());
+  const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [productSearch, setProductSearch] = useState("");
-  const [visibleItems, setVisibleItems] = useState(10);
-  const ITEMS_PER_LOAD = 30;
-  
-  // Fiado installments configuration
-  const [showFiadoConfig, setShowFiadoConfig] = useState(false);
-  const [fiadoInstallmentCount, setFiadoInstallmentCount] = useState(1);
-  const [fiadoInstallments, setFiadoInstallments] = useState<FiadoInstallment[]>([]);
+
+  // Form states mirroring creation form
+  const [saleDate, setSaleDate] = useState(format(new Date(), "yyyy-MM-dd"));
+  const [selectedSellerId, setSelectedSellerId] = useState("");
+  const [paymentCondition, setPaymentCondition] = useState("");
+  const [installments, setInstallments] = useState<Installment[]>([]);
+  const [carrierName, setCarrierName] = useState("");
+  const [shippingType, setShippingType] = useState("CIF");
+  const [shippingCost, setShippingCost] = useState(0);
+  const [globalDiscount, setGlobalDiscount] = useState(0);
+  const [otherExpenses, setOtherExpenses] = useState(0);
+  const [notes, setNotes] = useState("");
 
   const { data: orderData, isLoading } = useQuery<OrderWithDetails>({
     queryKey: ["/api/orders", orderId],
     enabled: !!orderId,
   });
 
-  const { data: productsData } = useQuery<{ products: { id: number; name: string; sku: string; price: string; image: string | null }[] }>({
+  const { data: productsData } = useQuery<{
+    products: ProductInfo[];
+  }>({
     queryKey: ["/api/products"],
     queryFn: async () => {
-      const res = await fetch('/api/products?limit=1000', { credentials: 'include' });
-      if (!res.ok) throw new Error('Failed to fetch products');
+      const res = await fetch("/api/products?limit=1000", {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to fetch products");
       return res.json();
     },
-    enabled: isEditMode,
   });
 
-  const { data: paymentTypes } = useQuery<PaymentType[]>({
-    queryKey: ["/api/payment-types"],
+  const { data: sellersData } = useQuery<User[]>({
+    queryKey: ["/api/sellers"],
+    queryFn: async () => {
+      const res = await fetch("/api/sellers", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch sellers");
+      return res.json();
+    },
   });
 
-  const activePaymentTypes = useMemo(() => {
-    return paymentTypes?.filter(pt => pt.active) || [];
-  }, [paymentTypes]);
+  const sellersList = sellersData || [];
 
-  // Check if selected payment type is Fiado (store credit)
-  const selectedPaymentType = useMemo(() => {
-    if (!orderData?.paymentTypeId || !paymentTypes) return null;
-    return paymentTypes.find(pt => pt.id === orderData.paymentTypeId);
-  }, [orderData?.paymentTypeId, paymentTypes]);
+  // Initialize form from order data
+  useEffect(() => {
+    if (orderData) {
+      // Initialize cart items from order
+      const items: CartItem[] = orderData.items
+        .filter((item) => item.productId !== null)
+        .map((item) => {
+          const originalPrice = parseFloat(item.product?.price || item.price);
+          const itemPrice = parseFloat(item.price);
+          const discountPercent =
+            originalPrice > 0
+              ? Math.round((1 - itemPrice / originalPrice) * 100 * 100) / 100
+              : 0;
 
-  const isFiadoPayment = selectedPaymentType?.isStoreCredit === true;
+          return {
+            productId: item.productId!,
+            product: {
+              ...item.product,
+              stock: item.product?.stock || 0,
+              unit: item.product?.unit || "UN",
+            },
+            quantity: item.quantity,
+            unitPrice: itemPrice,
+            discountPercent: discountPercent >= 0 ? discountPercent : 0,
+            total: itemPrice * item.quantity,
+          };
+        });
+      setCartItems(items);
 
-  // Initialize fiado installments from order data
-  useMemo(() => {
-    if (orderData?.fiadoInstallments && Array.isArray(orderData.fiadoInstallments)) {
-      const installments = orderData.fiadoInstallments as FiadoInstallment[];
-      setFiadoInstallments(installments);
-      setFiadoInstallmentCount(installments.length);
+      // Initialize other fields - usar createdAt já que saleDate não existe
+      if (orderData.createdAt) {
+        setSaleDate(format(new Date(orderData.createdAt), "yyyy-MM-dd"));
+      }
+      // Limpar dados internos das observações (para pedidos antigos)
+      setNotes(cleanInternalData(orderData.notes));
+      setShippingCost(parseFloat(orderData.shippingCost || "0"));
+      // Não existe campo discount global no schema
+      setGlobalDiscount(0);
     }
-  }, [orderData?.fiadoInstallments]);
+  }, [orderData]);
 
-  const { editSubtotal, editDiscount, editTotal } = useMemo(() => {
-    let subtotal = 0;
-    let total = 0;
-    editItems.forEach(item => {
-      subtotal += parseFloat(item.originalPrice) * item.quantity;
-      total += parseFloat(item.price) * item.quantity;
-    });
-    return { editSubtotal: subtotal, editDiscount: subtotal - total, editTotal: total };
-  }, [editItems]);
+  // Calculations
+  const totalItemsValue = useMemo(() => {
+    return cartItems.reduce((sum, item) => sum + item.total, 0);
+  }, [cartItems]);
+
+  const totalOrderValue = useMemo(() => {
+    return totalItemsValue - globalDiscount + shippingCost + otherExpenses;
+  }, [totalItemsValue, globalDiscount, shippingCost, otherExpenses]);
 
   const filteredProducts = useMemo(() => {
     if (!productsData?.products || !productSearch.trim()) return [];
     const search = productSearch.toLowerCase();
     return productsData.products
-      .filter(p => p.name.toLowerCase().includes(search) || p.sku.toLowerCase().includes(search))
+      .filter(
+        (p) =>
+          p.name.toLowerCase().includes(search) ||
+          p.sku.toLowerCase().includes(search),
+      )
       .slice(0, 10);
   }, [productsData?.products, productSearch]);
 
-  const updateItemsMutation = useMutation({
-    mutationFn: async (items: { productId: number; quantity: number; price: string }[]) => {
-      const response = await apiRequest("PUT", `/api/orders/${orderId}/items`, { items });
-      return response.json();
+  // Cart operations
+  const handleAddProduct = (product: ProductInfo) => {
+    setCartItems((prev) => {
+      const existing = prev.find((i) => i.productId === product.id);
+      if (existing) {
+        return prev.map((i) =>
+          i.productId === product.id
+            ? {
+                ...i,
+                quantity: i.quantity + 1,
+                total: i.unitPrice * (i.quantity + 1),
+              }
+            : i,
+        );
+      }
+      const price = parseFloat(product.price);
+      return [
+        ...prev,
+        {
+          productId: product.id,
+          product,
+          quantity: 1,
+          unitPrice: price,
+          discountPercent: 0,
+          total: price,
+        },
+      ];
+    });
+    setProductSearch("");
+  };
+
+  const updateCartItem = (
+    productId: number,
+    field: "quantity" | "unitPrice" | "discountPercent",
+    value: number,
+  ) => {
+    setCartItems((prev) =>
+      prev.map((item) => {
+        if (item.productId !== productId) return item;
+        const updated = { ...item, [field]: value };
+
+        if (field === "discountPercent") {
+          const originalPrice = parseFloat(item.product.price);
+          updated.unitPrice = originalPrice * (1 - value / 100);
+        }
+
+        updated.total = updated.unitPrice * updated.quantity;
+        return updated;
+      }),
+    );
+  };
+
+  const removeCartItem = (productId: number) => {
+    setCartItems((prev) => prev.filter((i) => i.productId !== productId));
+  };
+
+  // Generate installments
+  const generateInstallments = () => {
+    if (!paymentCondition.trim()) return;
+    const days = paymentCondition
+      .split(/\s+/)
+      .map(Number)
+      .filter((n) => !isNaN(n));
+    if (days.length === 0) return;
+
+    const installmentValue = totalOrderValue / days.length;
+    const newInstallments: Installment[] = days.map((d, i) => ({
+      number: i + 1,
+      days: d,
+      date: format(addDays(new Date(), d), "dd/MM/yyyy"),
+      value: installmentValue,
+      method: "Boleto",
+      obs: "",
+    }));
+    setInstallments(newInstallments);
+  };
+
+  // Mutations
+  const updateOrderMutation = useMutation({
+    mutationFn: async (data: {
+      items: { productId: number; quantity: number; price: string }[];
+      notes?: string;
+      shippingCost?: string;
+      discount?: string;
+      sellerId?: string;
+      saleDate?: string;
+    }) => {
+      // First update items
+      await apiRequest("PUT", `/api/orders/${orderId}/items`, {
+        items: data.items,
+      });
+
+      // Then update other fields
+      await apiRequest("PATCH", `/api/orders/${orderId}`, {
+        notes: data.notes,
+        shippingCost: data.shippingCost,
+        discount: data.discount,
+        sellerId: data.sellerId,
+        saleDate: data.saleDate,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/orders", orderId] });
       queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
       setIsEditMode(false);
-      setEditItems(new Map());
       toast({
         title: "Pedido Atualizado",
-        description: "Os itens do pedido foram atualizados com sucesso.",
+        description: "O pedido foi atualizado com sucesso.",
       });
     },
     onError: (error: Error) => {
-      const desc = isAdmin 
-        ? (error.message || "Não foi possível atualizar o pedido.")
-        : "Não foi possível atualizar o pedido. Contate o administrador.";
       toast({
         title: "Erro",
-        description: desc,
+        description: error.message || "Não foi possível atualizar o pedido.",
         variant: "destructive",
       });
     },
@@ -220,73 +415,6 @@ export default function OrderDetailsPage() {
     },
   });
 
-  const updatePaymentTypeMutation = useMutation({
-    mutationFn: async (paymentTypeId: number) => {
-      await apiRequest("PATCH", `/api/orders/${orderId}`, { paymentTypeId });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/orders", orderId] });
-      queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
-      toast({
-        title: "Forma de Pagamento Atualizada",
-        description: "A forma de pagamento foi alterada com sucesso.",
-      });
-    },
-    onError: () => {
-      toast({
-        title: "Erro",
-        description: "Não foi possível atualizar a forma de pagamento.",
-        variant: "destructive",
-      });
-    },
-  });
-
-  const updateFiadoInstallmentsMutation = useMutation({
-    mutationFn: async (installments: FiadoInstallment[]) => {
-      await apiRequest("PATCH", `/api/orders/${orderId}`, { fiadoInstallments: installments });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/orders", orderId] });
-      queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
-      setShowFiadoConfig(false);
-      toast({
-        title: "Parcelas Configuradas",
-        description: "As parcelas do fiado foram salvas com sucesso.",
-      });
-    },
-    onError: () => {
-      toast({
-        title: "Erro",
-        description: "Não foi possível salvar as parcelas.",
-        variant: "destructive",
-      });
-    },
-  });
-
-  // Generate installments with equal amounts and monthly dates
-  const generateFiadoInstallments = (count: number) => {
-    if (!orderData) return;
-    const total = parseFloat(orderData.total);
-    const installmentAmount = Math.floor((total / count) * 100) / 100;
-    const remainder = Math.round((total - installmentAmount * count) * 100) / 100;
-    
-    const newInstallments: FiadoInstallment[] = [];
-    const today = new Date();
-    
-    for (let i = 0; i < count; i++) {
-      const dueDate = new Date(today);
-      dueDate.setMonth(dueDate.getMonth() + i + 1);
-      
-      newInstallments.push({
-        installment: i + 1,
-        dueDate: format(dueDate, 'yyyy-MM-dd'),
-        amount: i === count - 1 ? installmentAmount + remainder : installmentAmount,
-      });
-    }
-    
-    setFiadoInstallments(newInstallments);
-  };
-
   const reserveStockMutation = useMutation({
     mutationFn: async () => {
       await apiRequest("POST", `/api/orders/${orderId}/reserve`, {});
@@ -301,15 +429,14 @@ export default function OrderDetailsPage() {
       });
     },
     onError: (err: Error) => {
-      let desc = "Não foi possível reservar o estoque. Verifique se há estoque disponível.";
+      let desc =
+        "Não foi possível reservar o estoque. Verifique se há estoque disponível.";
       const errorMsg = err.message || "";
       const match = errorMsg.match(/\d+:\s*(.+)/);
       if (match) {
         try {
           const parsed = JSON.parse(match[1]);
-          if (parsed.message) {
-            desc = parsed.message;
-          }
+          if (parsed.message) desc = parsed.message;
         } catch {
           desc = match[1];
         }
@@ -336,56 +463,9 @@ export default function OrderDetailsPage() {
       });
     },
     onError: (err: Error) => {
-      const desc = isAdmin 
-        ? (err.message || "Não foi possível faturar o pedido.")
-        : "Não foi possível faturar o pedido. Contate o administrador.";
       toast({
         title: "Erro",
-        description: desc,
-        variant: "destructive",
-      });
-    },
-  });
-
-  const handleStatusChange = (newStatus: string) => {
-    const currentStatus = orderData?.status;
-    
-    if (newStatus === "PEDIDO_GERADO") {
-      reserveStockMutation.mutate();
-    } else if (newStatus === "FATURADO" || newStatus === "PEDIDO_FATURADO") {
-      invoiceMutation.mutate();
-    } else if (newStatus === "ORCAMENTO" && currentStatus === "PEDIDO_GERADO") {
-      // Retornar de PEDIDO_GERADO para ORCAMENTO (libera estoque reservado)
-      unreserveMutation.mutate();
-    } else if (newStatus === "ORCAMENTO" && (currentStatus === "FATURADO" || currentStatus === "PEDIDO_FATURADO")) {
-      // De FATURADO precisa primeiro ir para PEDIDO_GERADO
-      toast({
-        title: "Atenção",
-        description: "Para retornar para Orçamento, primeiro retorne para Pedido Gerado.",
-        variant: "destructive",
-      });
-    } else {
-      updateStatusMutation.mutate(newStatus);
-    }
-  };
-
-  const printMutation = useMutation({
-    mutationFn: async () => {
-      await apiRequest("PATCH", `/api/orders/${orderId}/print`, {});
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/orders", orderId] });
-      queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
-      window.print();
-      toast({
-        title: "Pedido Impresso",
-        description: "O pedido foi marcado como impresso.",
-      });
-    },
-    onError: () => {
-      toast({
-        title: "Erro",
-        description: "Não foi possível marcar o pedido como impresso.",
+        description: err.message || "Não foi possível faturar o pedido.",
         variant: "destructive",
       });
     },
@@ -405,12 +485,9 @@ export default function OrderDetailsPage() {
       });
     },
     onError: (err: Error) => {
-      const desc = isAdmin 
-        ? (err.message || "Não foi possível retornar o pedido.")
-        : "Não foi possível retornar o pedido. Contate o administrador.";
       toast({
         title: "Erro",
-        description: desc,
+        description: err.message || "Não foi possível retornar o pedido.",
         variant: "destructive",
       });
     },
@@ -430,16 +507,77 @@ export default function OrderDetailsPage() {
       });
     },
     onError: (err: Error) => {
-      const desc = isAdmin 
-        ? (err.message || "Não foi possível retornar o pedido.")
-        : "Não foi possível retornar o pedido. Contate o administrador.";
       toast({
         title: "Erro",
-        description: desc,
+        description: err.message || "Não foi possível retornar o pedido.",
         variant: "destructive",
       });
     },
   });
+
+  const printMutation = useMutation({
+    mutationFn: async () => {
+      await apiRequest("PATCH", `/api/orders/${orderId}/print`, {});
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/orders", orderId] });
+      window.print();
+      toast({
+        title: "Pedido Impresso",
+        description: "O pedido foi marcado como impresso.",
+      });
+    },
+  });
+
+  const handleSave = () => {
+    if (cartItems.length === 0) {
+      toast({
+        title: "Erro",
+        description: "O pedido deve ter pelo menos um item.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const items = cartItems.map((item) => ({
+      productId: item.productId,
+      quantity: item.quantity,
+      price: item.unitPrice.toFixed(2),
+    }));
+
+    updateOrderMutation.mutate({
+      items,
+      notes,
+      shippingCost: shippingCost.toFixed(2),
+      discount: globalDiscount.toFixed(2),
+      sellerId: selectedSellerId || undefined,
+      saleDate,
+    });
+  };
+
+  const handleStatusChange = (newStatus: string) => {
+    const currentStatus = orderData?.status;
+
+    if (newStatus === "PEDIDO_GERADO") {
+      reserveStockMutation.mutate();
+    } else if (newStatus === "FATURADO" || newStatus === "PEDIDO_FATURADO") {
+      invoiceMutation.mutate();
+    } else if (newStatus === "ORCAMENTO" && currentStatus === "PEDIDO_GERADO") {
+      unreserveMutation.mutate();
+    } else if (
+      newStatus === "ORCAMENTO" &&
+      (currentStatus === "FATURADO" || currentStatus === "PEDIDO_FATURADO")
+    ) {
+      toast({
+        title: "Atenção",
+        description:
+          "Para retornar para Orçamento, primeiro retorne para Pedido Gerado.",
+        variant: "destructive",
+      });
+    } else {
+      updateStatusMutation.mutate(newStatus);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -453,8 +591,8 @@ export default function OrderDetailsPage() {
     return (
       <div className="p-6 lg:p-8">
         <Link href="/orders">
-          <Button variant="ghost" size="sm" data-testid="link-back-orders">
-            <ArrowLeft className="h-4 w-4 mr-2" />
+          <Button variant="ghost" size="sm">
+            <X className="h-4 w-4 mr-2" />
             Voltar para Pedidos
           </Button>
         </Link>
@@ -466,976 +604,780 @@ export default function OrderDetailsPage() {
   }
 
   const customer = orderData.customer;
-  const itemsWithProducts = orderData.items || [];
-
-  const subtotal = itemsWithProducts.reduce(
-    (sum, item) => sum + parseFloat(item.price) * item.quantity,
-    0
-  );
-
-  const formatDocument = () => {
-    if (customer?.personType === 'juridica' && customer?.cnpj) {
-      return `CNPJ: ${customer.cnpj}`;
-    }
-    if (customer?.personType === 'fisica' && customer?.cpf) {
-      return `CPF: ${customer.cpf}`;
-    }
-    return null;
-  };
-
-  const formatAddress = () => {
-    const parts = [];
-    if (customer?.address) {
-      let addressLine = customer.address;
-      if (customer.addressNumber) addressLine += `, ${customer.addressNumber}`;
-      if (customer.complement) addressLine += ` - ${customer.complement}`;
-      parts.push(addressLine);
-    }
-    if (customer?.neighborhood) parts.push(customer.neighborhood);
-    if (customer?.city || customer?.state) {
-      parts.push([customer.city, customer.state].filter(Boolean).join(" - "));
-    }
-    if (customer?.cep) parts.push(`CEP: ${customer.cep}`);
-    return parts;
-  };
-
-  const canEditItems = orderData?.status === 'ORCAMENTO' || orderData?.status === 'ORCAMENTO_CONCLUIDO' || orderData?.status === 'ORCAMENTO_ABERTO';
-  const isFaturado = orderData?.status === 'PEDIDO_FATURADO' || orderData?.status === 'FATURADO';
-  const isPedidoGerado = orderData?.status === 'PEDIDO_GERADO';
-
-  const startEditMode = () => {
-    const initialItems = new Map<number, { productId: number; quantity: number; price: string; originalPrice: string; product: ProductInfo }>();
-    itemsWithProducts.forEach(item => {
-      initialItems.set(item.productId, {
-        productId: item.productId,
-        quantity: item.quantity,
-        price: item.price,
-        originalPrice: item.product?.price || item.price,
-        product: item.product,
-      });
-    });
-    setEditItems(initialItems);
-    setIsEditMode(true);
-  };
-
-  const cancelEditMode = () => {
-    setIsEditMode(false);
-    setEditItems(new Map());
-    setProductSearch("");
-  };
-
-  const updateEditItemQuantity = (productId: number, newQty: number) => {
-    setEditItems(prev => {
-      const newMap = new Map(prev);
-      const item = newMap.get(productId);
-      if (item) {
-        newMap.set(productId, { ...item, quantity: Math.max(1, newQty) });
-      }
-      return newMap;
-    });
-  };
-
-  const updateEditItemPrice = (productId: number, newPrice: string) => {
-    setEditItems(prev => {
-      const newMap = new Map(prev);
-      const item = newMap.get(productId);
-      if (item) {
-        newMap.set(productId, { ...item, price: newPrice });
-      }
-      return newMap;
-    });
-  };
-
-  const removeEditItem = (productId: number) => {
-    setEditItems(prev => {
-      const newMap = new Map(prev);
-      newMap.delete(productId);
-      return newMap;
-    });
-  };
-
-  const addProductToEdit = (product: { id: number; name: string; sku: string; price: string; image: string | null }) => {
-    setEditItems(prev => {
-      const newMap = new Map(prev);
-      if (newMap.has(product.id)) {
-        const existing = newMap.get(product.id)!;
-        newMap.set(product.id, { ...existing, quantity: existing.quantity + 1 });
-      } else {
-        newMap.set(product.id, {
-          productId: product.id,
-          quantity: 1,
-          price: product.price,
-          originalPrice: product.price,
-          product: { id: product.id, name: product.name, sku: product.sku, price: product.price, image: product.image },
-        });
-      }
-      return newMap;
-    });
-    setProductSearch("");
-  };
-
-  const saveEditItems = () => {
-    const items = Array.from(editItems.values()).map(item => ({
-      productId: item.productId,
-      quantity: item.quantity,
-      price: item.price,
-    }));
-    if (items.length === 0) {
-      toast({ title: "Erro", description: "O pedido deve ter pelo menos um item.", variant: "destructive" });
-      return;
-    }
-    updateItemsMutation.mutate(items);
-  };
+  const isOrcamento =
+    orderData.status === "ORCAMENTO" ||
+    orderData.status === "ORCAMENTO_CONCLUIDO" ||
+    orderData.status === "ORCAMENTO_ABERTO";
+  const isFaturado =
+    orderData.status === "PEDIDO_FATURADO" || orderData.status === "FATURADO";
+  const isPedidoGerado = orderData.status === "PEDIDO_GERADO";
+  const hasStockPosted = orderData.stockPosted === true;
+  const canEdit = isOrcamento || (!hasStockPosted && !isFaturado);
 
   return (
-    <div className="p-6 lg:p-8 space-y-6">
-      <div className="flex items-center gap-4 flex-wrap">
-        <Link href="/orders">
-          <Button variant="ghost" size="sm" data-testid="link-back-orders">
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Voltar
-          </Button>
-        </Link>
-        <div className="flex-1">
-          <h1 className="text-2xl font-semibold" data-testid="text-order-number">
-            Pedido {orderData.orderNumber}
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Criado em {format(new Date(orderData.createdAt), "dd 'de' MMMM 'de' yyyy 'às' HH:mm", { locale: ptBR })}
-          </p>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          {orderData.printed && (
-            <Badge variant="outline" data-testid="badge-printed">
-              Impresso
+    <div className="max-w-[100vw] min-h-[100vh] bg-background flex flex-col">
+      {/* Header - igual ao de criação */}
+      <div className="flex items-center justify-between px-4 py-2 border-b bg-card shadow-sm h-14 shrink-0">
+        <div className="flex items-center gap-3">
+          <Link href="/orders">
+            <Button variant="ghost" size="sm">
+              <X className="h-5 w-5" />
+            </Button>
+          </Link>
+          <div className="flex items-center gap-2">
+            <span className="font-semibold text-lg">
+              Pedido {orderData.orderNumber}
+            </span>
+            <Badge variant={statusVariants[orderData.status || "ORCAMENTO"]}>
+              {statusLabels[orderData.status || "ORCAMENTO"] ||
+                orderData.status}
             </Badge>
+            {orderData.printed && (
+              <Badge variant="outline" className="text-xs">
+                Impresso
+              </Badge>
+            )}
+          </div>
+        </div>
+        <div className="flex gap-2">
+          {!isEditMode ? (
+            <>
+              {canEdit && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsEditMode(true)}
+                  className="h-8"
+                >
+                  <Pencil className="h-3 w-3 mr-1" />
+                  Editar
+                </Button>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => printMutation.mutate()}
+                className="h-8"
+              >
+                Imprimir
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setIsEditMode(false);
+                  // Reset form to original data
+                  if (orderData) {
+                    const items: CartItem[] = orderData.items
+                      .filter((item) => item.productId !== null)
+                      .map((item) => {
+                        const originalPrice = parseFloat(
+                          item.product?.price || item.price,
+                        );
+                        const itemPrice = parseFloat(item.price);
+                        const discountPercent =
+                          originalPrice > 0
+                            ? Math.round(
+                                (1 - itemPrice / originalPrice) * 100 * 100,
+                              ) / 100
+                            : 0;
+                        return {
+                          productId: item.productId!,
+                          product: { ...item.product, stock: 0, unit: "UN" },
+                          quantity: item.quantity,
+                          discountPercent:
+                            discountPercent >= 0 ? discountPercent : 0,
+                          unitPrice: itemPrice,
+                          total: itemPrice * item.quantity,
+                        };
+                      });
+                    setCartItems(items);
+                  }
+                }}
+                className="h-8"
+              >
+                Cancelar
+              </Button>
+              <Button
+                onClick={handleSave}
+                size="sm"
+                className="bg-green-600 hover:bg-green-700 h-8 px-6 font-semibold"
+                disabled={updateOrderMutation.isPending}
+              >
+                {updateOrderMutation.isPending ? (
+                  <Loader2 className="animate-spin h-3 w-3" />
+                ) : (
+                  "Salvar"
+                )}
+              </Button>
+            </>
           )}
-          <Badge variant={statusVariants[orderData.status]} data-testid="badge-order-status">
-            {statusLabels[orderData.status] || orderData.status}
-          </Badge>
         </div>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-3">
-        <div className="md:col-span-2 space-y-6">
+      <ScrollArea className="flex-1 bg-muted/10">
+        <div className="p-4 max-w-[1600px] mx-auto space-y-4">
+          {/* Alertas de status */}
           {isFaturado && (
-            <Card className="border-destructive/50 bg-destructive/5">
-              <CardContent className="flex items-center justify-between gap-3 py-4">
-                <div className="flex items-center gap-3">
-                  <AlertTriangle className="h-5 w-5 text-destructive flex-shrink-0" />
-                  <p className="text-sm text-destructive font-medium" data-testid="alert-faturado">
-                    Pedido faturado. Para editar, retorne para Pedido Gerado e depois para Orçamento.
-                  </p>
-                </div>
-                {canEditStatus && (
-                  <Button 
-                    variant="outline" 
-                    size="sm"
-                    onClick={() => unfaturarMutation.mutate()}
-                    disabled={unfaturarMutation.isPending}
-                    data-testid="button-unfaturar"
-                  >
-                    {unfaturarMutation.isPending ? "Retornando..." : "Retornar para Pedido Gerado"}
-                  </Button>
-                )}
-              </CardContent>
-            </Card>
+            <div className="flex items-center gap-3 p-3 rounded-lg border border-destructive/50 bg-destructive/5">
+              <AlertTriangle className="h-5 w-5 text-destructive flex-shrink-0" />
+              <p className="text-sm text-destructive font-medium">
+                Pedido faturado. Para editar, retorne para "Pedido Gerado".
+              </p>
+              {canEditStatus && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="ml-auto text-destructive border-destructive"
+                  onClick={() => unfaturarMutation.mutate()}
+                  disabled={unfaturarMutation.isPending}
+                >
+                  {unfaturarMutation.isPending ? (
+                    <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                  ) : null}
+                  Retornar para Pedido Gerado
+                </Button>
+              )}
+            </div>
           )}
 
-          {isPedidoGerado && (
-            <Card className="border-orange-500/50 bg-orange-500/5">
-              <CardContent className="flex items-center justify-between gap-3 py-4">
-                <div className="flex items-center gap-3">
-                  <AlertTriangle className="h-5 w-5 text-orange-600 dark:text-orange-400 flex-shrink-0" />
-                  <p className="text-sm text-orange-700 dark:text-orange-300" data-testid="alert-gerado">
-                    Este pedido tem estoque reservado.
-                  </p>
-                </div>
-                {canEditStatus && (
-                  <Button 
-                    variant="outline" 
-                    size="sm"
-                    onClick={() => unreserveMutation.mutate()}
-                    disabled={unreserveMutation.isPending}
-                    data-testid="button-unreserve"
-                  >
-                    {unreserveMutation.isPending ? "Retornando..." : "Retornar para Orçamento"}
-                  </Button>
-                )}
-              </CardContent>
-            </Card>
+          {isPedidoGerado && hasStockPosted && (
+            <div className="flex items-center gap-3 p-3 rounded-lg border border-yellow-500/50 bg-yellow-500/5">
+              <AlertTriangle className="h-5 w-5 text-yellow-600 flex-shrink-0" />
+              <p className="text-sm text-yellow-700 dark:text-yellow-400 font-medium">
+                Estoque já reservado. Para editar, retorne para "Orçamento".
+              </p>
+              {canEditStatus && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="ml-auto text-yellow-600 border-yellow-500"
+                  onClick={() => unreserveMutation.mutate()}
+                  disabled={unreserveMutation.isPending}
+                >
+                  {unreserveMutation.isPending ? (
+                    <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                  ) : null}
+                  Retornar para Orçamento
+                </Button>
+              )}
+            </div>
           )}
 
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between gap-4 pb-4">
-              <CardTitle className="flex items-center gap-2">
-                <Package className="h-5 w-5" />
-                Itens do Pedido
+          {/* Dados Gerais - igual ao de criação */}
+          <Card className="border-l-2 border-l-orange-500 shadow-sm">
+            <CardHeader className="py-2 px-4 border-b bg-muted/20">
+              <CardTitle className="text-sm font-semibold flex items-center gap-2 text-orange-600">
+                <UserIcon className="h-4 w-4" /> Dados Gerais
               </CardTitle>
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-muted-foreground">
-                  {isEditMode ? editItems.size : itemsWithProducts.length} {(isEditMode ? editItems.size : itemsWithProducts.length) === 1 ? "item" : "itens"}
-                </span>
-                {canEditStatus && canEditItems && !isEditMode && (
-                  <Button variant="outline" size="sm" onClick={startEditMode} data-testid="button-edit-items">
-                    <Pencil className="h-4 w-4 mr-2" />
-                    Editar
-                  </Button>
+            </CardHeader>
+            <CardContent className="py-3 px-4 grid grid-cols-12 gap-3">
+              <div className="col-span-12 md:col-span-6">
+                <Label className="text-xs text-muted-foreground">Cliente</Label>
+                <Input
+                  readOnly
+                  value={
+                    customer?.nome ||
+                    customer?.firstName ||
+                    customer?.company ||
+                    "Não informado"
+                  }
+                  className="mt-1 h-8 text-sm font-bold bg-muted/50"
+                />
+                {customer?.email && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {customer.email}
+                  </p>
                 )}
               </div>
-            </CardHeader>
-            <CardContent>
-              {isEditMode ? (
-                <div className="space-y-4">
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      placeholder="Buscar produtos para adicionar..."
-                      value={productSearch}
-                      onChange={(e) => setProductSearch(e.target.value)}
-                      className="pl-9"
-                      data-testid="input-search-products"
-                    />
-                    {filteredProducts.length > 0 && (
-                      <div className="absolute z-10 w-full mt-1 bg-popover border rounded-md shadow-lg max-h-60 overflow-auto">
-                        {filteredProducts.map((product) => (
-                          <div
-                            key={product.id}
-                            className="flex items-center gap-3 p-3 cursor-pointer hover-elevate"
-                            onClick={() => addProductToEdit(product)}
-                            data-testid={`add-product-${product.id}`}
-                          >
-                            <div className="h-10 w-10 rounded bg-muted flex items-center justify-center overflow-hidden flex-shrink-0">
-                              {product.image ? (
-                                <img src={product.image} alt={product.name} className="h-full w-full object-cover" />
-                              ) : (
-                                <Package className="h-4 w-4 text-muted-foreground" />
-                              )}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <p className="font-medium truncate text-sm">{product.name}</p>
-                              <p className="text-xs text-muted-foreground">{product.sku}</p>
-                            </div>
-                            <p className="text-sm font-medium">R$ {parseFloat(product.price).toFixed(2)}</p>
-                            <Plus className="h-4 w-4 text-muted-foreground" />
+              <div className="col-span-12 md:col-span-4">
+                <Label className="text-xs text-muted-foreground">
+                  Vendedor
+                </Label>
+                {isEditMode ? (
+                  <Select
+                    value={selectedSellerId}
+                    onValueChange={setSelectedSellerId}
+                  >
+                    <SelectTrigger className="mt-1 h-8 text-sm">
+                      <SelectValue placeholder="Selecione..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {sellersList.map((s) => (
+                        <SelectItem key={s.id} value={s.id}>
+                          {s.firstName || s.email}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Input
+                    readOnly
+                    value="Não informado"
+                    className="mt-1 h-8 text-sm bg-muted/50"
+                  />
+                )}
+              </div>
+              <div className="col-span-6 md:col-span-2">
+                <Label className="text-xs text-muted-foreground">
+                  Data Emissão
+                </Label>
+                {isEditMode ? (
+                  <Input
+                    type="date"
+                    className="mt-1 h-8 text-sm"
+                    value={saleDate}
+                    onChange={(e) => setSaleDate(e.target.value)}
+                  />
+                ) : (
+                  <Input
+                    readOnly
+                    value={
+                      orderData.createdAt
+                        ? format(new Date(orderData.createdAt), "dd/MM/yyyy")
+                        : "-"
+                    }
+                    className="mt-1 h-8 text-sm bg-muted/50"
+                  />
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Itens - igual ao de criação */}
+          <Card className="shadow-sm">
+            <CardHeader className="py-2 px-4 border-b bg-muted/20 flex flex-row items-center justify-between h-12">
+              <CardTitle className="text-sm font-semibold flex items-center gap-2 text-orange-600">
+                <ShoppingCart className="h-4 w-4" /> Itens
+              </CardTitle>
+              {isEditMode && (
+                <div className="relative w-96">
+                  <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-muted-foreground" />
+                  <Input
+                    placeholder="Adicionar produto (Nome/SKU)..."
+                    className="pl-8 h-8 text-sm bg-background"
+                    value={productSearch}
+                    onChange={(e) => setProductSearch(e.target.value)}
+                  />
+                  {productSearch && filteredProducts.length > 0 && (
+                    <div className="absolute z-50 w-full mt-1 bg-popover border rounded-md shadow-xl max-h-60 overflow-y-auto right-0 p-1">
+                      {filteredProducts.map((p) => (
+                        <div
+                          key={p.id}
+                          className="px-3 py-2 hover:bg-accent cursor-pointer rounded-sm text-sm flex justify-between items-center border-b last:border-0"
+                          onClick={() => handleAddProduct(p)}
+                        >
+                          <div>
+                            <span className="font-medium">{p.name}</span>
+                            <span className="text-xs text-muted-foreground ml-2">
+                              SKU: {p.sku}
+                            </span>
                           </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  <Separator />
-
-                  {Array.from(editItems.values()).map((item) => (
-                    <div key={item.productId} className="flex items-center gap-3" data-testid={`edit-item-${item.productId}`}>
-                      <div className="h-12 w-12 rounded-md bg-muted flex items-center justify-center overflow-hidden flex-shrink-0">
-                        {item.product?.image ? (
-                          <img src={item.product.image} alt={item.product.name} className="h-full w-full object-cover" />
-                        ) : (
-                          <Package className="h-5 w-5 text-muted-foreground" />
-                        )}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium truncate text-sm">{item.product?.name}</p>
-                        <p className="text-xs text-muted-foreground">SKU: {item.product?.sku}</p>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <Input
-                          type="number"
-                          min="1"
-                          value={item.quantity}
-                          onChange={(e) => updateEditItemQuantity(item.productId, parseInt(e.target.value) || 1)}
-                          className="w-14 h-8 text-center text-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                          data-testid={`input-qty-${item.productId}`}
-                        />
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <span className="text-xs text-muted-foreground">R$</span>
-                        <Input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={item.price}
-                          onChange={(e) => updateEditItemPrice(item.productId, e.target.value || "0")}
-                          className="w-20 h-8 text-right text-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                          data-testid={`input-price-${item.productId}`}
-                        />
-                      </div>
-                      <div className="text-right w-20">
-                        <p className="font-medium text-sm">R$ {(parseFloat(item.price) * item.quantity).toFixed(2)}</p>
-                        {parseFloat(item.price) < parseFloat(item.originalPrice) && (
-                          <p className="text-xs text-green-600">-{(((parseFloat(item.originalPrice) - parseFloat(item.price)) / parseFloat(item.originalPrice)) * 100).toFixed(0)}%</p>
-                        )}
-                      </div>
-                      <Button variant="ghost" size="icon" onClick={() => removeEditItem(item.productId)} data-testid={`btn-remove-${item.productId}`}>
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
+                          <div className="text-right">
+                            <div className="font-bold text-green-600 text-xs">
+                              R$ {p.price}
+                            </div>
+                            <div className="text-[10px] text-muted-foreground">
+                              Est: {p.stock || 0}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  ))}
-
-                  {editItems.size === 0 && (
-                    <p className="text-center text-muted-foreground py-4">Nenhum item no pedido. Adicione produtos acima.</p>
                   )}
-
-                  <Separator />
-
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Subtotal</span>
-                      <span>R$ {editSubtotal.toFixed(2)}</span>
-                    </div>
-                    {editDiscount > 0 && (
-                      <div className="flex justify-between text-sm text-green-600">
-                        <span>Desconto</span>
-                        <span>- R$ {editDiscount.toFixed(2)}</span>
-                      </div>
-                    )}
-                    <div className="flex justify-between items-center pt-1">
-                      <span className="font-medium">Total</span>
-                      <span className="text-lg font-semibold">R$ {editTotal.toFixed(2)}</span>
-                    </div>
-                  </div>
-
-                  <div className="flex gap-2 pt-2">
-                    <Button variant="outline" onClick={cancelEditMode} className="flex-1" data-testid="button-cancel-edit">
-                      <X className="h-4 w-4 mr-2" />
-                      Cancelar
-                    </Button>
-                    <Button onClick={saveEditItems} disabled={updateItemsMutation.isPending} className="flex-1" data-testid="button-save-edit">
-                      {updateItemsMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
-                      Salvar Alterações
-                    </Button>
-                  </div>
                 </div>
-              ) : (
-                <>
-                  <div className="space-y-4">
-                    {itemsWithProducts.slice(0, visibleItems).map((item) => (
-                      <div key={item.id} className="flex items-center gap-4" data-testid={`order-item-${item.id}`}>
-                        <div className="h-16 w-16 rounded-md bg-muted flex items-center justify-center overflow-hidden flex-shrink-0">
-                          {item.product?.image ? (
-                            <img src={item.product.image} alt={item.product.name} className="h-full w-full object-cover" />
-                          ) : (
-                            <Package className="h-6 w-6 text-muted-foreground" />
-                          )}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium truncate" data-testid={`text-product-name-${item.id}`}>
-                            {item.product?.name || `Produto #${item.productId}`}
-                          </p>
-                          <p className="text-sm text-muted-foreground">SKU: {item.product?.sku || "-"}</p>
-                        </div>
-                        <div className="text-right">
-                          <p className="font-medium" data-testid={`text-item-total-${item.id}`}>
-                            R$ {(parseFloat(item.price) * item.quantity).toFixed(2)}
-                          </p>
-                          <div className="text-sm text-muted-foreground">
-                            {item.quantity}x R$ {parseFloat(item.price).toFixed(2)}
-                            {item.product?.price && parseFloat(item.product.price) > parseFloat(item.price) && (
-                              <span className="ml-1 line-through text-xs">
-                                R$ {parseFloat(item.product.price).toFixed(2)}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  {itemsWithProducts.length > visibleItems && (
-                    <div className="flex justify-center pt-4">
-                      <Button 
-                        variant="outline" 
-                        onClick={() => setVisibleItems(prev => prev + ITEMS_PER_LOAD)}
-                        data-testid="button-show-more-items"
+              )}
+            </CardHeader>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-muted/10 h-8 hover:bg-muted/10">
+                    <TableHead className="h-8 w-[35%] pl-4 text-xs">
+                      Descrição
+                    </TableHead>
+                    <TableHead className="h-8 w-[8%] text-center text-xs">
+                      Un
+                    </TableHead>
+                    <TableHead className="h-8 w-[10%] text-center text-xs">
+                      Qtd
+                    </TableHead>
+                    <TableHead className="h-8 w-[12%] text-right text-xs">
+                      Preço Un
+                    </TableHead>
+                    <TableHead className="h-8 w-[10%] text-center text-xs">
+                      Desc %
+                    </TableHead>
+                    <TableHead className="h-8 w-[8%] text-center text-xs">
+                      Estoque
+                    </TableHead>
+                    <TableHead className="h-8 w-[12%] text-right pr-4 text-xs">
+                      Total
+                    </TableHead>
+                    {isEditMode && (
+                      <TableHead className="h-8 w-[5%]"></TableHead>
+                    )}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {cartItems.length === 0 ? (
+                    <TableRow>
+                      <TableCell
+                        colSpan={isEditMode ? 8 : 7}
+                        className="h-20 text-center text-xs text-muted-foreground"
                       >
-                        <ChevronDown className="h-4 w-4 mr-2" />
-                        Mostrar mais ({itemsWithProducts.length - visibleItems} restantes)
-                      </Button>
-                    </div>
-                  )}
-                  <Separator className="my-4" />
-                  
-                  {canEditStatus && (
-                    <div className="space-y-2 mb-4">
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <CreditCard className="h-4 w-4" />
-                        <span>Forma de Pagamento</span>
-                      </div>
-                      <Select
-                        value={orderData.paymentTypeId?.toString() || ""}
-                        onValueChange={(val) => {
-                          if (val) updatePaymentTypeMutation.mutate(parseInt(val));
-                        }}
-                        disabled={updatePaymentTypeMutation.isPending}
-                      >
-                        <SelectTrigger data-testid="select-payment-type">
-                          <SelectValue placeholder="Selecione a forma de pagamento" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {activePaymentTypes.map((pt) => (
-                            <SelectItem key={pt.id} value={pt.id.toString()} data-testid={`payment-type-${pt.id}`}>
-                              {pt.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  )}
-
-                  {/* Fiado (Store Credit) Installments Configuration - REQUIRED */}
-                  {canEditStatus && isFiadoPayment && (
-                    <div className={`space-y-3 mb-4 p-4 rounded-md border-2 ${fiadoInstallments.length === 0 ? 'border-red-500 bg-red-50 dark:bg-red-950/20' : 'border-green-500 bg-green-50 dark:bg-green-950/20'}`}>
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2 text-sm font-medium">
-                          <CalendarDays className="h-4 w-4" />
-                          <span>Cronograma de Pagamento</span>
-                          <Badge variant={fiadoInstallments.length === 0 ? "destructive" : "default"} className="text-xs">
-                            {fiadoInstallments.length === 0 ? "OBRIGATÓRIO" : "Configurado"}
-                          </Badge>
-                        </div>
-                        {!showFiadoConfig && (
-                          <Button
-                            variant={fiadoInstallments.length === 0 ? "default" : "outline"}
-                            size="sm"
-                            onClick={() => {
-                              setShowFiadoConfig(true);
-                              if (fiadoInstallments.length === 0) {
-                                generateFiadoInstallments(1);
-                              }
-                            }}
-                            data-testid="button-configure-fiado"
-                          >
-                            <Settings className="h-4 w-4 mr-2" />
-                            {fiadoInstallments.length === 0 ? "Definir Parcelas" : "Editar"}
-                          </Button>
-                        )}
-                      </div>
-
-                      {/* Warning message when no installments */}
-                      {!showFiadoConfig && fiadoInstallments.length === 0 && (
-                        <div className="flex items-center gap-2 text-sm text-red-600 dark:text-red-400">
-                          <AlertCircle className="h-4 w-4" />
-                          <span>Configure as parcelas antes de faturar este pedido</span>
-                        </div>
-                      )}
-
-                      {/* Show existing installments */}
-                      {!showFiadoConfig && fiadoInstallments.length > 0 && (
-                        <div className="space-y-2">
-                          <p className="text-sm text-muted-foreground">
-                            {fiadoInstallments.length}x parcela(s) configurada(s)
-                          </p>
-                          <div className="space-y-1">
-                            {fiadoInstallments.map((inst) => (
-                              <div key={inst.installment} className="flex justify-between text-sm">
-                                <span>Parcela {inst.installment} - {format(new Date(inst.dueDate + 'T12:00:00'), 'dd/MM/yyyy')}</span>
-                                <span className="font-medium">R$ {inst.amount.toFixed(2)}</span>
+                        Nenhum item inserido
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    cartItems.map((item) => {
+                      const finalStock =
+                        (item.product.stock || 0) - item.quantity;
+                      const hasStock = finalStock >= 0;
+                      return (
+                        <TableRow
+                          key={item.productId}
+                          className="h-9 hover:bg-muted/5 border-b border-muted/50"
+                        >
+                          <TableCell className="pl-4 py-1">
+                            <div className="text-sm font-medium">
+                              {item.product.name}
+                            </div>
+                            <div className="text-[10px] text-muted-foreground">
+                              {item.product.sku}
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-center text-xs py-1">
+                            {item.product.unit || "UN"}
+                          </TableCell>
+                          <TableCell className="py-1">
+                            {isEditMode ? (
+                              <Input
+                                type="number"
+                                className="h-7 text-center text-sm px-1"
+                                value={item.quantity}
+                                onChange={(e) =>
+                                  updateCartItem(
+                                    item.productId,
+                                    "quantity",
+                                    parseFloat(e.target.value) || 0,
+                                  )
+                                }
+                              />
+                            ) : (
+                              <div className="text-center text-sm">
+                                {item.quantity}
                               </div>
-                            ))}
-                          </div>
-                          <div className="flex justify-between text-sm font-medium pt-1 border-t">
-                            <span>Total das Parcelas</span>
-                            <span>R$ {fiadoInstallments.reduce((sum, inst) => sum + inst.amount, 0).toFixed(2)}</span>
-                          </div>
-                        </div>
-                      )}
+                            )}
+                          </TableCell>
+                          <TableCell className="py-1">
+                            {isEditMode ? (
+                              <Input
+                                type="number"
+                                className="h-7 text-right text-sm px-1"
+                                value={item.unitPrice}
+                                onChange={(e) =>
+                                  updateCartItem(
+                                    item.productId,
+                                    "unitPrice",
+                                    parseFloat(e.target.value) || 0,
+                                  )
+                                }
+                              />
+                            ) : (
+                              <div className="text-right text-sm">
+                                {item.unitPrice.toFixed(2)}
+                              </div>
+                            )}
+                          </TableCell>
+                          <TableCell className="py-1">
+                            {isEditMode ? (
+                              <Input
+                                type="number"
+                                className="h-7 text-center text-sm px-1 text-blue-500"
+                                value={item.discountPercent}
+                                onChange={(e) =>
+                                  updateCartItem(
+                                    item.productId,
+                                    "discountPercent",
+                                    parseFloat(e.target.value) || 0,
+                                  )
+                                }
+                              />
+                            ) : (
+                              <div className="text-center text-sm text-blue-500">
+                                {item.discountPercent > 0
+                                  ? `${item.discountPercent.toFixed(1)}%`
+                                  : "-"}
+                              </div>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-center py-1">
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <div
+                                    className={`h-6 w-full rounded flex items-center justify-center text-xs font-bold cursor-help ${
+                                      hasStock
+                                        ? "bg-green-500/20 text-green-700 border border-green-500/30"
+                                        : "bg-red-500/20 text-red-700 border border-red-500/30"
+                                    }`}
+                                  >
+                                    <Box className="h-3 w-3 mr-1" />
+                                    {finalStock}
+                                  </div>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>Atual: {item.product.stock || 0}</p>
+                                  <p>Pedido: -{item.quantity}</p>
+                                  <Separator className="my-1" />
+                                  <p
+                                    className={
+                                      hasStock
+                                        ? "text-green-500"
+                                        : "text-red-500"
+                                    }
+                                  >
+                                    Saldo: {finalStock}
+                                  </p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          </TableCell>
+                          <TableCell className="text-right pr-4 py-1 font-bold text-sm">
+                            {item.total.toFixed(2)}
+                          </TableCell>
+                          {isEditMode && (
+                            <TableCell className="py-1">
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                                onClick={() => removeCartItem(item.productId)}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </TableCell>
+                          )}
+                        </TableRow>
+                      );
+                    })
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
 
-                      {showFiadoConfig && (
-                        <div className="space-y-4">
-                          <div className="flex items-center gap-4">
-                            <div className="flex-1">
-                              <label className="text-sm text-muted-foreground mb-1 block">Número de Parcelas</label>
+          {/* Financeiro e Totais - igual ao de criação */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-4">
+              <Card className="shadow-sm">
+                <CardHeader className="py-2 px-3 border-b bg-muted/20">
+                  <CardTitle className="text-xs font-semibold text-muted-foreground uppercase">
+                    Financeiro e Transporte
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-3 space-y-3">
+                  {isEditMode ? (
+                    <>
+                      <div className="grid grid-cols-3 gap-2 items-end">
+                        <div className="col-span-2 space-y-1">
+                          <Label className="text-[10px]">
+                            Condição Pagamento (Dias ex: 30 60)
+                          </Label>
+                          <Input
+                            className="h-7 text-xs"
+                            value={paymentCondition}
+                            onChange={(e) =>
+                              setPaymentCondition(e.target.value)
+                            }
+                          />
+                        </div>
+                        <Button
+                          variant="outline"
+                          className="h-7 text-xs border-green-600 text-green-600"
+                          onClick={generateInstallments}
+                        >
+                          Gerar
+                        </Button>
+                      </div>
+                      {installments.length > 0 && (
+                        <div className="border rounded bg-muted/10 p-2">
+                          <div className="text-[10px] font-bold text-muted-foreground mb-1 grid grid-cols-4 gap-2 px-2">
+                            <span>DATA</span>
+                            <span>VALOR</span>
+                            <span>FORMA</span>
+                            <span></span>
+                          </div>
+                          {installments.map((inst, i) => (
+                            <div
+                              key={i}
+                              className="grid grid-cols-4 gap-2 items-center mb-1"
+                            >
+                              <Input
+                                type="date"
+                                className="h-6 text-xs px-1"
+                                value={inst.date.split("/").reverse().join("-")}
+                                onChange={(e) => {
+                                  const [y, m, d] = e.target.value
+                                    .split("-")
+                                    .map(Number);
+                                  const n = [...installments];
+                                  n[i].date = format(
+                                    new Date(y, m - 1, d),
+                                    "dd/MM/yyyy",
+                                  );
+                                  setInstallments(n);
+                                }}
+                              />
+                              <Input
+                                className="h-6 text-xs px-1"
+                                value={inst.value.toFixed(2)}
+                                readOnly
+                              />
                               <Select
-                                value={fiadoInstallmentCount.toString()}
-                                onValueChange={(val) => {
-                                  const count = parseInt(val);
-                                  setFiadoInstallmentCount(count);
-                                  generateFiadoInstallments(count);
+                                value={inst.method}
+                                onValueChange={(v) => {
+                                  const n = [...installments];
+                                  n[i].method = v;
+                                  setInstallments(n);
                                 }}
                               >
-                                <SelectTrigger data-testid="select-fiado-installment-count">
+                                <SelectTrigger className="h-6 text-xs">
                                   <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
-                                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((n) => (
-                                    <SelectItem key={n} value={n.toString()}>{n}x</SelectItem>
-                                  ))}
+                                  <SelectItem value="Boleto">Boleto</SelectItem>
+                                  <SelectItem value="Pix">Pix</SelectItem>
                                 </SelectContent>
                               </Select>
                             </div>
-                          </div>
-
-                          <div className="space-y-2">
-                            {fiadoInstallments.map((inst, index) => (
-                              <div key={inst.installment} className="flex items-center gap-3">
-                                <span className="text-sm text-muted-foreground w-20">Parcela {inst.installment}</span>
-                                <Input
-                                  type="date"
-                                  value={inst.dueDate}
-                                  onChange={(e) => {
-                                    const updated = [...fiadoInstallments];
-                                    updated[index] = { ...updated[index], dueDate: e.target.value };
-                                    setFiadoInstallments(updated);
-                                  }}
-                                  className="flex-1"
-                                  data-testid={`input-fiado-date-${inst.installment}`}
-                                />
-                                <Input
-                                  type="number"
-                                  step="0.01"
-                                  value={inst.amount}
-                                  onChange={(e) => {
-                                    const updated = [...fiadoInstallments];
-                                    updated[index] = { ...updated[index], amount: parseFloat(e.target.value) || 0 };
-                                    setFiadoInstallments(updated);
-                                  }}
-                                  className="w-28"
-                                  data-testid={`input-fiado-amount-${inst.installment}`}
-                                />
-                              </div>
-                            ))}
-                          </div>
-
-                          {/* Summary with validation using integer cents for precision */}
-                          {(() => {
-                            const installmentsSumCents = fiadoInstallments.reduce((sum, inst) => sum + Math.round(inst.amount * 100), 0);
-                            const orderTotalCents = Math.round(parseFloat(orderData.total) * 100);
-                            const differenceCents = Math.abs(installmentsSumCents - orderTotalCents);
-                            const isValid = differenceCents <= 2; // 2 cents tolerance
-                            const installmentsSum = installmentsSumCents / 100;
-                            const orderTotal = orderTotalCents / 100;
-                            const difference = differenceCents / 100;
-                            
-                            return (
-                              <div className={`p-3 rounded-md ${isValid ? 'bg-green-50 dark:bg-green-950/20' : 'bg-red-50 dark:bg-red-950/20'}`}>
-                                <div className="flex justify-between text-sm">
-                                  <span>Total do Pedido:</span>
-                                  <span className="font-medium">R$ {orderTotal.toFixed(2)}</span>
-                                </div>
-                                <div className="flex justify-between text-sm">
-                                  <span>Soma das Parcelas:</span>
-                                  <span className={`font-medium ${isValid ? 'text-green-600' : 'text-red-600'}`}>
-                                    R$ {installmentsSum.toFixed(2)}
-                                  </span>
-                                </div>
-                                {!isValid && (
-                                  <div className="flex items-center gap-1 text-xs text-red-600 mt-1">
-                                    <AlertCircle className="h-3 w-3" />
-                                    <span>Diferença de R$ {difference.toFixed(2)} - ajuste os valores</span>
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })()}
-
-                          <div className="flex justify-end gap-2 pt-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => setShowFiadoConfig(false)}
-                            >
-                              Cancelar
-                            </Button>
-                            <Button
-                              size="sm"
-                              onClick={() => updateFiadoInstallmentsMutation.mutate(fiadoInstallments)}
-                              disabled={updateFiadoInstallmentsMutation.isPending}
-                              data-testid="button-save-fiado"
-                            >
-                              {updateFiadoInstallmentsMutation.isPending ? (
-                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                              ) : null}
-                              Salvar Parcelas
-                            </Button>
-                          </div>
+                          ))}
                         </div>
                       )}
-                    </div>
-                  )}
-
-                  {!canEditStatus && orderData.paymentTypeId && (
-                    <div className="flex items-center gap-2 mb-4 text-sm">
-                      <CreditCard className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-muted-foreground">Pagamento:</span>
-                      <span className="font-medium">
-                        {activePaymentTypes.find(pt => pt.id === orderData.paymentTypeId)?.name || '-'}
-                      </span>
-                    </div>
-                  )}
-
-                  {(() => {
-                    const subtotal = itemsWithProducts.reduce((acc, item) => {
-                      const originalPrice = item.product?.price ? parseFloat(item.product.price) : parseFloat(item.price);
-                      return acc + (originalPrice * item.quantity);
-                    }, 0);
-                    const total = parseFloat(orderData.total);
-                    const discount = subtotal - total;
-                    
-                    return (
-                      <div className="space-y-2">
-                        {discount > 0.01 && (
-                          <>
-                            <div className="flex justify-between text-sm">
-                              <span className="text-muted-foreground">Subtotal</span>
-                              <span data-testid="text-order-subtotal">R$ {subtotal.toFixed(2)}</span>
-                            </div>
-                            <div className="flex justify-between text-sm text-green-600">
-                              <span>Desconto</span>
-                              <span data-testid="text-order-discount">- R$ {discount.toFixed(2)}</span>
-                            </div>
-                          </>
-                        )}
-                        <div className="flex justify-between items-center pt-1">
-                          <span className="font-medium">Total do Pedido</span>
-                          <span className="text-lg font-semibold" data-testid="text-order-total">R$ {total.toFixed(2)}</span>
+                      <Separator className="my-1" />
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-1">
+                          <Label className="text-[10px]">Transportadora</Label>
+                          <Input
+                            className="h-7 text-xs"
+                            value={carrierName}
+                            onChange={(e) => setCarrierName(e.target.value)}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-[10px]">Tipo Frete</Label>
+                          <Select
+                            value={shippingType}
+                            onValueChange={setShippingType}
+                          >
+                            <SelectTrigger className="h-7 text-xs">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="CIF">
+                                CIF (Emitente)
+                              </SelectItem>
+                              <SelectItem value="FOB">
+                                FOB (Destinatário)
+                              </SelectItem>
+                            </SelectContent>
+                          </Select>
                         </div>
                       </div>
-                    );
-                  })()}
-                </>
+                    </>
+                  ) : (
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">
+                          Forma de Pagamento:
+                        </span>
+                        <span>
+                          {orderData.paymentMethod || "Não informado"}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">
+                          Transportadora:
+                        </span>
+                        <span>Não informado</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">
+                          Tipo Frete:
+                        </span>
+                        <span>CIF</span>
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+
+            <Card className="bg-muted/10 border-none shadow-none h-full">
+              <CardContent className="p-4 space-y-4">
+                <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
+                  <div className="flex justify-between items-center">
+                    <span className="text-muted-foreground text-xs">
+                      Total Itens
+                    </span>
+                    <span className="font-medium bg-background px-2 py-1 rounded border min-w-[80px] text-right">
+                      {totalItemsValue.toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-muted-foreground text-xs">
+                      Desconto (R$)
+                    </span>
+                    {isEditMode ? (
+                      <Input
+                        type="number"
+                        className="h-7 w-[80px] text-right text-xs text-red-500"
+                        value={globalDiscount}
+                        onChange={(e) =>
+                          setGlobalDiscount(parseFloat(e.target.value) || 0)
+                        }
+                      />
+                    ) : (
+                      <span className="font-medium bg-background px-2 py-1 rounded border min-w-[80px] text-right text-red-500">
+                        {globalDiscount.toFixed(2)}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-muted-foreground text-xs">
+                      Frete (R$)
+                    </span>
+                    {isEditMode ? (
+                      <Input
+                        type="number"
+                        className="h-7 w-[80px] text-right text-xs"
+                        value={shippingCost}
+                        onChange={(e) =>
+                          setShippingCost(parseFloat(e.target.value) || 0)
+                        }
+                      />
+                    ) : (
+                      <span className="font-medium bg-background px-2 py-1 rounded border min-w-[80px] text-right">
+                        {shippingCost.toFixed(2)}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-muted-foreground text-xs">
+                      Outras Desp.
+                    </span>
+                    {isEditMode ? (
+                      <Input
+                        type="number"
+                        className="h-7 w-[80px] text-right text-xs"
+                        value={otherExpenses}
+                        onChange={(e) =>
+                          setOtherExpenses(parseFloat(e.target.value) || 0)
+                        }
+                      />
+                    ) : (
+                      <span className="font-medium bg-background px-2 py-1 rounded border min-w-[80px] text-right">
+                        {otherExpenses.toFixed(2)}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <Separator className="bg-muted-foreground/20" />
+                <div className="flex justify-between items-end pt-2">
+                  <div className="text-right w-full">
+                    <div className="text-xs text-muted-foreground mb-1">
+                      TOTAL LÍQUIDO
+                    </div>
+                    <div className="text-3xl font-bold text-green-500">
+                      R$ {totalOrderValue.toFixed(2)}
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Observações - igual ao de criação */}
+          <Card className="shadow-sm">
+            <CardHeader className="py-2 px-4 border-b bg-muted/20">
+              <CardTitle className="text-xs font-semibold text-muted-foreground uppercase">
+                Observações
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-3">
+              {isEditMode ? (
+                <Textarea
+                  placeholder="Observações impressas no pedido..."
+                  className="h-16 text-xs resize-none bg-background"
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                />
+              ) : (
+                <p className="text-sm text-muted-foreground min-h-[4rem] whitespace-pre-wrap">
+                  {cleanInternalData(orderData.notes) || "Nenhuma observação"}
+                </p>
               )}
             </CardContent>
           </Card>
 
-          {orderData.notes && (
-            <Card>
-              <CardHeader className="pb-4">
-                <CardTitle className="flex items-center gap-2">
-                  <FileText className="h-5 w-5" />
-                  Observações
+          {/* Ações de Status - apenas em modo visualização */}
+          {!isEditMode && canEditStatus && (
+            <Card className="shadow-sm">
+              <CardHeader className="py-2 px-4 border-b bg-muted/20">
+                <CardTitle className="text-xs font-semibold text-muted-foreground uppercase">
+                  Ações
                 </CardTitle>
               </CardHeader>
-              <CardContent>
-                <p className="text-muted-foreground whitespace-pre-wrap" data-testid="text-order-notes">
-                  {orderData.notes}
-                </p>
-              </CardContent>
-            </Card>
-          )}
-        </div>
-
-        <div className="space-y-6">
-          {canEditStatus && (
-            <Card>
-              <CardHeader className="pb-4">
-                <CardTitle>Ações</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <Select
-                  value={orderData.status}
-                  onValueChange={handleStatusChange}
-                  disabled={updateStatusMutation.isPending || reserveStockMutation.isPending || invoiceMutation.isPending}
-                >
-                  <SelectTrigger data-testid="select-status">
-                    <SelectValue placeholder="Selecionar status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="ORCAMENTO">Orçamento (Editável)</SelectItem>
-                    <SelectItem value="ORCAMENTO_ABERTO">Orçamento Aberto</SelectItem>
-                    <SelectItem value="ORCAMENTO_CONCLUIDO">Orçamento Enviado</SelectItem>
-                    <SelectItem value="PEDIDO_GERADO">Gerar Pedido (Reservar Estoque)</SelectItem>
-                    <SelectItem value="PEDIDO_FATURADO">Faturar (Baixar Estoque)</SelectItem>
-                    <SelectItem value="PEDIDO_CANCELADO">Cancelado</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Button
-                  variant="outline"
-                  className="w-full"
-                  onClick={() => printMutation.mutate()}
-                  disabled={printMutation.isPending}
-                  data-testid="button-print"
-                >
-                  <Printer className="h-4 w-4 mr-2" />
-                  {printMutation.isPending ? "Imprimindo..." : "Imprimir Pedido"}
-                </Button>
-                <div className="grid grid-cols-1 gap-2">
-                  <Button
-                    variant="default"
-                    className="w-full"
-                    onClick={async () => {
-                      try {
-                        const response = await fetch(`/api/orders/${orderId}/pdf?type=cobranca`, {
-                          credentials: 'include',
-                        });
-                        if (!response.ok) throw new Error('Failed to generate PDF');
-                        const blob = await response.blob();
-                        const url = window.URL.createObjectURL(blob);
-                        const a = document.createElement('a');
-                        a.href = url;
-                        a.download = `Orcamento_${orderData?.orderNumber || orderId}.pdf`;
-                        document.body.appendChild(a);
-                        a.click();
-                        window.URL.revokeObjectURL(url);
-                        document.body.removeChild(a);
-                        
-                        await apiRequest("PATCH", `/api/orders/${orderId}/print`, {});
-                        queryClient.invalidateQueries({ queryKey: ["/api/orders", orderId] });
-                        queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
-                        
-                        toast({
-                          title: "PDF Gerado",
-                          description: "PDF de Cobranca gerado com sucesso.",
-                        });
-                      } catch (error) {
-                        toast({
-                          title: "Erro",
-                          description: "Nao foi possivel gerar o PDF.",
-                          variant: "destructive",
-                        });
-                      }
-                    }}
-                    data-testid="button-pdf-cobranca"
-                  >
-                    <Download className="h-4 w-4 mr-2" />
-                    PDF Cobranca
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="w-full"
-                    onClick={async () => {
-                      try {
-                        const response = await fetch(`/api/orders/${orderId}/pdf?type=separacao`, {
-                          credentials: 'include',
-                        });
-                        if (!response.ok) throw new Error('Failed to generate PDF');
-                        const blob = await response.blob();
-                        const url = window.URL.createObjectURL(blob);
-                        const a = document.createElement('a');
-                        a.href = url;
-                        a.download = `Separacao_${orderData?.orderNumber || orderId}.pdf`;
-                        document.body.appendChild(a);
-                        a.click();
-                        window.URL.revokeObjectURL(url);
-                        document.body.removeChild(a);
-                        
-                        toast({
-                          title: "PDF Gerado",
-                          description: "PDF de Separacao gerado com sucesso.",
-                        });
-                      } catch (error) {
-                        toast({
-                          title: "Erro",
-                          description: "Nao foi possivel gerar o PDF.",
-                          variant: "destructive",
-                        });
-                      }
-                    }}
-                    data-testid="button-pdf-separacao"
-                  >
-                    <Download className="h-4 w-4 mr-2" />
-                    PDF Separacao
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="w-full"
-                    onClick={async () => {
-                      try {
-                        const response = await fetch(`/api/orders/${orderId}/pdf?type=conferencia`, {
-                          credentials: 'include',
-                        });
-                        if (!response.ok) throw new Error('Failed to generate PDF');
-                        const blob = await response.blob();
-                        const url = window.URL.createObjectURL(blob);
-                        const a = document.createElement('a');
-                        a.href = url;
-                        a.download = `Conferencia_${orderData?.orderNumber || orderId}.pdf`;
-                        document.body.appendChild(a);
-                        a.click();
-                        window.URL.revokeObjectURL(url);
-                        document.body.removeChild(a);
-                        
-                        toast({
-                          title: "PDF Gerado",
-                          description: "PDF de Conferencia gerado com sucesso.",
-                        });
-                      } catch (error) {
-                        toast({
-                          title: "Erro",
-                          description: "Nao foi possivel gerar o PDF.",
-                          variant: "destructive",
-                        });
-                      }
-                    }}
-                    data-testid="button-pdf-conferencia"
-                  >
-                    <Download className="h-4 w-4 mr-2" />
-                    PDF Conferencia
-                  </Button>
-                </div>
-                <Separator className="my-2" />
-                <div className="grid grid-cols-1 gap-2">
-                  {customer?.phone && (
+              <CardContent className="p-3">
+                <div className="flex flex-wrap gap-2">
+                  {isOrcamento && (
                     <Button
-                      variant="outline"
-                      className="w-full bg-green-500/10 border-green-500/30 text-green-600 dark:text-green-400"
-                      onClick={() => {
-                        const phone = customer.phone?.replace(/\D/g, '');
-                        const customerName = customer.firstName || 'Cliente';
-                        const message = encodeURIComponent(
-                          `Oi ${customerName}, tudo bem? Estou entrando em contato sobre o pedido ${orderData.orderNumber}.`
-                        );
-                        window.open(`https://wa.me/55${phone}?text=${message}`, '_blank');
-                      }}
-                      data-testid="button-whatsapp-customer"
+                      size="sm"
+                      className="bg-blue-600 hover:bg-blue-700"
+                      onClick={() => handleStatusChange("PEDIDO_GERADO")}
+                      disabled={reserveStockMutation.isPending}
                     >
-                      <MessageCircle className="h-4 w-4 mr-2" />
-                      Chamar Cliente no WhatsApp
+                      {reserveStockMutation.isPending && (
+                        <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                      )}
+                      Gerar Pedido (Reservar Estoque)
                     </Button>
                   )}
-                  <Button
-                    variant="outline"
-                    className="w-full bg-green-500/10 border-green-500/30 text-green-600 dark:text-green-400"
-                    onClick={() => {
-                      const customerName = customer?.firstName || 'Cliente';
-                      const total = parseFloat(orderData.total).toFixed(2);
-                      const message = encodeURIComponent(
-                        `Oi ${customerName} acabei de mandar orçamento de número ${orderData.orderNumber} de valor R$ ${total} aguardando para darmos andamento`
-                      );
-                      window.open(`https://wa.me/5511992845596?text=${message}`, '_blank');
-                    }}
-                    data-testid="button-whatsapp-store"
-                  >
-                    <MessageCircle className="h-4 w-4 mr-2" />
-                    Enviar Pedido no WhatsApp
-                  </Button>
+                  {isPedidoGerado && (
+                    <>
+                      <Button
+                        size="sm"
+                        className="bg-green-600 hover:bg-green-700"
+                        onClick={() => handleStatusChange("FATURADO")}
+                        disabled={invoiceMutation.isPending}
+                      >
+                        {invoiceMutation.isPending && (
+                          <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                        )}
+                        Faturar Pedido
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleStatusChange("ORCAMENTO")}
+                        disabled={unreserveMutation.isPending}
+                      >
+                        {unreserveMutation.isPending && (
+                          <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                        )}
+                        Retornar para Orçamento
+                      </Button>
+                    </>
+                  )}
                 </div>
               </CardContent>
             </Card>
           )}
-
-          <Card>
-            <CardHeader className="pb-4">
-              <CardTitle className="flex items-center gap-2">
-                <User className="h-5 w-5" />
-                Cliente
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {customer ? (
-                <>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Nome</p>
-                    <p className="font-medium" data-testid="text-customer-name">
-                      {customer.firstName} {customer.lastName}
-                    </p>
-                  </div>
-                  {customer.company && (
-                    <div>
-                      <p className="text-sm text-muted-foreground">Empresa</p>
-                      <p className="font-medium">{customer.company}</p>
-                    </div>
-                  )}
-                  {formatDocument() && (
-                    <div>
-                      <p className="text-sm text-muted-foreground">Documento</p>
-                      <p className="font-medium" data-testid="text-customer-document">{formatDocument()}</p>
-                    </div>
-                  )}
-                  {customer.email && (
-                    <div>
-                      <p className="text-sm text-muted-foreground">E-mail</p>
-                      <p className="font-medium">{customer.email}</p>
-                    </div>
-                  )}
-                  {customer.phone && (
-                    <div>
-                      <p className="text-sm text-muted-foreground">Telefone</p>
-                      <p className="font-medium">{customer.phone}</p>
-                    </div>
-                  )}
-                </>
-              ) : (
-                <div>
-                  <p className="text-sm text-muted-foreground">ID do Cliente</p>
-                  <p className="font-medium font-mono text-sm" data-testid="text-customer-id">
-                    {orderData.userId}
-                  </p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {customer && formatAddress().length > 0 && (
-            <Card>
-              <CardHeader className="pb-4">
-                <CardTitle className="flex items-center gap-2">
-                  <MapPin className="h-5 w-5" />
-                  Endereço
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-1" data-testid="text-customer-address">
-                  {formatAddress().map((line, idx) => (
-                    <p key={idx} className={idx === 0 ? "font-medium" : "text-muted-foreground text-sm"}>
-                      {line}
-                    </p>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          <Card>
-            <CardHeader className="pb-4">
-              <CardTitle className="flex items-center gap-2">
-                <DollarSign className="h-5 w-5" />
-                Resumo
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Subtotal</span>
-                <span>R$ {subtotal.toFixed(2)}</span>
-              </div>
-              <Separator />
-              <div className="flex justify-between font-semibold">
-                <span>Total</span>
-                <span data-testid="text-summary-total">R$ {parseFloat(orderData.total).toFixed(2)}</span>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-4">
-              <CardTitle className="flex items-center gap-2">
-                <Calendar className="h-5 w-5" />
-                Informações
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div>
-                <p className="text-sm text-muted-foreground">Número do Pedido</p>
-                <p className="font-medium font-mono">{orderData.orderNumber}</p>
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Data de Criação</p>
-                <p className="font-medium">
-                  {format(new Date(orderData.createdAt), "dd/MM/yyyy HH:mm", { locale: ptBR })}
-                </p>
-              </div>
-              {orderData.printed && orderData.printedAt && (
-                <div>
-                  <p className="text-sm text-muted-foreground">Impresso em</p>
-                  <p className="font-medium">
-                    {format(new Date(orderData.printedAt), "dd/MM/yyyy HH:mm", { locale: ptBR })}
-                  </p>
-                  {orderData.printedByUser && (
-                    <p className="text-sm text-muted-foreground mt-1" data-testid="text-printed-by">
-                      por {orderData.printedByUser.firstName || orderData.printedByUser.email}
-                    </p>
-                  )}
-                </div>
-              )}
-              <div>
-                <p className="text-sm text-muted-foreground">Status Atual</p>
-                <Badge variant={statusVariants[orderData.status]} className="mt-1">
-                  {statusLabels[orderData.status] || orderData.status}
-                </Badge>
-              </div>
-            </CardContent>
-          </Card>
         </div>
-      </div>
+      </ScrollArea>
     </div>
   );
 }

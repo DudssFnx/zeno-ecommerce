@@ -1046,18 +1046,21 @@ export async function registerRoutes(
     if (!req.isAuthenticated()) return res.status(401).send();
     try {
       const companyId = req.user.companyId || "1";
-      const [order] = await db
+      // Busca primeiro sem filtro de company para debug
+      let [order] = await db
         .select()
         .from(orders)
-        .where(
-          and(
-            eq(orders.id, parseInt(req.params.id)),
-            eq(orders.companyId, companyId), // ✅ VALIDAÇÃO ADICIONADA
-          ),
-        )
+        .where(eq(orders.id, parseInt(req.params.id)))
         .limit(1);
+
+      // Se encontrou, verifica se pertence à company (ou não tem company definida)
+      if (order && order.companyId && order.companyId !== companyId) {
+        return res.status(404).json({ message: "Pedido não encontrado" });
+      }
+
       if (!order)
         return res.status(404).json({ message: "Pedido não encontrado" });
+
       const items = await db
         .select({
           id: orderItems.id,
@@ -1073,7 +1076,17 @@ export async function registerRoutes(
         .select()
         .from(users)
         .where(eq(users.id, order.userId));
-      res.json({ ...order, items, customer });
+
+      // Verificar se o estoque foi lançado
+      const [stockLog] = await db
+        .select()
+        .from(stockMovements)
+        .where(
+          sql`${stockMovements.refType} = 'SALES_ORDER' AND ${stockMovements.refId} = ${order.id} AND ${stockMovements.type} = 'OUT'`,
+        )
+        .limit(1);
+
+      res.json({ ...order, items, customer, stockPosted: !!stockLog });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
@@ -1345,6 +1358,72 @@ export async function registerRoutes(
       }
 
       res.json({ message: "Pedido faturado e estoque baixado." });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // 4.e POST: Unfaturar - retornar pedido faturado para pedido gerado (estorna estoque)
+  app.post("/api/orders/:id/unfaturar", async (req: any, res) => {
+    if (!req.isAuthenticated()) return res.status(401).send();
+    const id = parseInt(req.params.id);
+    try {
+      await db.transaction(async (tx) => {
+        const [order] = await tx
+          .select()
+          .from(orders)
+          .where(eq(orders.id, id))
+          .limit(1);
+        if (!order) throw new Error("Pedido não encontrado");
+
+        if (order.status !== "FATURADO") {
+          throw new Error("Apenas pedidos faturados podem ser retornados.");
+        }
+
+        // Verificar se há movimentações de estoque para estornar
+        const existingLogs = await tx
+          .select()
+          .from(stockMovements)
+          .where(
+            sql`${stockMovements.refType} = 'SALES_ORDER' AND ${stockMovements.refId} = ${id} AND ${stockMovements.type} = 'OUT'`,
+          );
+
+        // Se houver movimentações, estorna o estoque
+        if (existingLogs.length > 0) {
+          const items = await tx
+            .select()
+            .from(orderItems)
+            .where(eq(orderItems.orderId, id));
+
+          for (const item of items) {
+            const qty = Number(item.quantity);
+            await tx
+              .update(products)
+              .set({
+                stock: sql`${products.stock} + ${qty}`,
+                updatedAt: new Date(),
+              })
+              .where(eq(products.id, item.productId));
+          }
+
+          // Remove as movimentações de estoque
+          await tx
+            .delete(stockMovements)
+            .where(
+              sql`${stockMovements.refType} = 'SALES_ORDER' AND ${stockMovements.refId} = ${id}`,
+            );
+        }
+
+        // Atualiza status para PEDIDO_GERADO
+        await tx
+          .update(orders)
+          .set({ status: "PEDIDO_GERADO", updatedAt: new Date() })
+          .where(eq(orders.id, id));
+      });
+
+      res.json({
+        message: "Pedido retornado para Pedido Gerado e estoque estornado.",
+      });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }

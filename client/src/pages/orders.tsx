@@ -524,25 +524,8 @@ export default function OrdersPage() {
       toast({ title: "Adicione itens ao pedido", variant: "destructive" });
       return;
     }
-    const sellerName =
-      sellersList.find((s) => s.id === selectedSellerId)?.nome || "Admin";
-    const richNotes = `
-${notes}
-[INTERNAL_DATA]
-SellerId: ${selectedSellerId}
-SellerName: ${sellerName}
-DeliveryDeadline: ${deliveryDeadline}
-GlobalDiscount: ${globalDiscount}
-OtherExpenses: ${otherExpenses}
-SaleDate: ${saleDate}
-DepartureDate: ${departureDate}
-CustomerPO: ${customerPO}
-Carrier: ${carrierName}
-ShippingType: ${shippingType}
-InternalNotes: ${internalNotes}
-Installments: ${JSON.stringify(installments)}
-[/INTERNAL_DATA]
-    `.trim();
+
+    // Observações são apenas o que o vendedor digitou - sem dados internos
     const payload = {
       userId: selectedCustomerId,
       items: cartItems.map((i) => ({
@@ -552,7 +535,7 @@ Installments: ${JSON.stringify(installments)}
       })),
       shippingCost: shippingCost.toString(),
       total: totalOrderValue.toString(),
-      notes: richNotes,
+      notes: notes.trim() || null, // Apenas as observações do vendedor
       status: "ORCAMENTO",
     };
     createOrderMutation.mutate(payload);
