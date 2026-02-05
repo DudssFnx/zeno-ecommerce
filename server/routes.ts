@@ -1391,8 +1391,21 @@ export async function registerRoutes(
       // 🎯 AUTO-CRIAR RECEIVABLE se o pagamento for PRAZO
       try {
         const companyId = req.user.companyId || "1";
-        await createReceivableFromOrder(id, companyId);
-        console.log(`[Financial] Receivable auto-created for order #${id}`);
+        const userName = req.user.firstName || req.user.email || "Sistema";
+        const receivable = await createReceivableFromOrder(id, companyId);
+
+        if (receivable) {
+          // Marcar pedido como contas lançadas
+          await db
+            .update(orders)
+            .set({
+              accountsPosted: true,
+              accountsPostedAt: new Date(),
+              accountsPostedBy: userName,
+            })
+            .where(eq(orders.id, id));
+          console.log(`[Financial] Receivable auto-created for order #${id}`);
+        }
       } catch (error: any) {
         // Se não conseguir criar receivable (ex: não é prazo), apenas ignora
         console.log(
@@ -1467,6 +1480,104 @@ export async function registerRoutes(
 
       res.json({
         message: "Pedido retornado para Pedido Gerado e estoque estornado.",
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // 4.f POST: Lançar Contas - gera contas a receber manualmente
+  app.post("/api/orders/:id/post-accounts", async (req: any, res) => {
+    if (!req.isAuthenticated()) return res.status(401).send();
+    const id = parseInt(req.params.id);
+    const companyId = req.user.companyId || "1";
+    const userName = req.user.firstName || req.user.email || "Sistema";
+
+    try {
+      const [order] = await db
+        .select()
+        .from(orders)
+        .where(eq(orders.id, id))
+        .limit(1);
+
+      if (!order) throw new Error("Pedido não encontrado");
+
+      if (order.accountsPosted) {
+        throw new Error("Contas já foram lançadas para este pedido");
+      }
+
+      // Criar receivable
+      const receivable = await createReceivableFromOrder(id, companyId);
+
+      if (!receivable) {
+        throw new Error(
+          "Não foi possível criar contas a receber. Verifique se a forma de pagamento é do tipo PRAZO.",
+        );
+      }
+
+      // Marcar pedido como contas lançadas
+      await db
+        .update(orders)
+        .set({
+          accountsPosted: true,
+          accountsPostedAt: new Date(),
+          accountsPostedBy: userName,
+          updatedAt: new Date(),
+        })
+        .where(eq(orders.id, id));
+
+      res.json({
+        message: "Contas a receber lançadas com sucesso",
+        receivable,
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // 4.g POST: Estornar Contas - cancela receivables do pedido
+  app.post("/api/orders/:id/reverse-accounts", async (req: any, res) => {
+    if (!req.isAuthenticated()) return res.status(401).send();
+    const id = parseInt(req.params.id);
+    const userName = req.user.firstName || req.user.email || "Sistema";
+
+    try {
+      const [order] = await db
+        .select()
+        .from(orders)
+        .where(eq(orders.id, id))
+        .limit(1);
+
+      if (!order) throw new Error("Pedido não encontrado");
+
+      if (!order.accountsPosted) {
+        throw new Error("Contas não foram lançadas para este pedido");
+      }
+
+      // Importar e usar a função de cancelamento
+      const { cancelReceivablesByOrderId } =
+        await import("./services/receivables.service");
+
+      // Cancelar receivables do pedido
+      const cancelled = await cancelReceivablesByOrderId(
+        id,
+        "Estorno de contas do pedido",
+        userName,
+      );
+
+      // Marcar pedido como contas estornadas
+      await db
+        .update(orders)
+        .set({
+          accountsPosted: false,
+          accountsReversedAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(eq(orders.id, id));
+
+      res.json({
+        message: "Contas a receber estornadas com sucesso",
+        cancelled,
       });
     } catch (error: any) {
       res.status(500).json({ message: error.message });

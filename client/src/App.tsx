@@ -20,7 +20,7 @@ import CatalogCustomizationPage from "@/pages/catalog-customization";
 import CategoriesPage from "@/pages/categories";
 import CheckoutPage from "@/pages/checkout";
 import ContasPagarPage from "@/pages/contas-pagar";
-import ContasReceberPage from "@/pages/contas-receber";
+import ContasReceberPage from "@/pages/contas-receber-new";
 import CouponsPage from "@/pages/coupons";
 import CustomerAnalyticsPage from "@/pages/customer-analytics";
 import CustomersPage from "@/pages/customers";

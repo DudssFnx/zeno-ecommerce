@@ -37,6 +37,7 @@ import { type InferSelectModel } from "drizzle-orm";
 import {
   AlertTriangle,
   Box,
+  DollarSign,
   Loader2,
   Pencil,
   Search,
@@ -95,6 +96,9 @@ interface OrderWithDetails extends Order {
   customer: CustomerInfo;
   printedByUser: PrintedByUser | null;
   stockPosted?: boolean;
+  accountsPosted?: boolean;
+  accountsPostedAt?: string;
+  accountsPostedBy?: string;
   seller?: User | null;
 }
 
@@ -613,6 +617,73 @@ export default function OrderDetailsPage() {
     },
   });
 
+  // Mutations para lançar/estornar contas a receber
+  const postAccountsMutation = useMutation({
+    mutationFn: async () => {
+      await apiRequest("POST", `/api/orders/${orderId}/post-accounts`, {});
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/orders", orderId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/receivables"] });
+      toast({
+        title: "Sucesso",
+        description: "Contas a receber lançadas com sucesso.",
+      });
+    },
+    onError: (err: Error) => {
+      let desc = "Não foi possível lançar as contas a receber.";
+      const errorMsg = (err as any).message || "";
+      const match = errorMsg.match(/\d+:\s*(.+)/);
+      if (match) {
+        try {
+          const parsed = JSON.parse(match[1]);
+          if (parsed.message) desc = parsed.message;
+        } catch {
+          desc = match[1];
+        }
+      }
+      toast({
+        title: "Erro",
+        description: desc,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const reverseAccountsMutation = useMutation({
+    mutationFn: async () => {
+      await apiRequest("POST", `/api/orders/${orderId}/reverse-accounts`, {});
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/orders", orderId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/receivables"] });
+      toast({
+        title: "Sucesso",
+        description: "Contas a receber estornadas com sucesso.",
+      });
+    },
+    onError: (err: Error) => {
+      let desc = "Não foi possível estornar as contas a receber.";
+      const errorMsg = (err as any).message || "";
+      const match = errorMsg.match(/\d+:\s*(.+)/);
+      if (match) {
+        try {
+          const parsed = JSON.parse(match[1]);
+          if (parsed.message) desc = parsed.message;
+        } catch {
+          desc = match[1];
+        }
+      }
+      toast({
+        title: "Erro",
+        description: desc,
+        variant: "destructive",
+      });
+    },
+  });
+
   const printMutation = useMutation({
     mutationFn: async () => {
       await apiRequest("PATCH", `/api/orders/${orderId}/print`, {});
@@ -728,6 +799,7 @@ export default function OrderDetailsPage() {
     orderData.status === "PEDIDO_FATURADO" || orderData.status === "FATURADO";
   const isPedidoGerado = orderData.status === "PEDIDO_GERADO";
   const hasStockPosted = orderData.stockPosted === true;
+  const hasAccountsPosted = orderData.accountsPosted === true;
   // Permite edição em orçamento ou em pedido gerado (não faturado)
   const canEdit = isOrcamento || isPedidoGerado;
 
@@ -879,6 +951,42 @@ export default function OrderDetailsPage() {
                     <Loader2 className="h-3 w-3 animate-spin mr-1" />
                   ) : null}
                   Retornar para Orçamento
+                </Button>
+              )}
+            </div>
+          )}
+
+          {/* Alerta de contas lançadas */}
+          {hasAccountsPosted && (
+            <div className="flex items-center gap-3 p-3 rounded-lg border border-green-500/50 bg-green-500/5">
+              <DollarSign className="h-5 w-5 text-green-600 flex-shrink-0" />
+              <div className="flex-1">
+                <p className="text-sm text-green-700 dark:text-green-400 font-medium">
+                  Contas a receber lançadas
+                </p>
+                {orderData.accountsPostedAt && (
+                  <p className="text-xs text-green-600/70">
+                    Em{" "}
+                    {new Date(orderData.accountsPostedAt).toLocaleString(
+                      "pt-BR",
+                    )}
+                    {orderData.accountsPostedBy &&
+                      ` por ${orderData.accountsPostedBy}`}
+                  </p>
+                )}
+              </div>
+              {canEditStatus && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="ml-auto text-green-600 border-green-500"
+                  onClick={() => reverseAccountsMutation.mutate()}
+                  disabled={reverseAccountsMutation.isPending}
+                >
+                  {reverseAccountsMutation.isPending ? (
+                    <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                  ) : null}
+                  Estornar Contas
                 </Button>
               )}
             </div>
@@ -1618,6 +1726,21 @@ export default function OrderDetailsPage() {
                         )}
                         Faturar Pedido
                       </Button>
+                      {!hasAccountsPosted && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="border-emerald-500 text-emerald-600 hover:bg-emerald-50"
+                          onClick={() => postAccountsMutation.mutate()}
+                          disabled={postAccountsMutation.isPending}
+                        >
+                          {postAccountsMutation.isPending && (
+                            <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                          )}
+                          <DollarSign className="h-3 w-3 mr-1" />
+                          Lançar Contas
+                        </Button>
+                      )}
                       <Button
                         size="sm"
                         variant="outline"

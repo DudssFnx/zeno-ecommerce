@@ -266,6 +266,12 @@ export const orders = pgTable("orders", {
   blingOrderId: text("bling_order_id"),
   fiadoInstallments: integer("fiado_installments"),
 
+  // Controle de lançamento de contas a receber
+  accountsPosted: boolean("accounts_posted").default(false),
+  accountsPostedAt: timestamp("accounts_posted_at"),
+  accountsPostedBy: text("accounts_posted_by"),
+  accountsReversedAt: timestamp("accounts_reversed_at"),
+
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

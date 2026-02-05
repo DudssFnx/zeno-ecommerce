@@ -366,6 +366,50 @@ export async function cancelReceivable(
 }
 
 /**
+ * Cancelar receivables por orderId (para estorno de contas)
+ */
+export async function cancelReceivablesByOrderId(
+  orderId: number,
+  reason: string,
+  cancelledBy: string,
+) {
+  const orderReceivables = await db
+    .select()
+    .from(receivables)
+    .where(eq(receivables.orderId, orderId));
+
+  const cancelled = [];
+  for (const rec of orderReceivables) {
+    if (rec.status !== "CANCELADA" && rec.status !== "PAGA") {
+      const [result] = await db
+        .update(receivables)
+        .set({
+          status: "CANCELADA",
+          cancelledReason: reason,
+          cancelledAt: new Date(),
+          cancelledBy,
+        })
+        .where(eq(receivables.id, rec.id))
+        .returning();
+      cancelled.push(result);
+    }
+  }
+  return cancelled;
+}
+
+/**
+ * Verificar se pedido tem receivables
+ */
+export async function hasReceivablesForOrder(orderId: number) {
+  const orderReceivables = await db
+    .select()
+    .from(receivables)
+    .where(eq(receivables.orderId, orderId));
+
+  return orderReceivables.length > 0;
+}
+
+/**
  * Reabrir receivable cancelada
  */
 export async function reopenReceivable(receivableId: number) {
