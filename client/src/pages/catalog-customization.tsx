@@ -1,22 +1,60 @@
-import { useState } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { queryClient, apiRequest } from "@/lib/queryClient";
-import { useToast } from "@/hooks/use-toast";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
-import { Plus, Trash2, Edit, Image, GripVertical, Eye, EyeOff, Upload, Link, Layers, Settings, Palette } from "lucide-react";
-import type { CatalogSlide, CatalogBanner } from "@shared/schema";
+import { useCompany } from "@/contexts/CompanyContext";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import type { CatalogBanner, CatalogSlide } from "@shared/schema";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import {
+  Check,
+  Copy,
+  Edit,
+  ExternalLink,
+  Eye,
+  EyeOff,
+  GripVertical,
+  Image,
+  Layers,
+  Palette,
+  Phone,
+  Plus,
+  Settings,
+  Share2,
+  Trash2,
+  Upload,
+} from "lucide-react";
+import { useState } from "react";
 
 export default function CatalogCustomizationPage() {
   const { toast } = useToast();
-  const [activeTab, setActiveTab] = useState("slides");
+  const [activeTab, setActiveTab] = useState("link");
 
   return (
     <div className="p-4 lg:p-6 space-y-6">
@@ -27,26 +65,54 @@ export default function CatalogCustomizationPage() {
             Personalizar Catálogo
           </h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Customize banners, slides e aparência da sua loja
+            Compartilhe seu catálogo e personalize a aparência da sua loja
           </p>
         </div>
       </div>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList className="grid w-full grid-cols-3 lg:w-auto lg:inline-flex">
-          <TabsTrigger value="slides" className="flex items-center gap-2" data-testid="tab-slides">
+      <Tabs
+        value={activeTab}
+        onValueChange={setActiveTab}
+        className="space-y-4"
+      >
+        <TabsList className="grid w-full grid-cols-4 lg:w-auto lg:inline-flex">
+          <TabsTrigger
+            value="link"
+            className="flex items-center gap-2"
+            data-testid="tab-link"
+          >
+            <Share2 className="h-4 w-4" />
+            Link do Catálogo
+          </TabsTrigger>
+          <TabsTrigger
+            value="slides"
+            className="flex items-center gap-2"
+            data-testid="tab-slides"
+          >
             <Layers className="h-4 w-4" />
             Carrossel
           </TabsTrigger>
-          <TabsTrigger value="banners" className="flex items-center gap-2" data-testid="tab-banners">
+          <TabsTrigger
+            value="banners"
+            className="flex items-center gap-2"
+            data-testid="tab-banners"
+          >
             <Image className="h-4 w-4" />
             Banners
           </TabsTrigger>
-          <TabsTrigger value="settings" className="flex items-center gap-2" data-testid="tab-settings">
+          <TabsTrigger
+            value="settings"
+            className="flex items-center gap-2"
+            data-testid="tab-settings"
+          >
             <Settings className="h-4 w-4" />
             Configurações
           </TabsTrigger>
         </TabsList>
+
+        <TabsContent value="link" className="space-y-4">
+          <CatalogLinkSection />
+        </TabsContent>
 
         <TabsContent value="slides" className="space-y-4">
           <SlidesManager />
@@ -60,6 +126,202 @@ export default function CatalogCustomizationPage() {
           <CatalogSettings />
         </TabsContent>
       </Tabs>
+    </div>
+  );
+}
+
+// Seção de Link do Catálogo
+function CatalogLinkSection() {
+  const { toast } = useToast();
+  const { company, isLoading } = useCompany();
+  const [linkCopied, setLinkCopied] = useState(false);
+
+  const catalogUrl = company?.slug
+    ? `${window.location.origin}/loja/${company.slug}`
+    : null;
+
+  const handleCopyLink = async () => {
+    if (!catalogUrl) return;
+    try {
+      await navigator.clipboard.writeText(catalogUrl);
+      setLinkCopied(true);
+      toast({
+        title: "Link copiado!",
+        description:
+          "O link do catálogo foi copiado para a área de transferência.",
+      });
+      setTimeout(() => setLinkCopied(false), 3000);
+    } catch (err) {
+      toast({
+        title: "Erro ao copiar",
+        description: "Não foi possível copiar o link. Tente novamente.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleShareWhatsApp = () => {
+    if (!catalogUrl) return;
+    const storeName =
+      company?.nomeFantasia || company?.razaoSocial || "nossa loja";
+    const text = encodeURIComponent(
+      `Confira o catálogo de ${storeName}: ${catalogUrl}`,
+    );
+    window.open(`https://wa.me/?text=${text}`, "_blank");
+  };
+
+  const handleOpenCatalog = () => {
+    if (catalogUrl) {
+      window.open(catalogUrl, "_blank");
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <Card>
+        <CardContent className="py-8 text-center">
+          <p className="text-muted-foreground">Carregando...</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (!company?.slug) {
+    return (
+      <Card className="border-orange-200 bg-orange-50 dark:bg-orange-950/20 dark:border-orange-900">
+        <CardHeader>
+          <CardTitle className="text-orange-700 dark:text-orange-400">
+            ⚠️ Configure sua empresa
+          </CardTitle>
+          <CardDescription>
+            Para gerar o link do catálogo, é necessário que sua empresa tenha um
+            slug configurado. Vá em Configurações {">"} Empresa e salve os dados
+            da empresa.
+          </CardDescription>
+        </CardHeader>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Card Principal - Link do Catálogo */}
+      <Card className="border-2 border-primary/20 bg-gradient-to-br from-primary/5 to-primary/10">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Share2 className="h-5 w-5 text-primary" />
+            Link do seu Catálogo
+          </CardTitle>
+          <CardDescription>
+            Compartilhe este link com seus clientes para que eles acessem seu
+            catálogo de produtos
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* URL Display */}
+          <div className="flex items-center gap-2">
+            <div className="flex-1 bg-background border rounded-lg px-4 py-3 font-mono text-sm break-all">
+              {catalogUrl}
+            </div>
+            <Button onClick={handleCopyLink} size="lg" className="shrink-0">
+              {linkCopied ? (
+                <>
+                  <Check className="h-4 w-4 mr-2" />
+                  Copiado!
+                </>
+              ) : (
+                <>
+                  <Copy className="h-4 w-4 mr-2" />
+                  Copiar Link
+                </>
+              )}
+            </Button>
+          </div>
+
+          {/* Botões de Ação */}
+          <div className="flex flex-wrap gap-3">
+            <Button variant="outline" onClick={handleOpenCatalog}>
+              <ExternalLink className="h-4 w-4 mr-2" />
+              Abrir Catálogo
+            </Button>
+            <Button
+              variant="outline"
+              onClick={handleShareWhatsApp}
+              className="text-green-600 border-green-600 hover:bg-green-50 dark:hover:bg-green-950"
+            >
+              <Phone className="h-4 w-4 mr-2" />
+              Compartilhar no WhatsApp
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Informações adicionais */}
+      <div className="grid gap-4 md:grid-cols-2">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">📱 Como compartilhar</CardTitle>
+          </CardHeader>
+          <CardContent className="text-sm text-muted-foreground space-y-2">
+            <p>1. Copie o link acima clicando no botão "Copiar Link"</p>
+            <p>2. Cole em conversas do WhatsApp, redes sociais ou e-mail</p>
+            <p>
+              3. Seus clientes poderão navegar pelo catálogo e fazer pedidos
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">🎨 Personalize</CardTitle>
+          </CardHeader>
+          <CardContent className="text-sm text-muted-foreground space-y-2">
+            <p>
+              • Use as abas "Carrossel" e "Banners" para personalizar a
+              aparência
+            </p>
+            <p>• Configure promoções e destaques para atrair mais clientes</p>
+            <p>• Mantenha os produtos atualizados para melhor experiência</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Info da Loja */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">
+            Informações da sua loja no catálogo
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-2 text-sm">
+            <div className="flex justify-between py-1 border-b">
+              <span className="text-muted-foreground">Nome da Loja:</span>
+              <span className="font-medium">
+                {company.nomeFantasia || company.razaoSocial}
+              </span>
+            </div>
+            <div className="flex justify-between py-1 border-b">
+              <span className="text-muted-foreground">Slug:</span>
+              <span className="font-mono text-xs bg-muted px-2 py-0.5 rounded">
+                {company.slug}
+              </span>
+            </div>
+            {company.email && (
+              <div className="flex justify-between py-1 border-b">
+                <span className="text-muted-foreground">E-mail:</span>
+                <span>{company.email}</span>
+              </div>
+            )}
+            {(company.phone || company.telefone) && (
+              <div className="flex justify-between py-1">
+                <span className="text-muted-foreground">Telefone:</span>
+                <span>{company.phone || company.telefone}</span>
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }
@@ -80,47 +342,65 @@ function SlidesManager() {
   });
 
   const { data: slides = [], isLoading } = useQuery<CatalogSlide[]>({
-    queryKey: ['/api/catalog/slides'],
+    queryKey: ["/api/catalog/slides"],
   });
 
   const createMutation = useMutation({
     mutationFn: async (data: typeof formData) => {
-      return apiRequest('POST', '/api/catalog/slides', data);
+      return apiRequest("POST", "/api/catalog/slides", data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/catalog/slides'] });
+      queryClient.invalidateQueries({ queryKey: ["/api/catalog/slides"] });
       toast({ title: "Sucesso", description: "Slide criado com sucesso" });
       resetForm();
     },
     onError: () => {
-      toast({ title: "Erro", description: "Falha ao criar slide", variant: "destructive" });
+      toast({
+        title: "Erro",
+        description: "Falha ao criar slide",
+        variant: "destructive",
+      });
     },
   });
 
   const updateMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: number; data: Partial<typeof formData> }) => {
-      return apiRequest('PATCH', `/api/catalog/slides/${id}`, data);
+    mutationFn: async ({
+      id,
+      data,
+    }: {
+      id: number;
+      data: Partial<typeof formData>;
+    }) => {
+      return apiRequest("PATCH", `/api/catalog/slides/${id}`, data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/catalog/slides'] });
+      queryClient.invalidateQueries({ queryKey: ["/api/catalog/slides"] });
       toast({ title: "Sucesso", description: "Slide atualizado com sucesso" });
       resetForm();
     },
     onError: () => {
-      toast({ title: "Erro", description: "Falha ao atualizar slide", variant: "destructive" });
+      toast({
+        title: "Erro",
+        description: "Falha ao atualizar slide",
+        variant: "destructive",
+      });
     },
   });
 
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
-      return apiRequest('DELETE', `/api/catalog/slides/${id}`);
+      return apiRequest("DELETE", `/api/catalog/slides/${id}`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/catalog/slides'] });
+      queryClient.invalidateQueries({ queryKey: ["/api/catalog/slides"] });
       toast({ title: "Sucesso", description: "Slide removido com sucesso" });
     },
     onError: () => {
-      toast({ title: "Erro", description: "Falha ao remover slide", variant: "destructive" });
+      toast({
+        title: "Erro",
+        description: "Falha ao remover slide",
+        variant: "destructive",
+      });
     },
   });
 
@@ -156,7 +436,11 @@ function SlidesManager() {
 
   const handleSubmit = () => {
     if (!formData.imageUrl) {
-      toast({ title: "Erro", description: "URL da imagem é obrigatória", variant: "destructive" });
+      toast({
+        title: "Erro",
+        description: "URL da imagem é obrigatória",
+        variant: "destructive",
+      });
       return;
     }
     if (editingSlide) {
@@ -166,28 +450,39 @@ function SlidesManager() {
     }
   };
 
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, field: 'imageUrl' | 'mobileImageUrl') => {
+  const handleImageUpload = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+    field: "imageUrl" | "mobileImageUrl",
+  ) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     const formDataUpload = new FormData();
-    formDataUpload.append('file', file);
+    formDataUpload.append("file", file);
 
     try {
-      const res = await fetch('/api/upload/catalog', {
-        method: 'POST',
+      const res = await fetch("/api/upload/catalog", {
+        method: "POST",
         body: formDataUpload,
-        credentials: 'include',
+        credentials: "include",
       });
       if (res.ok) {
         const data = await res.json();
-        setFormData(prev => ({ ...prev, [field]: data.url }));
+        setFormData((prev) => ({ ...prev, [field]: data.url }));
         toast({ title: "Sucesso", description: "Imagem enviada com sucesso" });
       } else {
-        toast({ title: "Erro", description: "Falha ao enviar imagem", variant: "destructive" });
+        toast({
+          title: "Erro",
+          description: "Falha ao enviar imagem",
+          variant: "destructive",
+        });
       }
     } catch (error) {
-      toast({ title: "Erro", description: "Falha ao enviar imagem", variant: "destructive" });
+      toast({
+        title: "Erro",
+        description: "Falha ao enviar imagem",
+        variant: "destructive",
+      });
     }
   };
 
@@ -197,10 +492,17 @@ function SlidesManager() {
         <div>
           <CardTitle className="text-lg">Slides do Carrossel</CardTitle>
           <CardDescription>
-            Gerencie os slides que aparecem no carrossel principal da página inicial
+            Gerencie os slides que aparecem no carrossel principal da página
+            inicial
           </CardDescription>
         </div>
-        <Dialog open={isDialogOpen} onOpenChange={(open) => { if (!open) resetForm(); setIsDialogOpen(open); }}>
+        <Dialog
+          open={isDialogOpen}
+          onOpenChange={(open) => {
+            if (!open) resetForm();
+            setIsDialogOpen(open);
+          }}
+        >
           <DialogTrigger asChild>
             <Button data-testid="button-add-slide">
               <Plus className="h-4 w-4 mr-2" />
@@ -209,12 +511,14 @@ function SlidesManager() {
           </DialogTrigger>
           <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>{editingSlide ? "Editar Slide" : "Novo Slide"}</DialogTitle>
+              <DialogTitle>
+                {editingSlide ? "Editar Slide" : "Novo Slide"}
+              </DialogTitle>
               <DialogDescription>
                 Configure o conteúdo e aparência do slide
               </DialogDescription>
             </DialogHeader>
-            
+
             <div className="space-y-4 py-4">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
@@ -223,7 +527,12 @@ function SlidesManager() {
                     id="title"
                     placeholder="Título do slide"
                     value={formData.title}
-                    onChange={(e) => setFormData(prev => ({ ...prev, title: e.target.value }))}
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        title: e.target.value,
+                      }))
+                    }
                     data-testid="input-slide-title"
                   />
                 </div>
@@ -233,7 +542,12 @@ function SlidesManager() {
                     id="subtitle"
                     placeholder="Subtítulo do slide"
                     value={formData.subtitle}
-                    onChange={(e) => setFormData(prev => ({ ...prev, subtitle: e.target.value }))}
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        subtitle: e.target.value,
+                      }))
+                    }
                     data-testid="input-slide-subtitle"
                   />
                 </div>
@@ -246,7 +560,12 @@ function SlidesManager() {
                     id="buttonText"
                     placeholder="Ex: Ver Produtos"
                     value={formData.buttonText}
-                    onChange={(e) => setFormData(prev => ({ ...prev, buttonText: e.target.value }))}
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        buttonText: e.target.value,
+                      }))
+                    }
                     data-testid="input-slide-button-text"
                   />
                 </div>
@@ -256,7 +575,12 @@ function SlidesManager() {
                     id="buttonLink"
                     placeholder="Ex: /catalog"
                     value={formData.buttonLink}
-                    onChange={(e) => setFormData(prev => ({ ...prev, buttonLink: e.target.value }))}
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        buttonLink: e.target.value,
+                      }))
+                    }
                     data-testid="input-slide-button-link"
                   />
                 </div>
@@ -268,7 +592,12 @@ function SlidesManager() {
                   <Input
                     placeholder="URL da imagem ou faça upload"
                     value={formData.imageUrl}
-                    onChange={(e) => setFormData(prev => ({ ...prev, imageUrl: e.target.value }))}
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        imageUrl: e.target.value,
+                      }))
+                    }
                     data-testid="input-slide-image"
                   />
                   <Label htmlFor="image-upload" className="cursor-pointer">
@@ -280,13 +609,17 @@ function SlidesManager() {
                       type="file"
                       accept="image/*"
                       className="hidden"
-                      onChange={(e) => handleImageUpload(e, 'imageUrl')}
+                      onChange={(e) => handleImageUpload(e, "imageUrl")}
                     />
                   </Label>
                 </div>
                 {formData.imageUrl && (
                   <div className="mt-2 rounded-md overflow-hidden border">
-                    <img src={formData.imageUrl} alt="Preview" className="w-full h-32 object-cover" />
+                    <img
+                      src={formData.imageUrl}
+                      alt="Preview"
+                      className="w-full h-32 object-cover"
+                    />
                   </div>
                 )}
               </div>
@@ -297,10 +630,18 @@ function SlidesManager() {
                   <Input
                     placeholder="URL da imagem mobile (opcional)"
                     value={formData.mobileImageUrl}
-                    onChange={(e) => setFormData(prev => ({ ...prev, mobileImageUrl: e.target.value }))}
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        mobileImageUrl: e.target.value,
+                      }))
+                    }
                     data-testid="input-slide-mobile-image"
                   />
-                  <Label htmlFor="mobile-image-upload" className="cursor-pointer">
+                  <Label
+                    htmlFor="mobile-image-upload"
+                    className="cursor-pointer"
+                  >
                     <div className="flex items-center justify-center h-9 px-3 rounded-md bg-secondary text-secondary-foreground">
                       <Upload className="h-4 w-4" />
                     </div>
@@ -309,7 +650,7 @@ function SlidesManager() {
                       type="file"
                       accept="image/*"
                       className="hidden"
-                      onChange={(e) => handleImageUpload(e, 'mobileImageUrl')}
+                      onChange={(e) => handleImageUpload(e, "mobileImageUrl")}
                     />
                   </Label>
                 </div>
@@ -322,7 +663,12 @@ function SlidesManager() {
                     id="order"
                     type="number"
                     value={formData.order}
-                    onChange={(e) => setFormData(prev => ({ ...prev, order: parseInt(e.target.value) || 0 }))}
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        order: parseInt(e.target.value) || 0,
+                      }))
+                    }
                     data-testid="input-slide-order"
                   />
                 </div>
@@ -330,7 +676,9 @@ function SlidesManager() {
                   <Switch
                     id="active"
                     checked={formData.active}
-                    onCheckedChange={(checked) => setFormData(prev => ({ ...prev, active: checked }))}
+                    onCheckedChange={(checked) =>
+                      setFormData((prev) => ({ ...prev, active: checked }))
+                    }
                     data-testid="switch-slide-active"
                   />
                   <Label htmlFor="active">Ativo</Label>
@@ -342,7 +690,11 @@ function SlidesManager() {
               <Button variant="outline" onClick={resetForm}>
                 Cancelar
               </Button>
-              <Button onClick={handleSubmit} disabled={createMutation.isPending || updateMutation.isPending} data-testid="button-save-slide">
+              <Button
+                onClick={handleSubmit}
+                disabled={createMutation.isPending || updateMutation.isPending}
+                data-testid="button-save-slide"
+              >
                 {editingSlide ? "Salvar Alterações" : "Criar Slide"}
               </Button>
             </DialogFooter>
@@ -351,12 +703,16 @@ function SlidesManager() {
       </CardHeader>
       <CardContent>
         {isLoading ? (
-          <div className="text-center py-8 text-muted-foreground">Carregando...</div>
+          <div className="text-center py-8 text-muted-foreground">
+            Carregando...
+          </div>
         ) : slides.length === 0 ? (
           <div className="text-center py-8 text-muted-foreground">
             <Image className="h-12 w-12 mx-auto mb-2 opacity-50" />
             <p>Nenhum slide cadastrado</p>
-            <p className="text-sm">Adicione slides para personalizar seu carrossel</p>
+            <p className="text-sm">
+              Adicione slides para personalizar seu carrossel
+            </p>
           </div>
         ) : (
           <div className="space-y-3">
@@ -369,7 +725,11 @@ function SlidesManager() {
                 <GripVertical className="h-5 w-5 text-muted-foreground cursor-move" />
                 <div className="w-24 h-16 rounded overflow-hidden bg-muted flex-shrink-0">
                   {slide.imageUrl ? (
-                    <img src={slide.imageUrl} alt={slide.title || "Slide"} className="w-full h-full object-cover" />
+                    <img
+                      src={slide.imageUrl}
+                      alt={slide.title || "Slide"}
+                      className="w-full h-full object-cover"
+                    />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center">
                       <Image className="h-6 w-6 text-muted-foreground" />
@@ -377,15 +737,28 @@ function SlidesManager() {
                   )}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="font-medium truncate">{slide.title || "Sem título"}</p>
-                  <p className="text-sm text-muted-foreground truncate">{slide.subtitle || "Sem subtítulo"}</p>
+                  <p className="font-medium truncate">
+                    {slide.title || "Sem título"}
+                  </p>
+                  <p className="text-sm text-muted-foreground truncate">
+                    {slide.subtitle || "Sem subtítulo"}
+                  </p>
                 </div>
                 <Badge variant={slide.active ? "default" : "secondary"}>
-                  {slide.active ? <Eye className="h-3 w-3 mr-1" /> : <EyeOff className="h-3 w-3 mr-1" />}
+                  {slide.active ? (
+                    <Eye className="h-3 w-3 mr-1" />
+                  ) : (
+                    <EyeOff className="h-3 w-3 mr-1" />
+                  )}
                   {slide.active ? "Ativo" : "Inativo"}
                 </Badge>
                 <div className="flex items-center gap-1">
-                  <Button variant="ghost" size="icon" onClick={() => handleEdit(slide)} data-testid={`button-edit-slide-${slide.id}`}>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => handleEdit(slide)}
+                    data-testid={`button-edit-slide-${slide.id}`}
+                  >
                     <Edit className="h-4 w-4" />
                   </Button>
                   <Button
@@ -410,7 +783,9 @@ function SlidesManager() {
 function BannersManager() {
   const { toast } = useToast();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [editingBanner, setEditingBanner] = useState<CatalogBanner | null>(null);
+  const [editingBanner, setEditingBanner] = useState<CatalogBanner | null>(
+    null,
+  );
   const [formData, setFormData] = useState({
     position: "promo1",
     title: "",
@@ -426,47 +801,65 @@ function BannersManager() {
   });
 
   const { data: banners = [], isLoading } = useQuery<CatalogBanner[]>({
-    queryKey: ['/api/catalog/banners'],
+    queryKey: ["/api/catalog/banners"],
   });
 
   const createMutation = useMutation({
     mutationFn: async (data: typeof formData) => {
-      return apiRequest('POST', '/api/catalog/banners', data);
+      return apiRequest("POST", "/api/catalog/banners", data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/catalog/banners'] });
+      queryClient.invalidateQueries({ queryKey: ["/api/catalog/banners"] });
       toast({ title: "Sucesso", description: "Banner criado com sucesso" });
       resetForm();
     },
     onError: () => {
-      toast({ title: "Erro", description: "Falha ao criar banner", variant: "destructive" });
+      toast({
+        title: "Erro",
+        description: "Falha ao criar banner",
+        variant: "destructive",
+      });
     },
   });
 
   const updateMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: number; data: Partial<typeof formData> }) => {
-      return apiRequest('PATCH', `/api/catalog/banners/${id}`, data);
+    mutationFn: async ({
+      id,
+      data,
+    }: {
+      id: number;
+      data: Partial<typeof formData>;
+    }) => {
+      return apiRequest("PATCH", `/api/catalog/banners/${id}`, data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/catalog/banners'] });
+      queryClient.invalidateQueries({ queryKey: ["/api/catalog/banners"] });
       toast({ title: "Sucesso", description: "Banner atualizado com sucesso" });
       resetForm();
     },
     onError: () => {
-      toast({ title: "Erro", description: "Falha ao atualizar banner", variant: "destructive" });
+      toast({
+        title: "Erro",
+        description: "Falha ao atualizar banner",
+        variant: "destructive",
+      });
     },
   });
 
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
-      return apiRequest('DELETE', `/api/catalog/banners/${id}`);
+      return apiRequest("DELETE", `/api/catalog/banners/${id}`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/catalog/banners'] });
+      queryClient.invalidateQueries({ queryKey: ["/api/catalog/banners"] });
       toast({ title: "Sucesso", description: "Banner removido com sucesso" });
     },
     onError: () => {
-      toast({ title: "Erro", description: "Falha ao remover banner", variant: "destructive" });
+      toast({
+        title: "Erro",
+        description: "Falha ao remover banner",
+        variant: "destructive",
+      });
     },
   });
 
@@ -514,28 +907,39 @@ function BannersManager() {
     }
   };
 
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, field: 'imageUrl' | 'mobileImageUrl') => {
+  const handleImageUpload = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+    field: "imageUrl" | "mobileImageUrl",
+  ) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     const formDataUpload = new FormData();
-    formDataUpload.append('file', file);
+    formDataUpload.append("file", file);
 
     try {
-      const res = await fetch('/api/upload/catalog', {
-        method: 'POST',
+      const res = await fetch("/api/upload/catalog", {
+        method: "POST",
         body: formDataUpload,
-        credentials: 'include',
+        credentials: "include",
       });
       if (res.ok) {
         const data = await res.json();
-        setFormData(prev => ({ ...prev, [field]: data.url }));
+        setFormData((prev) => ({ ...prev, [field]: data.url }));
         toast({ title: "Sucesso", description: "Imagem enviada com sucesso" });
       } else {
-        toast({ title: "Erro", description: "Falha ao enviar imagem", variant: "destructive" });
+        toast({
+          title: "Erro",
+          description: "Falha ao enviar imagem",
+          variant: "destructive",
+        });
       }
     } catch (error) {
-      toast({ title: "Erro", description: "Falha ao enviar imagem", variant: "destructive" });
+      toast({
+        title: "Erro",
+        description: "Falha ao enviar imagem",
+        variant: "destructive",
+      });
     }
   };
 
@@ -557,7 +961,13 @@ function BannersManager() {
             Gerencie banners para diferentes seções da loja
           </CardDescription>
         </div>
-        <Dialog open={isDialogOpen} onOpenChange={(open) => { if (!open) resetForm(); setIsDialogOpen(open); }}>
+        <Dialog
+          open={isDialogOpen}
+          onOpenChange={(open) => {
+            if (!open) resetForm();
+            setIsDialogOpen(open);
+          }}
+        >
           <DialogTrigger asChild>
             <Button data-testid="button-add-banner">
               <Plus className="h-4 w-4 mr-2" />
@@ -566,18 +976,22 @@ function BannersManager() {
           </DialogTrigger>
           <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>{editingBanner ? "Editar Banner" : "Novo Banner"}</DialogTitle>
+              <DialogTitle>
+                {editingBanner ? "Editar Banner" : "Novo Banner"}
+              </DialogTitle>
               <DialogDescription>
                 Configure o conteúdo e posição do banner
               </DialogDescription>
             </DialogHeader>
-            
+
             <div className="space-y-4 py-4">
               <div className="space-y-2">
                 <Label>Posição do Banner</Label>
                 <Select
                   value={formData.position}
-                  onValueChange={(value) => setFormData(prev => ({ ...prev, position: value }))}
+                  onValueChange={(value) =>
+                    setFormData((prev) => ({ ...prev, position: value }))
+                  }
                 >
                   <SelectTrigger data-testid="select-banner-position">
                     <SelectValue placeholder="Selecione a posição" />
@@ -600,7 +1014,12 @@ function BannersManager() {
                     id="banner-title"
                     placeholder="Título do banner"
                     value={formData.title}
-                    onChange={(e) => setFormData(prev => ({ ...prev, title: e.target.value }))}
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        title: e.target.value,
+                      }))
+                    }
                     data-testid="input-banner-title"
                   />
                 </div>
@@ -610,7 +1029,12 @@ function BannersManager() {
                     id="banner-subtitle"
                     placeholder="Subtítulo do banner"
                     value={formData.subtitle}
-                    onChange={(e) => setFormData(prev => ({ ...prev, subtitle: e.target.value }))}
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        subtitle: e.target.value,
+                      }))
+                    }
                     data-testid="input-banner-subtitle"
                   />
                 </div>
@@ -623,7 +1047,12 @@ function BannersManager() {
                     id="banner-buttonText"
                     placeholder="Ex: Saiba Mais"
                     value={formData.buttonText}
-                    onChange={(e) => setFormData(prev => ({ ...prev, buttonText: e.target.value }))}
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        buttonText: e.target.value,
+                      }))
+                    }
                     data-testid="input-banner-button-text"
                   />
                 </div>
@@ -633,7 +1062,12 @@ function BannersManager() {
                     id="banner-buttonLink"
                     placeholder="Ex: /promocao"
                     value={formData.buttonLink}
-                    onChange={(e) => setFormData(prev => ({ ...prev, buttonLink: e.target.value }))}
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        buttonLink: e.target.value,
+                      }))
+                    }
                     data-testid="input-banner-button-link"
                   />
                 </div>
@@ -645,10 +1079,18 @@ function BannersManager() {
                   <Input
                     placeholder="URL da imagem ou faça upload"
                     value={formData.imageUrl}
-                    onChange={(e) => setFormData(prev => ({ ...prev, imageUrl: e.target.value }))}
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        imageUrl: e.target.value,
+                      }))
+                    }
                     data-testid="input-banner-image"
                   />
-                  <Label htmlFor="banner-image-upload" className="cursor-pointer">
+                  <Label
+                    htmlFor="banner-image-upload"
+                    className="cursor-pointer"
+                  >
                     <div className="flex items-center justify-center h-9 px-3 rounded-md bg-secondary text-secondary-foreground">
                       <Upload className="h-4 w-4" />
                     </div>
@@ -657,13 +1099,17 @@ function BannersManager() {
                       type="file"
                       accept="image/*"
                       className="hidden"
-                      onChange={(e) => handleImageUpload(e, 'imageUrl')}
+                      onChange={(e) => handleImageUpload(e, "imageUrl")}
                     />
                   </Label>
                 </div>
                 {formData.imageUrl && (
                   <div className="mt-2 rounded-md overflow-hidden border">
-                    <img src={formData.imageUrl} alt="Preview" className="w-full h-32 object-cover" />
+                    <img
+                      src={formData.imageUrl}
+                      alt="Preview"
+                      className="w-full h-32 object-cover"
+                    />
                   </div>
                 )}
               </div>
@@ -676,13 +1122,23 @@ function BannersManager() {
                       id="backgroundColor"
                       placeholder="#000000"
                       value={formData.backgroundColor}
-                      onChange={(e) => setFormData(prev => ({ ...prev, backgroundColor: e.target.value }))}
+                      onChange={(e) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          backgroundColor: e.target.value,
+                        }))
+                      }
                       data-testid="input-banner-bg-color"
                     />
                     <input
                       type="color"
                       value={formData.backgroundColor || "#000000"}
-                      onChange={(e) => setFormData(prev => ({ ...prev, backgroundColor: e.target.value }))}
+                      onChange={(e) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          backgroundColor: e.target.value,
+                        }))
+                      }
                       className="h-9 w-9 rounded border cursor-pointer"
                     />
                   </div>
@@ -694,13 +1150,23 @@ function BannersManager() {
                       id="textColor"
                       placeholder="#FFFFFF"
                       value={formData.textColor}
-                      onChange={(e) => setFormData(prev => ({ ...prev, textColor: e.target.value }))}
+                      onChange={(e) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          textColor: e.target.value,
+                        }))
+                      }
                       data-testid="input-banner-text-color"
                     />
                     <input
                       type="color"
                       value={formData.textColor || "#FFFFFF"}
-                      onChange={(e) => setFormData(prev => ({ ...prev, textColor: e.target.value }))}
+                      onChange={(e) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          textColor: e.target.value,
+                        }))
+                      }
                       className="h-9 w-9 rounded border cursor-pointer"
                     />
                   </div>
@@ -714,7 +1180,12 @@ function BannersManager() {
                     id="banner-order"
                     type="number"
                     value={formData.order}
-                    onChange={(e) => setFormData(prev => ({ ...prev, order: parseInt(e.target.value) || 0 }))}
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        order: parseInt(e.target.value) || 0,
+                      }))
+                    }
                     data-testid="input-banner-order"
                   />
                 </div>
@@ -722,7 +1193,9 @@ function BannersManager() {
                   <Switch
                     id="banner-active"
                     checked={formData.active}
-                    onCheckedChange={(checked) => setFormData(prev => ({ ...prev, active: checked }))}
+                    onCheckedChange={(checked) =>
+                      setFormData((prev) => ({ ...prev, active: checked }))
+                    }
                     data-testid="switch-banner-active"
                   />
                   <Label htmlFor="banner-active">Ativo</Label>
@@ -734,7 +1207,11 @@ function BannersManager() {
               <Button variant="outline" onClick={resetForm}>
                 Cancelar
               </Button>
-              <Button onClick={handleSubmit} disabled={createMutation.isPending || updateMutation.isPending} data-testid="button-save-banner">
+              <Button
+                onClick={handleSubmit}
+                disabled={createMutation.isPending || updateMutation.isPending}
+                data-testid="button-save-banner"
+              >
                 {editingBanner ? "Salvar Alterações" : "Criar Banner"}
               </Button>
             </DialogFooter>
@@ -743,12 +1220,16 @@ function BannersManager() {
       </CardHeader>
       <CardContent>
         {isLoading ? (
-          <div className="text-center py-8 text-muted-foreground">Carregando...</div>
+          <div className="text-center py-8 text-muted-foreground">
+            Carregando...
+          </div>
         ) : banners.length === 0 ? (
           <div className="text-center py-8 text-muted-foreground">
             <Image className="h-12 w-12 mx-auto mb-2 opacity-50" />
             <p>Nenhum banner cadastrado</p>
-            <p className="text-sm">Adicione banners para diferentes seções da loja</p>
+            <p className="text-sm">
+              Adicione banners para diferentes seções da loja
+            </p>
           </div>
         ) : (
           <div className="space-y-3">
@@ -761,26 +1242,45 @@ function BannersManager() {
                 <GripVertical className="h-5 w-5 text-muted-foreground cursor-move" />
                 <div className="w-24 h-16 rounded overflow-hidden bg-muted flex-shrink-0">
                   {banner.imageUrl ? (
-                    <img src={banner.imageUrl} alt={banner.title || "Banner"} className="w-full h-full object-cover" />
+                    <img
+                      src={banner.imageUrl}
+                      alt={banner.title || "Banner"}
+                      className="w-full h-full object-cover"
+                    />
                   ) : (
-                    <div 
+                    <div
                       className="w-full h-full flex items-center justify-center"
-                      style={{ backgroundColor: banner.backgroundColor || undefined }}
+                      style={{
+                        backgroundColor: banner.backgroundColor || undefined,
+                      }}
                     >
                       <Image className="h-6 w-6 text-muted-foreground" />
                     </div>
                   )}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="font-medium truncate">{banner.title || "Sem título"}</p>
-                  <p className="text-sm text-muted-foreground">{positionLabels[banner.position] || banner.position}</p>
+                  <p className="font-medium truncate">
+                    {banner.title || "Sem título"}
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    {positionLabels[banner.position] || banner.position}
+                  </p>
                 </div>
                 <Badge variant={banner.active ? "default" : "secondary"}>
-                  {banner.active ? <Eye className="h-3 w-3 mr-1" /> : <EyeOff className="h-3 w-3 mr-1" />}
+                  {banner.active ? (
+                    <Eye className="h-3 w-3 mr-1" />
+                  ) : (
+                    <EyeOff className="h-3 w-3 mr-1" />
+                  )}
                   {banner.active ? "Ativo" : "Inativo"}
                 </Badge>
                 <div className="flex items-center gap-1">
-                  <Button variant="ghost" size="icon" onClick={() => handleEdit(banner)} data-testid={`button-edit-banner-${banner.id}`}>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => handleEdit(banner)}
+                    data-testid={`button-edit-banner-${banner.id}`}
+                  >
                     <Edit className="h-4 w-4" />
                   </Button>
                   <Button
@@ -805,28 +1305,43 @@ function BannersManager() {
 function CatalogSettings() {
   const { toast } = useToast();
 
-  const { data: showCategories } = useQuery<{ key: string; value: string | null }>({
-    queryKey: ['/api/catalog/config/show_categories_section'],
+  const { data: showCategories } = useQuery<{
+    key: string;
+    value: string | null;
+  }>({
+    queryKey: ["/api/catalog/config/show_categories_section"],
   });
 
-  const { data: showBenefits } = useQuery<{ key: string; value: string | null }>({
-    queryKey: ['/api/catalog/config/show_benefits_section'],
+  const { data: showBenefits } = useQuery<{
+    key: string;
+    value: string | null;
+  }>({
+    queryKey: ["/api/catalog/config/show_benefits_section"],
   });
 
-  const { data: showFeatured } = useQuery<{ key: string; value: string | null }>({
-    queryKey: ['/api/catalog/config/show_featured_section'],
+  const { data: showFeatured } = useQuery<{
+    key: string;
+    value: string | null;
+  }>({
+    queryKey: ["/api/catalog/config/show_featured_section"],
   });
 
   const updateConfig = useMutation({
     mutationFn: async ({ key, value }: { key: string; value: string }) => {
-      return apiRequest('POST', `/api/catalog/config/${key}`, { value });
+      return apiRequest("POST", `/api/catalog/config/${key}`, { value });
     },
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['/api/catalog/config', variables.key] });
+      queryClient.invalidateQueries({
+        queryKey: ["/api/catalog/config", variables.key],
+      });
       toast({ title: "Sucesso", description: "Configuração atualizada" });
     },
     onError: () => {
-      toast({ title: "Erro", description: "Falha ao atualizar configuração", variant: "destructive" });
+      toast({
+        title: "Erro",
+        description: "Falha ao atualizar configuração",
+        variant: "destructive",
+      });
     },
   });
 
@@ -842,11 +1357,18 @@ function CatalogSettings() {
         <div className="flex items-center justify-between p-3 rounded-md border">
           <div>
             <p className="font-medium">Seção de Categorias</p>
-            <p className="text-sm text-muted-foreground">Exibir categorias de produtos na página inicial</p>
+            <p className="text-sm text-muted-foreground">
+              Exibir categorias de produtos na página inicial
+            </p>
           </div>
           <Switch
-            checked={showCategories?.value === 'true'}
-            onCheckedChange={(checked) => updateConfig.mutate({ key: 'show_categories_section', value: checked ? 'true' : 'false' })}
+            checked={showCategories?.value === "true"}
+            onCheckedChange={(checked) =>
+              updateConfig.mutate({
+                key: "show_categories_section",
+                value: checked ? "true" : "false",
+              })
+            }
             data-testid="switch-show-categories"
           />
         </div>
@@ -854,11 +1376,18 @@ function CatalogSettings() {
         <div className="flex items-center justify-between p-3 rounded-md border">
           <div>
             <p className="font-medium">Seção de Benefícios</p>
-            <p className="text-sm text-muted-foreground">Exibir benefícios (frete grátis, parcelamento, etc)</p>
+            <p className="text-sm text-muted-foreground">
+              Exibir benefícios (frete grátis, parcelamento, etc)
+            </p>
           </div>
           <Switch
-            checked={showBenefits?.value !== 'false'}
-            onCheckedChange={(checked) => updateConfig.mutate({ key: 'show_benefits_section', value: checked ? 'true' : 'false' })}
+            checked={showBenefits?.value !== "false"}
+            onCheckedChange={(checked) =>
+              updateConfig.mutate({
+                key: "show_benefits_section",
+                value: checked ? "true" : "false",
+              })
+            }
             data-testid="switch-show-benefits"
           />
         </div>
@@ -866,11 +1395,18 @@ function CatalogSettings() {
         <div className="flex items-center justify-between p-3 rounded-md border">
           <div>
             <p className="font-medium">Produtos em Destaque</p>
-            <p className="text-sm text-muted-foreground">Exibir seção de produtos em destaque</p>
+            <p className="text-sm text-muted-foreground">
+              Exibir seção de produtos em destaque
+            </p>
           </div>
           <Switch
-            checked={showFeatured?.value !== 'false'}
-            onCheckedChange={(checked) => updateConfig.mutate({ key: 'show_featured_section', value: checked ? 'true' : 'false' })}
+            checked={showFeatured?.value !== "false"}
+            onCheckedChange={(checked) =>
+              updateConfig.mutate({
+                key: "show_featured_section",
+                value: checked ? "true" : "false",
+              })
+            }
             data-testid="switch-show-featured"
           />
         </div>

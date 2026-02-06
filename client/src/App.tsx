@@ -216,6 +216,7 @@ function AppContent() {
         <Switch>
           <Route path="/register" component={RegisterPage} />
           <Route path="/login" component={LoginPage} />
+          <Route path="/loja/:slug" component={StoreCatalogPage} />
           <Route path="/catalogo" component={PublicCatalogPage} />
           <Route path="/checkout" component={CheckoutPage} />
           <Route component={LandingPage} />
