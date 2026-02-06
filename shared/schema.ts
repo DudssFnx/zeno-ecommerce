@@ -253,6 +253,7 @@ export const orders = pgTable("orders", {
   shippingMethod: text("shipping_method"),
   paymentMethod: text("payment_method"),
   paymentTypeId: integer("payment_type_id"),
+  paymentTermId: integer("payment_term_id"), // Condição de prazo do pedido (30/60/90, etc.)
   paymentNotes: text("payment_notes"),
   notes: text("notes"),
 
@@ -504,13 +505,25 @@ export const receivablePayments = pgTable("receivable_payments", {
   receivableId: integer("receivable_id").notNull(),
   installmentId: integer("installment_id"),
   paymentNumber: text("payment_number").unique().notNull(),
-  amount: decimal("amount", { precision: 12, scale: 2 }).notNull(),
+  amount: decimal("amount", { precision: 12, scale: 2 }).notNull(), // Valor recebido líquido
+  originalAmount: decimal("original_amount", { precision: 12, scale: 2 }), // Valor original da parcela
+  interest: decimal("interest", { precision: 12, scale: 2 }).default("0"), // Juros
+  discount: decimal("discount", { precision: 12, scale: 2 }).default("0"), // Desconto
+  fine: decimal("fine", { precision: 12, scale: 2 }).default("0"), // Multa
+  fee: decimal("fee", { precision: 12, scale: 2 }).default("0"), // Tarifa bancária
   paymentMethod: text("payment_method"),
+  financialAccountId: integer("financial_account_id"), // Conta financeira/destino
+  categoryId: integer("category_id"), // Categoria financeira
   reference: text("reference"),
   paymentDate: text("payment_date").notNull(),
   receivedAt: timestamp("received_at").defaultNow(),
   notes: text("notes"),
   receivedBy: text("received_by"),
+  isReversed: boolean("is_reversed").default(false), // Se foi estornado
+  reversedAt: timestamp("reversed_at"),
+  reversedBy: text("reversed_by"),
+  reversedReason: text("reversed_reason"),
+  reversedAmount: decimal("reversed_amount", { precision: 12, scale: 2 }), // Valor estornado (parcial)
   createdAt: timestamp("created_at").defaultNow(),
 });
 

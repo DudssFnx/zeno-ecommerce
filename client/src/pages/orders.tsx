@@ -1177,18 +1177,17 @@ export default function OrdersPage() {
                       {installments.length > 0 && (
                         <div className="border rounded-md overflow-hidden">
                           {/* Header da tabela estilo Bling */}
-                          <div className="grid grid-cols-[60px_1fr_1fr_1fr_80px] gap-1 bg-muted/40 px-2 py-1.5 text-[10px] font-semibold text-muted-foreground border-b">
+                          <div className="grid grid-cols-[60px_1fr_1fr_80px] gap-1 bg-muted/40 px-2 py-1.5 text-[10px] font-semibold text-muted-foreground border-b">
                             <span>Dias</span>
                             <span>Data</span>
                             <span>Valor</span>
-                            <span>Forma</span>
                             <span>Obs</span>
                           </div>
                           {/* Linhas das parcelas */}
                           {installments.map((inst, i) => (
                             <div
                               key={i}
-                              className="grid grid-cols-[60px_1fr_1fr_1fr_80px] gap-1 items-center px-2 py-1 border-b last:border-b-0 hover:bg-muted/20"
+                              className="grid grid-cols-[60px_1fr_1fr_80px] gap-1 items-center px-2 py-1 border-b last:border-b-0 hover:bg-muted/20"
                             >
                               <div className="flex items-center gap-1">
                                 <span className="w-4 h-4 rounded-full bg-primary/20 text-primary text-[9px] flex items-center justify-center font-medium">
@@ -1217,26 +1216,6 @@ export default function OrdersPage() {
                                 value={inst.value.toFixed(2)}
                                 readOnly
                               />
-                              <Select
-                                value={inst.method}
-                                onValueChange={(v) => {
-                                  const n = [...installments];
-                                  n[i].method = v;
-                                  setInstallments(n);
-                                }}
-                              >
-                                <SelectTrigger className="h-6 text-xs">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="Boleto">Boleto</SelectItem>
-                                  <SelectItem value="Pix">Pix</SelectItem>
-                                  <SelectItem value="Cartão">Cartão</SelectItem>
-                                  <SelectItem value="Depósito">
-                                    Depósito
-                                  </SelectItem>
-                                </SelectContent>
-                              </Select>
                               <Input
                                 className="h-6 text-xs px-1"
                                 placeholder=""

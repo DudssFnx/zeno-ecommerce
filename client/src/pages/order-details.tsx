@@ -301,6 +301,8 @@ export default function OrderDetailsPage() {
       setShippingCost(parseFloat(orderData.shippingCost || "0"));
       setPaymentMethod(orderData.paymentMethod || "");
       setSelectedPaymentTypeId(orderData.paymentTypeId || null);
+      // Carregar vendedor do pedido (invoicedBy)
+      setSelectedSellerId(orderData.invoicedBy || "");
       // Carregar condição de pagamento (ex: "30 60 90 120")
       // Só atualiza se tiver valor no banco OU se ainda não tiver valor local
       const savedCondition = orderData.paymentNotes || "";
@@ -734,7 +736,7 @@ export default function OrderDetailsPage() {
       notes,
       shippingCost: shippingCost.toFixed(2),
       discount: globalDiscount.toFixed(2),
-      sellerId: selectedSellerId || undefined,
+      sellerId: selectedSellerId, // Enviar mesmo se vazio para permitir limpar
       saleDate,
       paymentMethod: paymentMethodName,
       paymentTypeId: selectedPaymentTypeId,
@@ -1041,7 +1043,13 @@ export default function OrderDetailsPage() {
                 ) : (
                   <Input
                     readOnly
-                    value="Não informado"
+                    value={
+                      orderData?.seller
+                        ? orderData.seller.firstName ||
+                          orderData.seller.email ||
+                          "Vendedor"
+                        : "Não informado"
+                    }
                     className="mt-1 h-8 text-sm bg-muted/50"
                   />
                 )}
@@ -1333,18 +1341,17 @@ export default function OrderDetailsPage() {
                       {installments.length > 0 && (
                         <div className="border rounded-md overflow-hidden">
                           {/* Header da tabela estilo Bling */}
-                          <div className="grid grid-cols-[60px_1fr_1fr_1fr_80px] gap-1 bg-muted/40 px-2 py-1.5 text-[10px] font-semibold text-muted-foreground border-b">
+                          <div className="grid grid-cols-[60px_1fr_1fr_80px] gap-1 bg-muted/40 px-2 py-1.5 text-[10px] font-semibold text-muted-foreground border-b">
                             <span>Dias</span>
                             <span>Data</span>
                             <span>Valor</span>
-                            <span>Forma</span>
                             <span>Obs</span>
                           </div>
                           {/* Linhas das parcelas */}
                           {installments.map((inst, i) => (
                             <div
                               key={i}
-                              className="grid grid-cols-[60px_1fr_1fr_1fr_80px] gap-1 items-center px-2 py-1 border-b last:border-b-0 hover:bg-muted/20"
+                              className="grid grid-cols-[60px_1fr_1fr_80px] gap-1 items-center px-2 py-1 border-b last:border-b-0 hover:bg-muted/20"
                             >
                               <div className="flex items-center gap-1">
                                 <span className="w-4 h-4 rounded-full bg-primary/20 text-primary text-[9px] flex items-center justify-center font-medium">
@@ -1373,26 +1380,6 @@ export default function OrderDetailsPage() {
                                 value={inst.value.toFixed(2)}
                                 readOnly
                               />
-                              <Select
-                                value={inst.method}
-                                onValueChange={(v) => {
-                                  const n = [...installments];
-                                  n[i].method = v;
-                                  setInstallments(n);
-                                }}
-                              >
-                                <SelectTrigger className="h-6 text-xs">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="Boleto">Boleto</SelectItem>
-                                  <SelectItem value="Pix">Pix</SelectItem>
-                                  <SelectItem value="Cartão">Cartão</SelectItem>
-                                  <SelectItem value="Depósito">
-                                    Depósito
-                                  </SelectItem>
-                                </SelectContent>
-                              </Select>
                               <Input
                                 className="h-6 text-xs px-1"
                                 placeholder={`${orderData?.orderNumber || ""}/${i + 1}`}

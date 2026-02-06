@@ -1131,10 +1131,22 @@ export async function registerRoutes(
         )
         .limit(1);
 
+      // Buscar vendedor se existir
+      let seller = null;
+      if (order.invoicedBy) {
+        const [sellerUser] = await db
+          .select()
+          .from(users)
+          .where(eq(users.id, order.invoicedBy))
+          .limit(1);
+        seller = sellerUser || null;
+      }
+
       res.json({
         ...order,
         items,
         customer,
+        seller,
         stockPosted: !!stockLog,
         accountsPosted: !!order.accountsPosted,
       });
@@ -1808,6 +1820,11 @@ export async function registerRoutes(
 
       console.log(`[DEBUG] --- Iniciando atualização do Pedido #${id} ---`);
       console.log(`[DEBUG] Novo Status recebido: ${status}`);
+      console.log(`[DEBUG] sellerId recebido: ${sellerId}`);
+      console.log(
+        `[DEBUG] req.body completo:`,
+        JSON.stringify(req.body, null, 2),
+      );
 
       await db.transaction(async (tx) => {
         // 1. Pega pedido atual
@@ -1944,11 +1961,86 @@ export async function registerRoutes(
         // paymentNotes - salvar condição de pagamento (ex: "30 60 90")
         if (paymentNotes !== undefined)
           updateData.paymentNotes = paymentNotes || null;
+        // sellerId - salvar como invoicedBy (vendedor que faturou)
+        if (sellerId !== undefined) {
+          updateData.invoicedBy =
+            sellerId && typeof sellerId === "string" && sellerId.trim() !== ""
+              ? sellerId
+              : null;
+        }
 
-        // discount e sellerId não existem no schema atual, seriam ignorados
+        console.log(
+          `[DEBUG] updateData sendo salvo:`,
+          JSON.stringify(updateData, null, 2),
+        );
 
         await tx.update(orders).set(updateData).where(eq(orders.id, id));
       });
+
+      // ====================================================
+      // LÓGICA DE CONTAS A RECEBER (Fora da transação de estoque)
+      // ====================================================
+      if (status === "FATURADO") {
+        // Verificar se já tem contas a receber
+        const hasReceivables = await hasReceivablesForOrder(id);
+        if (!hasReceivables) {
+          console.log(
+            `[DEBUG] >> CRIANDO CONTAS A RECEBER para pedido #${id}...`,
+          );
+          try {
+            const receivable = await createReceivableFromOrder(id, companyId);
+            if (receivable) {
+              console.log(
+                `[DEBUG] >> Conta a receber criada: #${receivable.receivableNumber}`,
+              );
+            } else {
+              console.log(
+                `[DEBUG] >> Não foi criada conta a receber (provavelmente pagamento à vista)`,
+              );
+            }
+          } catch (recError: any) {
+            console.error(
+              `[DEBUG] Erro ao criar conta a receber: ${recError.message}`,
+            );
+            // Não falha a operação principal, apenas loga o erro
+          }
+        } else {
+          // Se já tem receivables canceladas, reabrir
+          console.log(
+            `[DEBUG] >> Pedido já tem contas a receber, verificando se precisa reabrir...`,
+          );
+          const reopened = await reopenReceivablesByOrderId(id);
+          if (reopened.length > 0) {
+            console.log(
+              `[DEBUG] >> ${reopened.length} conta(s) a receber reaberta(s)`,
+            );
+          }
+        }
+      }
+
+      // Estornar contas quando cancelar ou voltar para orçamento
+      if (status === "CANCELADO" || status === "ORCAMENTO") {
+        const hasReceivables = await hasReceivablesForOrder(id);
+        if (hasReceivables) {
+          console.log(
+            `[DEBUG] >> ESTORNANDO CONTAS A RECEBER do pedido #${id}...`,
+          );
+          try {
+            const cancelled = await cancelReceivablesByOrderId(
+              id,
+              `Pedido ${status === "CANCELADO" ? "cancelado" : "voltou para orçamento"}`,
+              req.user.id,
+            );
+            console.log(
+              `[DEBUG] >> ${cancelled.length} conta(s) a receber cancelada(s)`,
+            );
+          } catch (recError: any) {
+            console.error(
+              `[DEBUG] Erro ao cancelar contas a receber: ${recError.message}`,
+            );
+          }
+        }
+      }
 
       const [updated] = await db.select().from(orders).where(eq(orders.id, id));
       res.json(updated);

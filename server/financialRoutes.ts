@@ -21,12 +21,17 @@ import {
 } from "./services/paymentTerms.service";
 import {
   cancelReceivable,
+  createManualReceivable,
   createReceivableFromOrder,
+  deleteInstallment,
   getReceivableDashboard,
   getReceivableWithDetails,
+  listInstallments,
   listReceivables,
+  listReceivedPayments,
   recordReceivablePayment,
   reopenReceivable,
+  updateInstallment,
   updateOverdueReceivables,
 } from "./services/receivables.service";
 
@@ -46,7 +51,7 @@ export function registerFinancialRoutes(app: Express): void {
       if (!req.isAuthenticated())
         return res.status(401).json({ message: "Não autenticado" });
 
-      const companyId = req.user.company;
+      const companyId = req.user.companyId || "1";
       const terms = await listPaymentTerms(companyId);
 
       res.json(terms);
@@ -63,7 +68,7 @@ export function registerFinancialRoutes(app: Express): void {
       if (!req.isAuthenticated())
         return res.status(401).json({ message: "Não autenticado" });
 
-      const companyId = req.user.company;
+      const companyId = req.user.companyId || "1";
       const terms = await listActivePaymentTerms(companyId);
 
       res.json(terms);
@@ -100,7 +105,7 @@ export function registerFinancialRoutes(app: Express): void {
       if (!req.isAuthenticated())
         return res.status(401).json({ message: "Não autenticado" });
 
-      const companyId = req.user.company;
+      const companyId = req.user.companyId || "1";
       const data: InsertPaymentTerm = {
         companyId,
         ...req.body,
@@ -165,7 +170,7 @@ export function registerFinancialRoutes(app: Express): void {
       if (!req.isAuthenticated())
         return res.status(401).json({ message: "Não autenticado" });
 
-      const companyId = req.user.company;
+      const companyId = req.user.companyId || "1";
       const { status, customerId, isOverdue } = req.query;
 
       const filters: any = {};
@@ -188,10 +193,102 @@ export function registerFinancialRoutes(app: Express): void {
       if (!req.isAuthenticated())
         return res.status(401).json({ message: "Não autenticado" });
 
-      const companyId = req.user.company;
+      const companyId = req.user.companyId || "1";
       const dashboard = await getReceivableDashboard(companyId);
 
       res.json(dashboard);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  /**
+   * GET /api/receivables/installments - Listar parcelas (com dados enriquecidos)
+   */
+  app.get("/api/receivables/installments", async (req: any, res: Response) => {
+    try {
+      if (!req.isAuthenticated())
+        return res.status(401).json({ message: "Não autenticado" });
+
+      const companyId = req.user.companyId || "1";
+      const { status, customerId, isOverdue } = req.query;
+
+      console.log(
+        `[DEBUG] GET /api/receivables/installments - companyId: ${companyId}`,
+      );
+
+      const filters: any = {};
+      if (status) filters.status = status;
+      if (customerId) filters.customerId = customerId;
+      if (isOverdue !== undefined) filters.isOverdue = isOverdue === "true";
+
+      const installments = await listInstallments(companyId, filters);
+      console.log(`[DEBUG] Installments retornados: ${installments.length}`);
+      res.json(installments);
+    } catch (error: any) {
+      console.error(`[DEBUG] Erro em /api/receivables/installments:`, error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  /**
+   * GET /api/receivables/payments - Listar recebidos (títulos baixados + vendas à vista)
+   */
+  app.get("/api/receivables/payments", async (req: any, res: Response) => {
+    try {
+      if (!req.isAuthenticated())
+        return res.status(401).json({ message: "Não autenticado" });
+
+      const companyId = req.user.companyId || "1";
+      const payments = await listReceivedPayments(companyId);
+      res.json(payments);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  /**
+   * POST /api/receivables/manual - Criar conta a receber manual
+   */
+  app.post("/api/receivables/manual", async (req: any, res: Response) => {
+    try {
+      if (!req.isAuthenticated())
+        return res.status(401).json({ message: "Não autenticado" });
+
+      const companyId = req.user.companyId || "1";
+      const {
+        customerId,
+        amount,
+        description,
+        issueDate,
+        dueDate,
+        paymentTermId,
+        customInstallments,
+        documentNumber,
+        notes,
+      } = req.body;
+
+      if (!customerId || !amount || !dueDate) {
+        return res
+          .status(400)
+          .json({ message: "Cliente, valor e vencimento são obrigatórios" });
+      }
+
+      const receivable = await createManualReceivable(companyId, {
+        customerId,
+        amount: Number(amount),
+        description,
+        issueDate: issueDate || new Date().toISOString().split("T")[0],
+        dueDate,
+        paymentTermId: paymentTermId ? Number(paymentTermId) : undefined,
+        customInstallments: customInstallments
+          ? Number(customInstallments)
+          : undefined,
+        documentNumber,
+        notes,
+      });
+
+      res.status(201).json(receivable);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
@@ -227,7 +324,7 @@ export function registerFinancialRoutes(app: Express): void {
         if (!req.isAuthenticated())
           return res.status(401).json({ message: "Não autenticado" });
 
-        const companyId = req.user.company;
+        const companyId = req.user.companyId || "1";
         const { orderId } = req.params;
 
         const receivable = await createReceivableFromOrder(
@@ -255,7 +352,7 @@ export function registerFinancialRoutes(app: Express): void {
       if (!req.isAuthenticated())
         return res.status(401).json({ message: "Não autenticado" });
 
-      const companyId = req.user.company;
+      const companyId = req.user.companyId || "1";
       const { id } = req.params;
       const paymentData = {
         ...req.body,
@@ -314,6 +411,134 @@ export function registerFinancialRoutes(app: Express): void {
     }
   });
 
+  /**
+   * POST /api/receivables/:id/recreate-installments - Recriar parcelas com nova condição de prazo
+   */
+  app.post(
+    "/api/receivables/:id/recreate-installments",
+    async (req: any, res: Response) => {
+      try {
+        if (!req.isAuthenticated())
+          return res.status(401).json({ message: "Não autenticado" });
+
+        const { id } = req.params;
+        const { paymentTermId } = req.body;
+
+        if (!paymentTermId) {
+          return res
+            .status(400)
+            .json({ message: "paymentTermId é obrigatório" });
+        }
+
+        const { recreateInstallments } =
+          await import("./services/receivables.service");
+        const result = await recreateInstallments(
+          parseInt(id),
+          parseInt(paymentTermId),
+        );
+
+        res.json(result);
+      } catch (error: any) {
+        res.status(500).json({ message: error.message });
+      }
+    },
+  );
+
+  /**
+   * DELETE /api/receivables/installments/:id - Excluir parcela
+   * Se for a última parcela, também exclui o receivable e remove accountsPosted do pedido
+   */
+  app.delete(
+    "/api/receivables/installments/:id",
+    async (req: any, res: Response) => {
+      try {
+        if (!req.isAuthenticated())
+          return res.status(401).json({ message: "Não autenticado" });
+
+        const companyId = req.user.companyId || "1";
+        const { id } = req.params;
+        const result = await deleteInstallment(parseInt(id), companyId);
+
+        res.json(result);
+      } catch (error: any) {
+        res.status(500).json({ message: error.message });
+      }
+    },
+  );
+
+  /**
+   * PUT /api/receivables/installments/:id - Atualizar parcela (valor, vencimento)
+   */
+  app.put(
+    "/api/receivables/installments/:id",
+    async (req: any, res: Response) => {
+      try {
+        if (!req.isAuthenticated())
+          return res.status(401).json({ message: "Não autenticado" });
+
+        const companyId = req.user.companyId || "1";
+        const { id } = req.params;
+        const { amount, dueDate, notes } = req.body;
+
+        const result = await updateInstallment(parseInt(id), companyId, {
+          amount: amount !== undefined ? Number(amount) : undefined,
+          dueDate,
+          notes,
+        });
+
+        res.json(result);
+      } catch (error: any) {
+        res.status(500).json({ message: error.message });
+      }
+    },
+  );
+
+  /**
+   * GET /api/receivables/payments/:id - Obter detalhes de um pagamento
+   */
+  app.get("/api/receivables/payments/:id", async (req: any, res: Response) => {
+    try {
+      if (!req.isAuthenticated())
+        return res.status(401).json({ message: "Não autenticado" });
+
+      const { id } = req.params;
+      const payment = await getPaymentDetails(parseInt(id));
+
+      if (!payment)
+        return res.status(404).json({ message: "Pagamento não encontrado" });
+
+      res.json(payment);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  /**
+   * POST /api/receivables/payments/:id/reverse - Estornar pagamento (total ou parcial)
+   */
+  app.post(
+    "/api/receivables/payments/:id/reverse",
+    async (req: any, res: Response) => {
+      try {
+        if (!req.isAuthenticated())
+          return res.status(401).json({ message: "Não autenticado" });
+
+        const { id } = req.params;
+        const { amount, reason } = req.body;
+
+        const result = await reversePayment(
+          parseInt(id),
+          amount ? Number(amount) : undefined,
+          reason || "Estorno solicitado pelo usuário",
+        );
+
+        res.json(result);
+      } catch (error: any) {
+        res.status(500).json({ message: error.message });
+      }
+    },
+  );
+
   // ==========================================
   // 📊 CONTAS A PAGAR
   // ==========================================
@@ -326,7 +551,7 @@ export function registerFinancialRoutes(app: Express): void {
       if (!req.isAuthenticated())
         return res.status(401).json({ message: "Não autenticado" });
 
-      const companyId = req.user.company;
+      const companyId = req.user.companyId || "1";
       const { status, supplierId, isOverdue } = req.query;
 
       const filters: any = {};
@@ -349,7 +574,7 @@ export function registerFinancialRoutes(app: Express): void {
       if (!req.isAuthenticated())
         return res.status(401).json({ message: "Não autenticado" });
 
-      const companyId = req.user.company;
+      const companyId = req.user.companyId || "1";
       const dashboard = await getPayableDashboard(companyId);
 
       res.json(dashboard);
@@ -388,7 +613,7 @@ export function registerFinancialRoutes(app: Express): void {
         if (!req.isAuthenticated())
           return res.status(401).json({ message: "Não autenticado" });
 
-        const companyId = req.user.company;
+        const companyId = req.user.companyId || "1";
         const { purchaseOrderId } = req.params;
 
         const payable = await createPayableFromPurchaseOrder(
@@ -416,7 +641,7 @@ export function registerFinancialRoutes(app: Express): void {
       if (!req.isAuthenticated())
         return res.status(401).json({ message: "Não autenticado" });
 
-      const companyId = req.user.company;
+      const companyId = req.user.companyId || "1";
       const { id } = req.params;
       const paymentData = {
         ...req.body,
