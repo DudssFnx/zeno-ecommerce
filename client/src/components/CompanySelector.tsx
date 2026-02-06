@@ -71,7 +71,12 @@ export function CompanySelector() {
 
             <div className="grid flex-1 text-left text-sm leading-tight min-w-0">
               <span className="truncate font-semibold">
-                {company.tradingName || company.name || "Minha Empresa"}
+                {company.tradingName ||
+                  (company as any).fantasyName ||
+                  (company as any).nomeFantasia ||
+                  company.razaoSocial ||
+                  company.name ||
+                  "Minha Empresa"}
               </span>
               <span className="truncate text-[10px] text-muted-foreground">
                 {company.cnpj || "CNPJ não informado"}

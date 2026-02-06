@@ -122,17 +122,31 @@ export async function registerRoutes(
     if (!req.isAuthenticated()) return res.status(401).send();
     try {
       const updateData = { ...req.body, updatedAt: new Date() };
+      // Map client fields to DB columns (support multiple naming variations)
       if (req.body.name) updateData.razaoSocial = req.body.name;
+      if (req.body.tradingName) {
+        updateData.fantasyName = req.body.tradingName;
+        updateData.nomeFantasia = req.body.tradingName;
+      }
+      if (req.body.fantasyName) updateData.fantasyName = req.body.fantasyName;
+      if (req.body.nomeFantasia)
+        updateData.nomeFantasia = req.body.nomeFantasia;
 
       const [first] = await db.select().from(companies).limit(1);
       let updated;
       if (first) {
         // Gerar slug baseado em razaoSocial ou fantasyName
-        if (req.body.name || req.body.razaoSocial || req.body.fantasyName) {
+        if (
+          req.body.tradingName ||
+          req.body.fantasyName ||
+          req.body.name ||
+          req.body.razaoSocial
+        ) {
           const nameForSlug =
+            req.body.tradingName ||
+            req.body.fantasyName ||
             req.body.name ||
             req.body.razaoSocial ||
-            req.body.fantasyName ||
             first.razaoSocial ||
             first.fantasyName;
           updateData.slug = generateSlug(nameForSlug);

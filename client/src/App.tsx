@@ -43,6 +43,7 @@ import PurchasesDashboardPage from "@/pages/purchases-dashboard";
 import RegisterPage from "@/pages/register";
 import SettingsPage from "@/pages/settings";
 import CompanySettings from "@/pages/settings/CompanySettings"; // ✅ IMPORTADO
+import StoreCatalogPage from "@/pages/store-catalog";
 import SuppliersPage from "@/pages/suppliers";
 import UsersPage from "@/pages/users";
 import { QueryClientProvider, useQuery } from "@tanstack/react-query";
@@ -149,6 +150,7 @@ function AuthenticatedApp() {
 
               {isAdmin && <Route path="/bling" component={BlingPage} />}
               {isAdmin && <Route path="/coupons" component={CouponsPage} />}
+              <Route path="/loja/:slug" component={StoreCatalogPage} />
               {isAdmin && (
                 <Route
                   path="/customer-analytics"
