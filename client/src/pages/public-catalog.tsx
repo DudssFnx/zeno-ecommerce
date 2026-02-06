@@ -1,34 +1,58 @@
-import { useState, useMemo, useEffect } from "react";
-import { useLocation, useSearch } from "wouter";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { 
-  Search, 
-  Loader2, 
-  Package, 
-  ChevronLeft, 
-  ChevronRight,
-  Store,
-  Phone,
-  X,
-  Grid3X3,
-  List,
-  Home,
-  Filter,
-  ShoppingCart,
-  User,
-  UserPlus
-} from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
-import type { Product as SchemaProduct, Category } from "@shared/schema";
+import { DeliveryCatalog } from "@/components/DeliveryCatalog";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { ZenoLogo } from "@/components/ZenoLogo";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { useCart } from "@/contexts/CartContext";
 import { useToast } from "@/hooks/use-toast";
-import { DeliveryCatalog } from "@/components/DeliveryCatalog";
-import { ZenoLogo } from "@/components/ZenoLogo";
+import type { Category, Product as SchemaProduct } from "@shared/schema";
+import { useQuery } from "@tanstack/react-query";
+import Autoplay from "embla-carousel-autoplay";
+import useEmblaCarousel from "embla-carousel-react";
+import {
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  Copy,
+  Filter,
+  Grid3X3,
+  Home,
+  List,
+  Loader2,
+  Package,
+  Phone,
+  Search,
+  Share2,
+  ShoppingCart,
+  Sparkles,
+  Store,
+  User,
+  UserPlus,
+  X,
+} from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { useLocation, useSearch } from "wouter";
+
+// Interface para slides do carrossel
+interface CatalogSlide {
+  id: number;
+  imageUrl: string;
+  title?: string | null;
+  subtitle?: string | null;
+  buttonText?: string | null;
+  buttonLink?: string | null;
+  active: boolean;
+  sortOrder?: number;
+}
 
 interface ProductsResponse {
   products: SchemaProduct[];
@@ -44,28 +68,88 @@ export default function PublicCatalogPage() {
   const [category, setCategory] = useState("all");
   const [brand, setBrand] = useState("all");
   const [page, setPage] = useState(1);
-  const [selectedCategoryId, setSelectedCategoryId] = useState<number | undefined>(undefined);
+  const [selectedCategoryId, setSelectedCategoryId] = useState<
+    number | undefined
+  >(undefined);
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [showMobileFilters, setShowMobileFilters] = useState(false);
   const [quantities, setQuantities] = useState<Record<number, number>>({});
-  
+  const [linkCopied, setLinkCopied] = useState(false);
+  const [selectedSlideIndex, setSelectedSlideIndex] = useState(0);
+
   const { addItem, itemCount, openCart } = useCart();
   const { toast } = useToast();
 
-  const { data: categoriesData = [] } = useQuery<Category[]>({
-    queryKey: ['/api/public/categories'],
+  const [emblaRef, emblaApi] = useEmblaCarousel({ loop: true }, [
+    Autoplay({ delay: 5000 }),
+  ]);
+
+  // Buscar slides do carrossel
+  const { data: slides = [] } = useQuery<CatalogSlide[]>({
+    queryKey: ["/api/public/slides"],
     queryFn: async () => {
-      const res = await fetch('/api/public/categories');
-      if (!res.ok) throw new Error('Failed to fetch categories');
+      const res = await fetch("/api/public/slides");
+      if (!res.ok) return [];
       return res.json();
     },
   });
 
-  const { data: deliveryModeSetting } = useQuery<{ key: string; value: string | null }>({
-    queryKey: ['/api/settings/delivery_catalog_mode'],
+  const activeSlides = slides.filter((s) => s.active);
+
+  useEffect(() => {
+    if (!emblaApi) return;
+    emblaApi.on("select", () => {
+      setSelectedSlideIndex(emblaApi.selectedScrollSnap());
+    });
+  }, [emblaApi]);
+
+  // Função para copiar link do catálogo
+  const handleCopyLink = async () => {
+    const catalogUrl = window.location.origin + "/catalogo";
+    try {
+      await navigator.clipboard.writeText(catalogUrl);
+      setLinkCopied(true);
+      toast({
+        title: "Link copiado!",
+        description:
+          "O link do catálogo foi copiado para a área de transferência.",
+      });
+      setTimeout(() => setLinkCopied(false), 3000);
+    } catch (err) {
+      toast({
+        title: "Erro ao copiar",
+        description: "Não foi possível copiar o link. Tente novamente.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Função para compartilhar via WhatsApp
+  const handleShareWhatsApp = () => {
+    const catalogUrl = window.location.origin + "/catalogo";
+    const text = encodeURIComponent(
+      `Confira nosso catálogo de produtos: ${catalogUrl}`,
+    );
+    window.open(`https://wa.me/?text=${text}`, "_blank");
+  };
+
+  const { data: categoriesData = [] } = useQuery<Category[]>({
+    queryKey: ["/api/public/categories"],
+    queryFn: async () => {
+      const res = await fetch("/api/public/categories");
+      if (!res.ok) throw new Error("Failed to fetch categories");
+      return res.json();
+    },
   });
 
-  const isDeliveryMode = deliveryModeSetting?.value === 'true';
+  const { data: deliveryModeSetting } = useQuery<{
+    key: string;
+    value: string | null;
+  }>({
+    queryKey: ["/api/settings/delivery_catalog_mode"],
+  });
+
+  const isDeliveryMode = deliveryModeSetting?.value === "true";
 
   useEffect(() => {
     const params = new URLSearchParams(searchString);
@@ -74,7 +158,7 @@ export default function PublicCatalogPage() {
     if (categoryParam) {
       const decodedCategory = decodeURIComponent(categoryParam);
       setCategory(decodedCategory);
-      const cat = categoriesData.find(c => c.name === decodedCategory);
+      const cat = categoriesData.find((c) => c.name === decodedCategory);
       if (cat) {
         setSelectedCategoryId(cat.id);
       }
@@ -88,7 +172,7 @@ export default function PublicCatalogPage() {
     if (category === "all") {
       setSelectedCategoryId(undefined);
     } else {
-      const cat = categoriesData.find(c => c.name === category);
+      const cat = categoriesData.find((c) => c.name === category);
       setSelectedCategoryId(cat?.id);
     }
     setPage(1);
@@ -100,21 +184,23 @@ export default function PublicCatalogPage() {
 
   const queryParams = useMemo(() => {
     const params = new URLSearchParams();
-    params.set('page', String(page));
-    params.set('limit', '24');
-    if (selectedCategoryId) params.set('categoryId', String(selectedCategoryId));
-    if (searchQuery) params.set('search', searchQuery);
+    params.set("page", String(page));
+    params.set("limit", "24");
+    if (selectedCategoryId)
+      params.set("categoryId", String(selectedCategoryId));
+    if (searchQuery) params.set("search", searchQuery);
     return params.toString();
   }, [page, selectedCategoryId, searchQuery]);
 
-  const { data: productsResponse, isLoading: productsLoading } = useQuery<ProductsResponse>({
-    queryKey: ['/api/public/products', queryParams],
-    queryFn: async () => {
-      const res = await fetch(`/api/public/products?${queryParams}`);
-      if (!res.ok) throw new Error('Failed to fetch products');
-      return res.json();
-    },
-  });
+  const { data: productsResponse, isLoading: productsLoading } =
+    useQuery<ProductsResponse>({
+      queryKey: ["/api/public/products", queryParams],
+      queryFn: async () => {
+        const res = await fetch(`/api/public/products?${queryParams}`);
+        if (!res.ok) throw new Error("Failed to fetch products");
+        return res.json();
+      },
+    });
 
   const productsData = productsResponse?.products || [];
   const totalPages = productsResponse?.totalPages || 1;
@@ -122,7 +208,7 @@ export default function PublicCatalogPage() {
 
   const categoryMap = useMemo(() => {
     const map: Record<number, string> = {};
-    categoriesData.forEach(cat => {
+    categoriesData.forEach((cat) => {
       map[cat.id] = cat.name;
     });
     return map;
@@ -130,7 +216,7 @@ export default function PublicCatalogPage() {
 
   const brands = useMemo(() => {
     const brandSet = new Set<string>();
-    productsData.forEach(p => {
+    productsData.forEach((p) => {
       if (p.brand) brandSet.add(p.brand);
     });
     return Array.from(brandSet).sort();
@@ -151,10 +237,10 @@ export default function PublicCatalogPage() {
   };
 
   const formatPrice = (price: string | number) => {
-    const numPrice = typeof price === 'string' ? parseFloat(price) : price;
-    return new Intl.NumberFormat('pt-BR', {
-      style: 'currency',
-      currency: 'BRL'
+    const numPrice = typeof price === "string" ? parseFloat(price) : price;
+    return new Intl.NumberFormat("pt-BR", {
+      style: "currency",
+      currency: "BRL",
     }).format(numPrice);
   };
 
@@ -174,7 +260,7 @@ export default function PublicCatalogPage() {
   const setQuantity = (productId: number, qty: number) => {
     if (qty < 0) qty = 0;
     if (qty > 999) qty = 999;
-    setQuantities(prev => ({ ...prev, [productId]: qty }));
+    setQuantities((prev) => ({ ...prev, [productId]: qty }));
   };
 
   const handleAddToCart = (product: SchemaProduct) => {
@@ -187,9 +273,12 @@ export default function PublicCatalogPage() {
       });
       return;
     }
-    
-    const price = typeof product.price === 'string' ? parseFloat(product.price) : product.price;
-    
+
+    const price =
+      typeof product.price === "string"
+        ? parseFloat(product.price)
+        : product.price;
+
     addItem({
       productId: String(product.id),
       name: product.name,
@@ -204,7 +293,7 @@ export default function PublicCatalogPage() {
       description: `${qty}x ${product.name}`,
     });
 
-    setQuantities(prev => ({ ...prev, [product.id]: 0 }));
+    setQuantities((prev) => ({ ...prev, [product.id]: 0 }));
   };
 
   if (isDeliveryMode) {
@@ -213,13 +302,39 @@ export default function PublicCatalogPage() {
         <header className="sticky top-0 z-50 bg-zinc-900 text-white">
           <div className="container mx-auto px-4 py-3">
             <div className="flex items-center justify-between gap-4">
-              <ZenoLogo 
-                size="md" 
-                showText={true} 
+              <ZenoLogo
+                size="md"
+                showText={true}
                 variant="light"
                 onClick={() => setLocation("/")}
               />
               <div className="flex items-center gap-2">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-white hover:bg-zinc-800"
+                      data-testid="button-share"
+                    >
+                      <Share2 className="h-5 w-5" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={handleCopyLink}>
+                      {linkCopied ? (
+                        <Check className="h-4 w-4 mr-2 text-green-500" />
+                      ) : (
+                        <Copy className="h-4 w-4 mr-2" />
+                      )}
+                      {linkCopied ? "Link copiado!" : "Copiar link"}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={handleShareWhatsApp}>
+                      <Phone className="h-4 w-4 mr-2" />
+                      Compartilhar no WhatsApp
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
                 <ThemeToggle />
                 <Button
                   variant="ghost"
@@ -258,14 +373,17 @@ export default function PublicCatalogPage() {
       <header className="sticky top-0 z-50 bg-zinc-900 text-white">
         <div className="container mx-auto px-4 py-3">
           <div className="flex items-center justify-between gap-4">
-            <ZenoLogo 
-              size="md" 
-              showText={true} 
+            <ZenoLogo
+              size="md"
+              showText={true}
               variant="light"
               onClick={() => setLocation("/")}
             />
 
-            <form onSubmit={handleSearch} className="hidden md:flex flex-1 max-w-lg mx-4">
+            <form
+              onSubmit={handleSearch}
+              className="hidden md:flex flex-1 max-w-lg mx-4"
+            >
               <div className="relative w-full">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
                 <Input
@@ -279,7 +397,7 @@ export default function PublicCatalogPage() {
             </form>
 
             <div className="flex items-center gap-2">
-              <Button 
+              <Button
                 variant="ghost"
                 size="icon"
                 onClick={() => setLocation("/")}
@@ -288,8 +406,8 @@ export default function PublicCatalogPage() {
               >
                 <Home className="h-5 w-5" />
               </Button>
-              
-              <Button 
+
+              <Button
                 variant="ghost"
                 size="icon"
                 className="text-white hover:bg-zinc-800 relative"
@@ -303,8 +421,8 @@ export default function PublicCatalogPage() {
                   </span>
                 )}
               </Button>
-              
-              <Button 
+
+              <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => setLocation("/login")}
@@ -314,8 +432,8 @@ export default function PublicCatalogPage() {
                 <User className="h-4 w-4 mr-1" />
                 Entrar
               </Button>
-              
-              <Button 
+
+              <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => setLocation("/register")}
@@ -325,8 +443,36 @@ export default function PublicCatalogPage() {
                 <UserPlus className="h-4 w-4 mr-1" />
                 Cadastrar
               </Button>
-              
-              <Button 
+
+              {/* Botão Compartilhar */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="text-white hover:bg-zinc-800"
+                    data-testid="button-share"
+                  >
+                    <Share2 className="h-5 w-5" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={handleCopyLink}>
+                    {linkCopied ? (
+                      <Check className="h-4 w-4 mr-2 text-green-500" />
+                    ) : (
+                      <Copy className="h-4 w-4 mr-2" />
+                    )}
+                    {linkCopied ? "Link copiado!" : "Copiar link do catálogo"}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={handleShareWhatsApp}>
+                    <Phone className="h-4 w-4 mr-2" />
+                    Compartilhar no WhatsApp
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              <Button
                 onClick={() => setLocation("/login")}
                 className="bg-orange-500 hover:bg-orange-600 text-white"
                 data-testid="button-atacado-login"
@@ -339,6 +485,97 @@ export default function PublicCatalogPage() {
           </div>
         </div>
       </header>
+
+      {/* Hero Banner / Carrossel */}
+      {activeSlides.length > 0 && (
+        <div className="relative overflow-hidden" ref={emblaRef}>
+          <div className="flex">
+            {activeSlides.map((slide) => (
+              <div key={slide.id} className="flex-shrink-0 w-full relative">
+                <div className="relative h-48 md:h-64 lg:h-80 w-full">
+                  <img
+                    src={slide.imageUrl}
+                    alt={slide.title || "Banner"}
+                    className="w-full h-full object-cover"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-r from-black/60 to-transparent" />
+                  <div className="absolute inset-0 flex flex-col justify-center p-6 md:p-10 lg:p-16">
+                    {slide.title && (
+                      <h2 className="text-white text-xl md:text-3xl lg:text-4xl font-bold mb-2">
+                        {slide.title}
+                      </h2>
+                    )}
+                    {slide.subtitle && (
+                      <p className="text-white/90 text-sm md:text-base lg:text-lg mb-4 max-w-xl">
+                        {slide.subtitle}
+                      </p>
+                    )}
+                    {slide.buttonText && slide.buttonLink && (
+                      <Button
+                        variant="default"
+                        size="lg"
+                        className="w-fit bg-orange-500 hover:bg-orange-600"
+                        onClick={() => setLocation(slide.buttonLink!)}
+                      >
+                        {slide.buttonText}
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+          {activeSlides.length > 1 && (
+            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2">
+              {activeSlides.map((_, index) => (
+                <button
+                  key={index}
+                  className={`w-2.5 h-2.5 rounded-full transition-colors ${
+                    index === selectedSlideIndex ? "bg-white" : "bg-white/50"
+                  }`}
+                  onClick={() => emblaApi?.scrollTo(index)}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Seção de Destaques se não tiver slides */}
+      {activeSlides.length === 0 && (
+        <div className="bg-gradient-to-r from-orange-500 to-orange-600 text-white py-8 md:py-12">
+          <div className="container mx-auto px-4 text-center">
+            <div className="flex items-center justify-center gap-2 mb-3">
+              <Sparkles className="h-6 w-6" />
+              <span className="text-sm font-medium uppercase tracking-wider">
+                Bem-vindo ao nosso catálogo
+              </span>
+            </div>
+            <h1 className="text-2xl md:text-4xl font-bold mb-3">
+              Encontre os melhores produtos
+            </h1>
+            <p className="text-white/90 text-sm md:text-base max-w-2xl mx-auto mb-4">
+              Navegue por nossa seleção de produtos com os melhores preços do
+              mercado
+            </p>
+            <div className="flex items-center justify-center gap-3">
+              <Button
+                variant="secondary"
+                size="lg"
+                onClick={handleCopyLink}
+                className="gap-2"
+              >
+                {linkCopied ? (
+                  <Check className="h-4 w-4" />
+                ) : (
+                  <Share2 className="h-4 w-4" />
+                )}
+                {linkCopied ? "Copiado!" : "Compartilhar catálogo"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="flex flex-1">
         <aside className="hidden lg:block w-64 border-r bg-muted/30 shrink-0">
@@ -359,7 +596,7 @@ export default function PublicCatalogPage() {
                     {totalProducts}
                   </Badge>
                 </Button>
-                {categoriesData.map(cat => (
+                {categoriesData.map((cat) => (
                   <Button
                     key={cat.id}
                     variant={category === cat.name ? "secondary" : "ghost"}
@@ -386,7 +623,7 @@ export default function PublicCatalogPage() {
                     >
                       Todas as Marcas
                     </Button>
-                    {brands.map(b => (
+                    {brands.map((b) => (
                       <Button
                         key={b}
                         variant={brand === b ? "secondary" : "ghost"}
@@ -432,20 +669,29 @@ export default function PublicCatalogPage() {
                     <Filter className="h-4 w-4 mr-1" />
                     Filtros
                   </Button>
-                  
+
                   <div className="text-sm text-muted-foreground">
-                    <span className="font-medium text-foreground">{filteredProducts.length}</span> produtos
+                    <span className="font-medium text-foreground">
+                      {filteredProducts.length}
+                    </span>{" "}
+                    produtos
                     {category !== "all" && (
-                      <span> em <span className="font-medium text-foreground">{category}</span></span>
+                      <span>
+                        {" "}
+                        em{" "}
+                        <span className="font-medium text-foreground">
+                          {category}
+                        </span>
+                      </span>
                     )}
                   </div>
                 </div>
 
                 <div className="flex items-center gap-2">
                   {hasFilters && (
-                    <Button 
-                      variant="ghost" 
-                      size="sm" 
+                    <Button
+                      variant="ghost"
+                      size="sm"
                       onClick={clearFilters}
                       data-testid="button-clear-filters"
                     >
@@ -453,7 +699,7 @@ export default function PublicCatalogPage() {
                       Limpar filtros
                     </Button>
                   )}
-                  
+
                   <div className="flex border rounded-md">
                     <Button
                       variant={viewMode === "grid" ? "secondary" : "ghost"}
@@ -487,7 +733,7 @@ export default function PublicCatalogPage() {
                     >
                       Todas
                     </Button>
-                    {categoriesData.map(cat => (
+                    {categoriesData.map((cat) => (
                       <Button
                         key={cat.id}
                         variant={category === cat.name ? "default" : "outline"}
@@ -514,9 +760,13 @@ export default function PublicCatalogPage() {
                 <div className="w-20 h-20 rounded-full bg-muted/50 flex items-center justify-center mb-4">
                   <Package className="h-10 w-10 text-muted-foreground/50" />
                 </div>
-                <h3 className="font-semibold text-lg mb-2">Nenhum produto encontrado</h3>
+                <h3 className="font-semibold text-lg mb-2">
+                  Nenhum produto encontrado
+                </h3>
                 <p className="text-muted-foreground text-sm mb-4">
-                  {hasFilters ? "Tente ajustar os filtros de busca" : "Os produtos serao exibidos aqui quando forem cadastrados"}
+                  {hasFilters
+                    ? "Tente ajustar os filtros de busca"
+                    : "Os produtos serao exibidos aqui quando forem cadastrados"}
                 </p>
                 {hasFilters && (
                   <Button variant="outline" onClick={clearFilters}>
@@ -526,8 +776,8 @@ export default function PublicCatalogPage() {
               </div>
             ) : viewMode === "grid" ? (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3">
-                {filteredProducts.map(product => (
-                  <Card 
+                {filteredProducts.map((product) => (
+                  <Card
                     key={product.id}
                     className="overflow-hidden group hover-elevate transition-all duration-200"
                     data-testid={`card-product-${product.id}`}
@@ -549,7 +799,10 @@ export default function PublicCatalogPage() {
                       )}
                       {product.brand && (
                         <div className="absolute top-1.5 left-1.5">
-                          <Badge variant="secondary" className="text-xs font-medium bg-background/90 backdrop-blur-sm">
+                          <Badge
+                            variant="secondary"
+                            className="text-xs font-medium bg-background/90 backdrop-blur-sm"
+                          >
                             {product.brand}
                           </Badge>
                         </div>
@@ -562,10 +815,13 @@ export default function PublicCatalogPage() {
                       <h3 className="font-medium text-sm line-clamp-2 min-h-[2.5rem] leading-tight mb-2">
                         {product.name}
                       </h3>
-                      <p className="text-base font-bold text-orange-600 dark:text-orange-500 mb-3" data-testid={`text-price-${product.id}`}>
+                      <p
+                        className="text-base font-bold text-orange-600 dark:text-orange-500 mb-3"
+                        data-testid={`text-price-${product.id}`}
+                      >
                         {formatPrice(product.price)}
                       </p>
-                      
+
                       {product.stock > 0 && (
                         <div className="flex items-center gap-2 mt-2">
                           <Input
@@ -573,7 +829,12 @@ export default function PublicCatalogPage() {
                             min="0"
                             max="999"
                             value={getQuantity(product.id)}
-                            onChange={(e) => setQuantity(product.id, parseInt(e.target.value) || 0)}
+                            onChange={(e) =>
+                              setQuantity(
+                                product.id,
+                                parseInt(e.target.value) || 0,
+                              )
+                            }
                             className="h-9 w-16 text-center text-sm"
                             data-testid={`input-qty-${product.id}`}
                           />
@@ -592,8 +853,8 @@ export default function PublicCatalogPage() {
               </div>
             ) : (
               <div className="space-y-2">
-                {filteredProducts.map(product => (
-                  <Card 
+                {filteredProducts.map((product) => (
+                  <Card
                     key={product.id}
                     className="overflow-hidden hover-elevate transition-all duration-200"
                     data-testid={`card-product-${product.id}`}
@@ -620,18 +881,24 @@ export default function PublicCatalogPage() {
                               {product.name}
                             </h3>
                             {product.brand && (
-                              <Badge variant="secondary" className="text-xs mt-1">
+                              <Badge
+                                variant="secondary"
+                                className="text-xs mt-1"
+                              >
                                 {product.brand}
                               </Badge>
                             )}
                           </div>
                           <div className="text-right shrink-0">
-                            <p className="text-base font-bold text-orange-600 dark:text-orange-500" data-testid={`text-price-${product.id}`}>
+                            <p
+                              className="text-base font-bold text-orange-600 dark:text-orange-500"
+                              data-testid={`text-price-${product.id}`}
+                            >
                               {formatPrice(product.price)}
                             </p>
                           </div>
                         </div>
-                        
+
                         {product.stock > 0 && (
                           <div className="flex items-center gap-2 mt-2">
                             <Input
@@ -639,7 +906,12 @@ export default function PublicCatalogPage() {
                               min="0"
                               max="999"
                               value={getQuantity(product.id)}
-                              onChange={(e) => setQuantity(product.id, parseInt(e.target.value) || 0)}
+                              onChange={(e) =>
+                                setQuantity(
+                                  product.id,
+                                  parseInt(e.target.value) || 0,
+                                )
+                              }
                               className="h-8 w-14 text-center text-sm"
                               data-testid={`input-qty-${product.id}`}
                             />
@@ -652,9 +924,11 @@ export default function PublicCatalogPage() {
                             </Button>
                           </div>
                         )}
-                        
+
                         {product.stock === 0 && (
-                          <Badge variant="destructive" className="mt-2">Indisponivel</Badge>
+                          <Badge variant="destructive" className="mt-2">
+                            Indisponivel
+                          </Badge>
                         )}
                       </div>
                     </div>
@@ -668,7 +942,7 @@ export default function PublicCatalogPage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => setPage(p => Math.max(1, p - 1))}
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
                   disabled={page === 1}
                   data-testid="button-prev-page"
                 >
@@ -704,7 +978,7 @@ export default function PublicCatalogPage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                   disabled={page === totalPages}
                   data-testid="button-next-page"
                 >
@@ -717,17 +991,86 @@ export default function PublicCatalogPage() {
         </main>
       </div>
 
-      <footer className="border-t py-4 bg-zinc-900 text-white">
-        <div className="container mx-auto px-4 text-center text-sm">
-          <p className="text-zinc-400">
-            Precos de varejo. Para precos de atacado, 
-            <span 
-              className="text-orange-500 cursor-pointer hover:underline ml-1"
-              onClick={() => setLocation("/login")}
-            >
-              faca login
-            </span>
-          </p>
+      <footer className="border-t py-8 bg-zinc-900 text-white">
+        <div className="container mx-auto px-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-6">
+            {/* Coluna 1 - Sobre */}
+            <div>
+              <ZenoLogo size="sm" showText={true} variant="light" />
+              <p className="text-zinc-400 text-sm mt-3">
+                Seu catálogo de produtos com os melhores preços do mercado.
+              </p>
+            </div>
+
+            {/* Coluna 2 - Links Rápidos */}
+            <div>
+              <h4 className="font-semibold mb-3">Links Rápidos</h4>
+              <div className="space-y-2 text-sm">
+                <button
+                  onClick={() => selectCategory("all")}
+                  className="block text-zinc-400 hover:text-orange-500 transition-colors"
+                >
+                  Todos os Produtos
+                </button>
+                <button
+                  onClick={() => setLocation("/login")}
+                  className="block text-zinc-400 hover:text-orange-500 transition-colors"
+                >
+                  Área do Cliente
+                </button>
+                <button
+                  onClick={() => setLocation("/register")}
+                  className="block text-zinc-400 hover:text-orange-500 transition-colors"
+                >
+                  Criar Conta
+                </button>
+              </div>
+            </div>
+
+            {/* Coluna 3 - Compartilhar */}
+            <div>
+              <h4 className="font-semibold mb-3">Compartilhar Catálogo</h4>
+              <p className="text-zinc-400 text-sm mb-3">
+                Envie nosso catálogo para seus amigos e colegas
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="bg-transparent border-zinc-700 hover:bg-zinc-800 text-white"
+                  onClick={handleCopyLink}
+                >
+                  {linkCopied ? (
+                    <Check className="h-4 w-4 mr-1" />
+                  ) : (
+                    <Copy className="h-4 w-4 mr-1" />
+                  )}
+                  {linkCopied ? "Copiado!" : "Copiar Link"}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="bg-transparent border-zinc-700 hover:bg-green-600 hover:border-green-600 text-white"
+                  onClick={handleShareWhatsApp}
+                >
+                  <Phone className="h-4 w-4 mr-1" />
+                  WhatsApp
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          <div className="border-t border-zinc-800 pt-6 text-center text-sm text-zinc-400">
+            <p>
+              Preços de varejo. Para preços de atacado,{" "}
+              <span
+                className="text-orange-500 cursor-pointer hover:underline"
+                onClick={() => setLocation("/login")}
+              >
+                faça login
+              </span>
+            </p>
+          </div>
         </div>
       </footer>
     </div>
