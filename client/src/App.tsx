@@ -212,28 +212,26 @@ function AppContent() {
     );
   }
 
-  if (!isAuthenticated) {
-    return (
-      <CartProvider>
-        <Switch>
-          <Route path="/register" component={RegisterPage} />
-          <Route path="/login" component={LoginPage} />
-          <Route path="/loja/:slug" component={StoreCatalogPage} />
-          <Route path="/catalogo" component={PublicCatalogPage} />
-          <Route path="/checkout" component={CheckoutPage} />
-          <Route component={LandingPage} />
-        </Switch>
-        <CartDrawer isAuthenticated={false} />
-      </CartProvider>
-    );
-  }
-
   return (
-    <CompanyProvider>
-      <CartProvider>
-        <AuthenticatedApp />
-      </CartProvider>
-    </CompanyProvider>
+    <CartProvider>
+      <Switch>
+        <Route path="/register" component={RegisterPage} />
+        <Route path="/login" component={LoginPage} />
+        <Route path="/loja/:slug" component={StoreCatalogPage} />
+        <Route path="/catalogo" component={PublicCatalogPage} />
+        <Route path="/checkout" component={CheckoutPage} />
+        {/* Rotas autenticadas */}
+        {isAuthenticated && (
+          <CompanyProvider>
+            <CartProvider>
+              <AuthenticatedApp />
+            </CartProvider>
+          </CompanyProvider>
+        )}
+        <Route component={LandingPage} />
+      </Switch>
+      <CartDrawer isAuthenticated={isAuthenticated} />
+    </CartProvider>
   );
 }
 

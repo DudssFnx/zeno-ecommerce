@@ -194,6 +194,7 @@ export default function OrdersPage() {
       printed: false,
       stockPosted: o.stockPosted || false,
       accountsPosted: o.accountsPosted || false,
+      order_channel: o.order_channel || o.orderChannel || undefined,
     }))
     .filter((o) => {
       if (activeTab === "all") return true;

@@ -1,13 +1,23 @@
-import { useState, useMemo, useRef } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { Loader2, Search, Plus, Minus, ShoppingCart, Star, ChevronLeft, ChevronRight, Package, Clock, MapPin } from "lucide-react";
 import { useCart } from "@/contexts/CartContext";
 import { useToast } from "@/hooks/use-toast";
+import type { Category, Product as SchemaProduct } from "@shared/schema";
+import { useQuery } from "@tanstack/react-query";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Loader2,
+  Minus,
+  Package,
+  Plus,
+  Search,
+  ShoppingCart,
+  Star,
+} from "lucide-react";
+import { useMemo, useRef, useState } from "react";
 import { Link } from "wouter";
-import type { Product as SchemaProduct, Category } from "@shared/schema";
 
 interface ProductsResponse {
   products: SchemaProduct[];
@@ -29,31 +39,33 @@ export function DeliveryCatalog({ isPublic = false }: DeliveryCatalogProps) {
   const { toast } = useToast();
   const categoryScrollRef = useRef<HTMLDivElement>(null);
 
-  const apiPrefix = isPublic ? '/api/public' : '/api';
+  const apiPrefix = isPublic ? "/api/public" : "/api";
 
   const { data: categories = [] } = useQuery<Category[]>({
     queryKey: [`${apiPrefix}/categories`],
   });
 
-  const parentCategories = useMemo(() => 
-    categories.filter(c => !c.parentId), 
-    [categories]
+  const parentCategories = useMemo(
+    () => categories.filter((c) => !c.parentId),
+    [categories],
   );
 
   const queryParams = useMemo(() => {
     const params = new URLSearchParams();
-    params.set('page', String(page));
-    params.set('limit', '20');
-    if (selectedCategory) params.set('categoryId', String(selectedCategory));
-    if (searchQuery) params.set('search', searchQuery);
+    params.set("page", String(page));
+    params.set("limit", "20");
+    if (selectedCategory) params.set("categoryId", String(selectedCategory));
+    if (searchQuery) params.set("search", searchQuery);
     return params.toString();
   }, [selectedCategory, searchQuery, page]);
 
   const { data: productsResponse, isLoading } = useQuery<ProductsResponse>({
     queryKey: [`${apiPrefix}/products`, queryParams],
     queryFn: async () => {
-      const res = await fetch(`${apiPrefix}/products?${queryParams}`, { credentials: 'include' });
-      if (!res.ok) throw new Error('Failed to fetch products');
+      const res = await fetch(`${apiPrefix}/products?${queryParams}`, {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to fetch products");
       return res.json();
     },
   });
@@ -61,8 +73,8 @@ export function DeliveryCatalog({ isPublic = false }: DeliveryCatalogProps) {
   const products = productsResponse?.products || [];
   const totalPages = productsResponse?.totalPages || 1;
   const totalProducts = productsResponse?.total || 0;
-  const featuredProducts = products.filter(p => p.featured);
-  const regularProducts = products.filter(p => !p.featured);
+  const featuredProducts = products.filter((p) => p.featured);
+  const regularProducts = products.filter((p) => !p.featured);
 
   const handleCategoryChange = (catId: number | null) => {
     setSelectedCategory(catId);
@@ -79,7 +91,7 @@ export function DeliveryCatalog({ isPublic = false }: DeliveryCatalogProps) {
   };
 
   const setQuantity = (productId: number, qty: number) => {
-    setQuantities(prev => ({
+    setQuantities((prev) => ({
       ...prev,
       [productId]: Math.max(0, qty),
     }));
@@ -105,20 +117,20 @@ export function DeliveryCatalog({ isPublic = false }: DeliveryCatalogProps) {
     setQuantity(product.id, 0);
   };
 
-  const scrollCategories = (direction: 'left' | 'right') => {
+  const scrollCategories = (direction: "left" | "right") => {
     if (categoryScrollRef.current) {
       const scrollAmount = 200;
       categoryScrollRef.current.scrollBy({
-        left: direction === 'left' ? -scrollAmount : scrollAmount,
-        behavior: 'smooth'
+        left: direction === "left" ? -scrollAmount : scrollAmount,
+        behavior: "smooth",
       });
     }
   };
 
   const formatPrice = (price: string | number) => {
-    return new Intl.NumberFormat('pt-BR', {
-      style: 'currency',
-      currency: 'BRL'
+    return new Intl.NumberFormat("pt-BR", {
+      style: "currency",
+      currency: "BRL",
     }).format(Number(price));
   };
 
@@ -129,8 +141,8 @@ export function DeliveryCatalog({ isPublic = false }: DeliveryCatalogProps) {
     const maxQty = stock > 0 ? stock : 999;
 
     return (
-      <div 
-        className={`bg-card rounded-lg border border-border/50 flex gap-3 p-3 ${isOutOfStock ? 'opacity-60' : ''}`}
+      <div
+        className={`bg-card rounded-lg border border-border/50 flex gap-3 p-3 ${isOutOfStock ? "opacity-60" : ""}`}
         data-testid={`delivery-card-${product.id}`}
       >
         <div className="relative w-24 h-24 sm:w-28 sm:h-28 rounded-lg overflow-hidden bg-muted shrink-0">
@@ -155,31 +167,41 @@ export function DeliveryCatalog({ isPublic = false }: DeliveryCatalogProps) {
           )}
           {isOutOfStock && (
             <div className="absolute inset-0 bg-background/70 flex items-center justify-center">
-              <span className="text-xs font-medium text-muted-foreground">Esgotado</span>
+              <span className="text-xs font-medium text-muted-foreground">
+                Esgotado
+              </span>
             </div>
           )}
         </div>
 
         <div className="flex-1 flex flex-col min-w-0">
-          <h3 className="font-medium text-sm line-clamp-2 mb-0.5" data-testid={`text-product-name-${product.id}`}>
+          <h3
+            className="font-medium text-sm line-clamp-2 mb-0.5"
+            data-testid={`text-product-name-${product.id}`}
+          >
             {product.name}
           </h3>
-          
+
           {product.brand && (
-            <span className="text-xs text-muted-foreground">{product.brand}</span>
+            <span className="text-xs text-muted-foreground">
+              {product.brand}
+            </span>
           )}
-          
+
           {product.description && (
             <p className="text-xs text-muted-foreground line-clamp-2 mt-1">
-              {product.description.replace(/<[^>]*>/g, '').substring(0, 80)}
+              {product.description.replace(/<[^>]*>/g, "").substring(0, 80)}
             </p>
           )}
-          
+
           <div className="mt-auto pt-2 flex items-end justify-between gap-2">
-            <span className="text-base font-bold text-primary" data-testid={`text-price-${product.id}`}>
+            <span
+              className="text-base font-bold text-primary"
+              data-testid={`text-price-${product.id}`}
+            >
               {formatPrice(product.price)}
             </span>
-            
+
             {qty === 0 ? (
               <Button
                 size="sm"
@@ -202,7 +224,10 @@ export function DeliveryCatalog({ isPublic = false }: DeliveryCatalogProps) {
                 >
                   <Minus className="w-4 h-4" />
                 </Button>
-                <span className="w-6 text-center text-sm font-bold text-primary-foreground" data-testid={`text-qty-${product.id}`}>
+                <span
+                  className="w-6 text-center text-sm font-bold text-primary-foreground"
+                  data-testid={`text-qty-${product.id}`}
+                >
                   {qty}
                 </span>
                 <Button
@@ -264,21 +289,21 @@ export function DeliveryCatalog({ isPublic = false }: DeliveryCatalogProps) {
               size="icon"
               variant="ghost"
               className="absolute left-0 top-1/2 -translate-y-1/2 z-10 h-8 w-8 bg-gradient-to-r from-background via-background to-transparent"
-              onClick={() => scrollCategories('left')}
+              onClick={() => scrollCategories("left")}
               data-testid="button-scroll-categories-left"
             >
               <ChevronLeft className="w-5 h-5" />
             </Button>
 
-            <div 
+            <div
               ref={categoryScrollRef}
               className="flex gap-2 overflow-x-auto scrollbar-hide px-6"
-              style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+              style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
             >
               <Button
                 variant={selectedCategory === null ? "default" : "ghost"}
                 size="sm"
-                className={`rounded-full whitespace-nowrap shrink-0 ${selectedCategory === null ? '' : 'bg-muted'}`}
+                className={`rounded-full whitespace-nowrap shrink-0 ${selectedCategory === null ? "" : "bg-muted"}`}
                 onClick={() => handleCategoryChange(null)}
                 data-testid="button-category-all"
               >
@@ -289,7 +314,7 @@ export function DeliveryCatalog({ isPublic = false }: DeliveryCatalogProps) {
                   key={cat.id}
                   variant={selectedCategory === cat.id ? "default" : "ghost"}
                   size="sm"
-                  className={`rounded-full whitespace-nowrap shrink-0 ${selectedCategory === cat.id ? '' : 'bg-muted'}`}
+                  className={`rounded-full whitespace-nowrap shrink-0 ${selectedCategory === cat.id ? "" : "bg-muted"}`}
                   onClick={() => handleCategoryChange(cat.id)}
                   data-testid={`button-category-${cat.id}`}
                 >
@@ -302,7 +327,7 @@ export function DeliveryCatalog({ isPublic = false }: DeliveryCatalogProps) {
               size="icon"
               variant="ghost"
               className="absolute right-0 top-1/2 -translate-y-1/2 z-10 h-8 w-8 bg-gradient-to-l from-background via-background to-transparent"
-              onClick={() => scrollCategories('right')}
+              onClick={() => scrollCategories("right")}
               data-testid="button-scroll-categories-right"
             >
               <ChevronRight className="w-5 h-5" />
@@ -328,12 +353,12 @@ export function DeliveryCatalog({ isPublic = false }: DeliveryCatalogProps) {
 
         <section>
           <h2 className="text-lg font-bold mb-3">
-            {selectedCategory 
-              ? categories.find(c => c.id === selectedCategory)?.name || 'Produtos'
-              : searchQuery 
+            {selectedCategory
+              ? categories.find((c) => c.id === selectedCategory)?.name ||
+                "Produtos"
+              : searchQuery
                 ? `Resultados para "${searchQuery}"`
-                : 'Cardápio'
-            }
+                : "Cardápio"}
           </h2>
 
           {regularProducts.length === 0 && featuredProducts.length === 0 ? (
@@ -343,7 +368,10 @@ export function DeliveryCatalog({ isPublic = false }: DeliveryCatalogProps) {
             </div>
           ) : (
             <div className="space-y-3">
-              {(searchQuery || selectedCategory ? products : regularProducts).map((product) => (
+              {(searchQuery || selectedCategory
+                ? products
+                : regularProducts
+              ).map((product) => (
                 <ProductCard key={product.id} product={product} />
               ))}
             </div>
@@ -354,7 +382,7 @@ export function DeliveryCatalog({ isPublic = false }: DeliveryCatalogProps) {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setPage(p => Math.max(1, p - 1))}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
                 disabled={page === 1}
                 className="rounded-full"
                 data-testid="button-prev-page"
@@ -367,7 +395,7 @@ export function DeliveryCatalog({ isPublic = false }: DeliveryCatalogProps) {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                 disabled={page === totalPages}
                 className="rounded-full"
                 data-testid="button-next-page"
@@ -380,8 +408,8 @@ export function DeliveryCatalog({ isPublic = false }: DeliveryCatalogProps) {
       </div>
 
       {totalItems > 0 && (
-        <Link href={isPublic ? "/guest-checkout" : "/cart"}>
-          <div 
+        <Link href={isPublic ? "/checkout?guest=1" : "/cart"}>
+          <div
             className="fixed bottom-4 right-4 z-40 bg-primary text-primary-foreground rounded-full shadow-xl cursor-pointer transition-all hover:scale-105 active:scale-95"
             data-testid="button-view-cart"
           >
@@ -394,7 +422,9 @@ export function DeliveryCatalog({ isPublic = false }: DeliveryCatalogProps) {
               </div>
               <div className="flex flex-col">
                 <span className="text-xs opacity-80">Ver sacola</span>
-                <span className="text-sm font-bold">{formatPrice(totalPrice)}</span>
+                <span className="text-sm font-bold">
+                  {formatPrice(totalPrice)}
+                </span>
               </div>
             </div>
           </div>

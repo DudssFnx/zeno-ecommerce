@@ -52,6 +52,7 @@ export interface Order {
   printed?: boolean;
   stockPosted?: boolean;
   accountsPosted?: boolean;
+  order_channel?: string;
 }
 
 interface OrderTableProps {
@@ -144,6 +145,11 @@ export function OrderTable({
                 )}
                 <TableCell className="font-medium">
                   {order.orderNumber}
+                  {order.order_channel === "CATALOGO_DIGITAL" && (
+                    <span className="ml-2 px-2 py-0.5 rounded bg-blue-100 text-blue-800 text-xs font-semibold">
+                      Catálogo Digital
+                    </span>
+                  )}
                 </TableCell>
                 {showCustomer && <TableCell>{order.customer}</TableCell>}
                 <TableCell className="text-muted-foreground">

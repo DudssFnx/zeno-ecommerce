@@ -11,7 +11,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { useCart } from "@/contexts/CartContext";
 import { useToast } from "@/hooks/use-toast";
 import type { Category, Product as SchemaProduct } from "@shared/schema";
@@ -578,69 +577,6 @@ export default function PublicCatalogPage() {
       )}
 
       <div className="flex flex-1">
-        <aside className="hidden lg:block w-64 border-r bg-muted/30 shrink-0">
-          <ScrollArea className="h-[calc(100vh-64px)]">
-            <div className="p-4">
-              <h2 className="font-semibold text-sm uppercase tracking-wide text-muted-foreground mb-3">
-                Categorias
-              </h2>
-              <div className="space-y-1">
-                <Button
-                  variant={category === "all" ? "secondary" : "ghost"}
-                  className="w-full justify-start text-sm h-9"
-                  onClick={() => selectCategory("all")}
-                  data-testid="button-category-all"
-                >
-                  Todas as Categorias
-                  <Badge variant="outline" className="ml-auto text-xs">
-                    {totalProducts}
-                  </Badge>
-                </Button>
-                {categoriesData.map((cat) => (
-                  <Button
-                    key={cat.id}
-                    variant={category === cat.name ? "secondary" : "ghost"}
-                    className="w-full justify-start text-sm h-9"
-                    onClick={() => selectCategory(cat.name)}
-                    data-testid={`button-category-${cat.id}`}
-                  >
-                    {cat.name}
-                  </Button>
-                ))}
-              </div>
-
-              {brands.length > 0 && (
-                <>
-                  <h2 className="font-semibold text-sm uppercase tracking-wide text-muted-foreground mb-3 mt-6">
-                    Marcas
-                  </h2>
-                  <div className="space-y-1">
-                    <Button
-                      variant={brand === "all" ? "secondary" : "ghost"}
-                      className="w-full justify-start text-sm h-9"
-                      onClick={() => setBrand("all")}
-                      data-testid="button-brand-all"
-                    >
-                      Todas as Marcas
-                    </Button>
-                    {brands.map((b) => (
-                      <Button
-                        key={b}
-                        variant={brand === b ? "secondary" : "ghost"}
-                        className="w-full justify-start text-sm h-9"
-                        onClick={() => setBrand(b)}
-                        data-testid={`button-brand-${b}`}
-                      >
-                        {b}
-                      </Button>
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
-          </ScrollArea>
-        </aside>
-
         <main className="flex-1 flex flex-col min-w-0">
           <div className="border-b bg-background sticky top-[64px] z-40">
             <div className="p-4">

@@ -2202,6 +2202,7 @@ export async function registerRoutes(
         shippingMethod,
         paymentMethod,
         notes,
+        order_channel,
       } = req.body;
 
       if (!companySlug || !items || items.length === 0) {
@@ -2273,6 +2274,7 @@ export async function registerRoutes(
             notes: notes || "",
             createdAt: new Date(),
             updatedAt: new Date(),
+            order_channel: order_channel || null,
           })
           .returning();
 
