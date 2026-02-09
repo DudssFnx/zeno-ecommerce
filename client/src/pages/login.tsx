@@ -44,17 +44,17 @@ export default function LoginPage() {
     },
     onSuccess: (data: { user: { role: string } }) => {
       queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
-      
       // Handle redirect after login (e.g., from checkout flow)
       const urlParams = new URLSearchParams(window.location.search);
       const redirectTo = urlParams.get('redirect');
       const step = urlParams.get('step');
-      
       if (redirectTo) {
         const redirectUrl = step ? `${redirectTo}?step=${step}` : redirectTo;
         setLocation(redirectUrl);
       } else if (data.user?.role === "supplier") {
         setLocation("/brand-analytics");
+      } else if (data.user?.role === "superadmin") {
+        setLocation("/superadmin-panel");
       } else {
         setLocation("/");
       }
