@@ -433,12 +433,12 @@ export function AppSidebar({ onLogout }: AppSidebarProps) {
                     <SidebarMenuItem>
                       <CollapsibleTrigger asChild>
                         <SidebarMenuButton
-                          className="group/btn rounded-lg"
+                          className="group/btn rounded-lg hover:ring-2 hover:ring-primary/30 hover:bg-transparent"
                           data-testid={`link-nav-${item.title
                             .toLowerCase()
                             .replace(/\s+/g, "-")}`}
                         >
-                          <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-muted/50 group-hover/btn:bg-primary/10 transition-colors">
+                          <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-muted/50 hover:bg-transparent transition-colors hover:ring-2 hover:ring-primary/30">
                             <item.icon className="h-4 w-4 text-muted-foreground group-hover/btn:text-primary transition-colors" />
                           </div>
                           <span className="font-medium">{item.title}</span>
@@ -491,13 +491,13 @@ export function AppSidebar({ onLogout }: AppSidebarProps) {
                     <SidebarMenuButton
                       asChild
                       isActive={location === item.url}
-                      className="group/btn rounded-lg"
+                      className="group/btn rounded-lg hover:ring-2 hover:ring-primary/30 hover:bg-transparent"
                       data-testid={`link-nav-${item.title
                         .toLowerCase()
                         .replace(/\s+/g, "-")}`}
                     >
                       <Link href={item.url!}>
-                        <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-muted/50 group-hover/btn:bg-primary/10 data-[active=true]:bg-primary/15 transition-colors">
+                        <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-muted/50 hover:bg-transparent data-[active=true]:bg-primary/15 transition-colors hover:ring-2 hover:ring-primary/30">
                           <item.icon className="h-4 w-4 text-muted-foreground group-hover/btn:text-primary transition-colors" />
                         </div>
                         <span className="font-medium">{item.title}</span>
