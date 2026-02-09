@@ -6,6 +6,7 @@ interface User {
 
 function SuperadminPanel() {
   // ...existing code...
+  // Forçando novo deploy: ajuste de comentário.
 }
 
 export default SuperadminPanel;
