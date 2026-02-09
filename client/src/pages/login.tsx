@@ -1,11 +1,5 @@
-import { useState } from "react";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
-import { useMutation } from "@tanstack/react-query";
-import { useLocation } from "wouter";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   Form,
   FormControl,
@@ -13,9 +7,15 @@ import {
   FormItem,
   FormMessage,
 } from "@/components/ui/form";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Loader2, Eye, EyeOff } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useMutation } from "@tanstack/react-query";
+import { Eye, EyeOff, Loader2 } from "lucide-react";
+import { useState } from "react";
+import { useForm } from "react-hook-form";
+import { useLocation } from "wouter";
+import { z } from "zod";
 
 const loginSchema = z.object({
   email: z.string().min(1, "Campo obrigatorio"),
@@ -46,8 +46,8 @@ export default function LoginPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
       // Handle redirect after login (e.g., from checkout flow)
       const urlParams = new URLSearchParams(window.location.search);
-      const redirectTo = urlParams.get('redirect');
-      const step = urlParams.get('step');
+      const redirectTo = urlParams.get("redirect");
+      const step = urlParams.get("step");
       if (redirectTo) {
         const redirectUrl = step ? `${redirectTo}?step=${step}` : redirectTo;
         setLocation(redirectUrl);
@@ -75,15 +75,15 @@ export default function LoginPage() {
         <div className="text-center mb-8">
           <div className="flex justify-center mb-6">
             <div className="flex items-center justify-center h-20 w-20 rounded-2xl bg-gradient-to-br from-emerald-500 to-emerald-600 shadow-xl shadow-emerald-500/30">
-              <span className="text-4xl font-black text-white tracking-tighter">Z</span>
+              <span className="text-4xl font-black text-white tracking-tighter">
+                Z
+              </span>
             </div>
           </div>
           <h1 className="text-3xl font-black bg-gradient-to-r from-emerald-400 to-emerald-300 bg-clip-text text-transparent tracking-tight">
             Zeno
           </h1>
-          <p className="text-zinc-400 mt-2 text-sm">
-            B2B Platform
-          </p>
+          <p className="text-zinc-400 mt-2 text-sm">B2B Platform</p>
         </div>
 
         {error && (
@@ -93,7 +93,10 @@ export default function LoginPage() {
         )}
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
+          <form
+            onSubmit={form.handleSubmit(handleSubmit)}
+            className="space-y-4"
+          >
             <FormField
               control={form.control}
               name="email"
