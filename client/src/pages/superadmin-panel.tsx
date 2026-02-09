@@ -43,9 +43,9 @@ function useCompanyStats(companyId: string | null) {
         axios.get(`/api/users?companyId=${companyId}&role=customer`),
       ]);
       return {
-        totalProdutos: prod.data?.length || 0,
-        totalFuncionarios: func.data?.length || 0,
-        totalClientes: cli.data?.length || 0,
+        totalProdutos: prod.data?.total ?? prod.data?.products?.length ?? 0,
+        totalFuncionarios: func.data?.length ?? 0,
+        totalClientes: cli.data?.length ?? 0,
       };
     },
     enabled: !!companyId,

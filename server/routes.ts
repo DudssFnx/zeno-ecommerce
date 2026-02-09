@@ -13,7 +13,7 @@ import {
   users,
 } from "@shared/schema";
 import bcrypt from "bcryptjs";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { type Express } from "express";
 import { type Server } from "http";
 import { db } from "./db";
@@ -264,7 +264,19 @@ export async function registerRoutes(
   // ==========================================
   app.get("/api/users", async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).send();
-    const result = await db.select().from(users).orderBy(desc(users.createdAt));
+    const { companyId, role } = req.query;
+    let query = db.select().from(users);
+
+    if (companyId) {
+      query = query.where(eq(users.companyId, String(companyId)));
+    }
+    if (role) {
+      // Suporta múltiplos roles separados por vírgula
+      const roles = String(role).split(",");
+      query = query.where(inArray(users.role, roles));
+    }
+
+    const result = await query.orderBy(desc(users.createdAt));
     res.json(result);
   });
 
@@ -436,7 +448,14 @@ export async function registerRoutes(
   // --- 🛒 PRODUTOS (MANTIDO IGUAL) ---
   // ==========================================
   app.get("/api/products", async (req, res) => {
-    const result = await db.select().from(products).orderBy(desc(products.id));
+    const { companyId } = req.query;
+    let query = db.select().from(products);
+
+    if (companyId) {
+      query = query.where(eq(products.companyId, String(companyId)));
+    }
+
+    const result = await query.orderBy(desc(products.id));
     const mapped = result.map((p) => ({
       ...p,
       nome: p.name,
@@ -450,15 +469,16 @@ export async function registerRoutes(
   app.post("/api/products", async (req: any, res) => {
     if (!req.isAuthenticated()) return res.status(401).send();
     try {
+      // Permite que o superadmin defina o companyId explicitamente
+      const companyId = req.body.companyId || req.user.companyId || "1";
       const [product] = await db
         .insert(products)
         .values({
           ...req.body,
-          companyId: req.user.companyId || "1",
+          companyId,
           stock: Number(req.body.stock || 0),
           price: String(req.body.price || "0"),
           cost: String(req.body.cost || "0"),
-          // 🛡️ BLINDAGEM: Converte strings vazias para null ou número correto
           categoryId: req.body.categoryId ? Number(req.body.categoryId) : null,
           supplierId: req.body.supplierId ? Number(req.body.supplierId) : null,
           createdAt: new Date(),
