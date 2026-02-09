@@ -27,10 +27,105 @@ function cleanDocument(doc: string | undefined | null) {
   return doc.replace(/\D/g, "");
 }
 
+// Middleware para checar se usuário é superadmin
+function requireSuperAdmin(req, res, next) {
+  if (!req.isAuthenticated() || req.user.role !== "superadmin") {
+    return res.status(403).json({ message: "Acesso restrito ao superadmin" });
+  }
+  next();
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express,
 ): Promise<Server> {
+  // Listar todas as empresas (superadmin)
+  app.get("/api/superadmin/companies", requireSuperAdmin, async (req, res) => {
+    const result = await db
+      .select()
+      .from(companies)
+      .orderBy(desc(companies.createdAt));
+    res.json(result);
+  });
+
+  // Cadastrar nova empresa e admin inicial (superadmin)
+  app.post("/api/superadmin/companies", requireSuperAdmin, async (req, res) => {
+    try {
+      const { company, admin } = req.body;
+      if (!company || !admin)
+        return res.status(400).json({ message: "Dados incompletos" });
+      // Criar empresa
+      const [newCompany] = await db
+        .insert(companies)
+        .values({
+          ...company,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          active: true,
+          approvalStatus: "APROVADO",
+          slug: company.fantasyName
+            ? generateSlug(company.fantasyName)
+            : undefined,
+        })
+        .returning();
+      // Criar admin inicial
+      const hashedPassword = await bcrypt.hash(admin.password || "123456", 10);
+      const [newAdmin] = await db
+        .insert(users)
+        .values({
+          ...admin,
+          password: hashedPassword,
+          companyId: newCompany.id,
+          role: "admin",
+          approved: true,
+          createdAt: new Date(),
+        })
+        .returning();
+      res.status(201).json({ company: newCompany, admin: newAdmin });
+    } catch (error) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Bloquear/desbloquear empresa (superadmin)
+  app.patch(
+    "/api/superadmin/companies/:id/block",
+    requireSuperAdmin,
+    async (req, res) => {
+      try {
+        const { block } = req.body;
+        const [updated] = await db
+          .update(companies)
+          .set({ active: !block, updatedAt: new Date() })
+          .where(eq(companies.id, req.params.id))
+          .returning();
+        if (!updated)
+          return res.status(404).json({ message: "Empresa não encontrada" });
+        res.json(updated);
+      } catch (error) {
+        res.status(500).json({ message: error.message });
+      }
+    },
+  );
+
+  // Métricas globais (superadmin)
+  app.get("/api/superadmin/metrics", requireSuperAdmin, async (req, res) => {
+    try {
+      const [{ totalEmpresas }] = await db
+        .select({ totalEmpresas: sql`COUNT(*)` })
+        .from(companies);
+      const [{ totalProdutos }] = await db
+        .select({ totalProdutos: sql`COUNT(*)` })
+        .from(products);
+      const [{ totalUsuarios }] = await db
+        .select({ totalUsuarios: sql`COUNT(*)` })
+        .from(users);
+      res.json({ totalEmpresas, totalProdutos, totalUsuarios });
+    } catch (error) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   app.get("/api/auth/user", async (req: any, res) => {
     if (!req.isAuthenticated())
       return res.status(401).json({ message: "Não autenticado" });

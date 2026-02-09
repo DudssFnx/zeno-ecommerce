@@ -44,6 +44,7 @@ import RegisterPage from "@/pages/register";
 import SettingsPage from "@/pages/settings";
 import CompanySettings from "@/pages/settings/CompanySettings"; // ✅ IMPORTADO
 import StoreCatalogPage from "@/pages/store-catalog";
+import SuperAdminPanel from "@/pages/superadmin-panel";
 import SuppliersPage from "@/pages/suppliers";
 import UsersPage from "@/pages/users";
 import { QueryClientProvider, useQuery } from "@tanstack/react-query";
@@ -119,6 +120,7 @@ function AuthenticatedApp() {
               <Route path="/" component={DashboardPage} />
               <Route path="/categories" component={CategoriesPage} />
               <Route path="/catalog" component={CatalogPage} />
+              <Route path="/superadmin-panel" component={SuperAdminPanel} />
               <Route path="/orders" component={OrdersPage} />
               <Route path="/orders/:id" component={OrderDetailsPage} />
               <Route path="/pdv" component={PDVPage} />
