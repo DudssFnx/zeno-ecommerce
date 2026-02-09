@@ -4,61 +4,8 @@ import { useEffect, useState } from "react";
 // Tipo mínimo para usuário (funcionário)
 interface User {
   id: string;
-          {selectedCompany && (
-            <div className="bg-[#232b3b] border border-[#2e3a54] rounded-2xl shadow-lg p-6 flex-1 min-w-[340px] max-w-xl self-start text-white flex flex-col gap-2 animate-fade-in">
-              <h2 className="text-2xl font-extrabold mb-2 text-blue-200 tracking-tight flex items-center gap-2">
-                <span className="inline-block w-2 h-6 bg-blue-600 rounded-sm"></span>
-                {selectedCompany.fantasyName}
-              </h2>
-              <div className="mb-1 text-base text-blue-100 font-medium">
-                Razão Social: <span className="font-normal">{selectedCompany.razaoSocial}</span>
-              </div>
-              <div className="mb-1 text-base text-blue-100 font-medium">
-                Email: <span className="font-normal">{selectedCompany.email}</span>
-              </div>
-              <div className="mb-1 text-base text-blue-100 font-medium flex items-center gap-2 justify-between">
-                <span>
-                  Status: <span className={`font-bold ${selectedCompany.active ? "text-green-400" : "text-red-400"}`}>{selectedCompany.active ? "Ativa" : "Bloqueada"}</span>
-                </span>
-                <button
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-base font-bold transition-all shadow border border-[#2e3a54] ${selectedCompany.active ? "bg-red-600 hover:bg-red-700 text-white" : "bg-green-600 hover:bg-green-700 text-white"}`}
-                  onClick={async () => {
-                    if (window.confirm(`Tem certeza que deseja ${selectedCompany.active ? 'inativar' : 'reativar'} esta empresa? Isso irá ${selectedCompany.active ? 'bloquear todos os acessos dos usuários desta empresa.' : 'liberar o acesso novamente.'}`)) {
-                      await handleBlockCompany(selectedCompany.id, selectedCompany.active);
-                    }
-                  }}
-                  title={selectedCompany.active ? "Inativar empresa (bloquear todos os acessos)" : "Reativar empresa"}
-                  style={{ minWidth: 120 }}
-                >
-                  {selectedCompany.active ? <span className="font-bold">⛔ Inativar</span> : <span className="font-bold">✔ Reativar</span>}
-                </button>
-              </div>
-
-              <div className="border-t border-[#2e3a54] my-4"></div>
-
-              {/* Funcionários */}
-              <div className="mt-2">
-                <h3 className="text-lg font-bold mb-2 text-blue-300 tracking-tight">Funcionários</h3>
-                {loadingUsers ? (
-                  <div className="text-blue-100">Carregando funcionários...</div>
-                ) : selectedCompanyEmployees.length === 0 ? (
-                  <div className="text-gray-400">Nenhum funcionário cadastrado.</div>
-                ) : (
-                  <ul className="divide-y divide-[#2e3a54]">
-                    {selectedCompanyEmployees.map((u) => (
-                      <li key={u.id} className="py-2">
-                        <div className="font-bold text-white text-base">{u.firstName} {u.lastName}</div>
-                        <div className="text-xs text-blue-100">{u.email}</div>
-                        <div className="text-xs text-blue-200">Cargo: {u.role}</div>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-
-              {/* Clientes e produtos virão em seguida */}
-            </div>
-          )}
+  // ...adicione outros campos conforme necessário
+}
     queryFn: async () => {
       const res = await axios.get("/api/users");
       return res.data;
