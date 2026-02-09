@@ -6,12 +6,6 @@ interface User {
   id: string;
   // ...adicione outros campos conforme necessário
 }
-    queryFn: async () => {
-      const res = await axios.get("/api/users");
-      return res.data;
-    },
-    enabled: !!selectedCompany,
-  });
 
   // Filtra funcionários da empresa selecionada (exclui clientes)
   const selectedCompanyEmployees = selectedCompany
