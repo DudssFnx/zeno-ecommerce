@@ -1,9 +1,12 @@
+import { users } from "@shared/schema";
 import connectPg from "connect-pg-simple";
+import { eq } from "drizzle-orm";
 import type { Express, RequestHandler } from "express";
 import session from "express-session";
 import memoize from "memoizee";
 import * as client from "openid-client";
 import passport from "passport";
+import { db } from "./db";
 
 const getOidcConfig = memoize(
   async () => {
@@ -26,14 +29,14 @@ const getOidcConfig = memoize(
         (process.env.REPL_ID || process.env.BLING_CLIENT_ID)!,
         undefined,
         undefined,
-        { allowInsecureRequests: true }
+        { allowInsecureRequests: true },
       );
     } catch (err) {
       console.error("❌ [Auth] Erro OIDC (Ignorado em modo Local):", err);
       return null;
     }
   },
-  { maxAge: 3600 * 1000 }
+  { maxAge: 3600 * 1000 },
 );
 
 export function getSession() {
@@ -74,8 +77,51 @@ export async function setupAuth(app: Express) {
   app.use(passport.initialize());
   app.use(passport.session());
 
-  passport.serializeUser((user: any, cb) => cb(null, user));
-  passport.deserializeUser((user: any, cb) => cb(null, user));
+  // Sincroniza activeCompanyId da sessão para req.user em cada request autenticada
+  app.use((req: any, res, next) => {
+    try {
+      if (req.isAuthenticated && req.isAuthenticated()) {
+        const sessionCompanyId = req.session?.activeCompanyId;
+        if (sessionCompanyId) {
+          // força o companyId no objeto de usuário desserializado
+          req.user = { ...(req.user || {}), companyId: sessionCompanyId };
+        }
+      }
+    } catch (e) {
+      console.warn("[Auth] erro ao sincronizar companyId da sessão:", e);
+    }
+    next();
+  });
+
+  // Evita cache de respostas autenticadas para prevenir 304 com dados trocados
+  app.use("/api", (req, res, next) => {
+    if (req.method === "GET" && req.isAuthenticated && req.isAuthenticated()) {
+      res.setHeader(
+        "Cache-Control",
+        "no-store, no-cache, must-revalidate, private",
+      );
+    }
+    next();
+  });
+
+  // Armazenar apenas o id na sessão e re-hidratar o usuário a cada request para garantir companyId atualizado
+  passport.serializeUser((user: any, cb) => {
+    // Armazena só o id no cookie para manter sessão enxuta e evitar estados inconsistentes
+    cb(null, { id: user.id });
+  });
+
+  passport.deserializeUser(async (payload: any, cb) => {
+    try {
+      const [user] = await db
+        .select()
+        .from(users)
+        .where(eq(users.id, payload.id))
+        .limit(1);
+      cb(null, user || null);
+    } catch (err) {
+      cb(err);
+    }
+  });
 
   const config = await getOidcConfig();
   if (!config) return;

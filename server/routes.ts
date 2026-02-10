@@ -19,7 +19,28 @@ import { type Server } from "http";
 import { db } from "./db";
 import { registerFinancialRoutes } from "./financialRoutes";
 import { createPayableFromPurchaseOrder } from "./services/payables.service";
-import { createReceivableFromOrder } from "./services/receivables.service";
+import {
+  cancelReceivablesByOrderId,
+  createReceivableFromOrder,
+  hasReceivablesForOrder,
+  reopenReceivablesByOrderId,
+} from "./services/receivables.service";
+
+// Tipagem leve para reduzir warnings: Request.user e Request.session usados no arquivo
+declare global {
+  namespace Express {
+    interface Request {
+      user?: {
+        id?: string;
+        companyId?: string;
+        role?: string;
+        firstName?: string;
+        email?: string;
+      };
+      session?: any;
+    }
+  }
+}
 
 // ✅ 1. FUNÇÃO AUXILIAR
 function cleanDocument(doc: string | undefined | null) {
@@ -142,22 +163,61 @@ export async function registerRoutes(
   // Login local com email/senha
   app.post("/api/auth/login", async (req: any, res) => {
     try {
-      const { email, password } = req.body;
-
-      if (!email || !password) {
+      const { email, password, razaoSocial } = req.body;
+      console.log("[LOGIN] Razão social recebida:", razaoSocial);
+      if (!email || !password || !razaoSocial) {
         return res
           .status(400)
-          .json({ message: "Email e senha são obrigatórios" });
+          .json({ message: "Email, senha e razão social são obrigatórios" });
       }
 
+      // Buscar empresa pela razão social (case insensitive, ignorando acentos se disponível)
+      let company: any = null;
+      try {
+        const [found] = await db
+          .select()
+          .from(companies)
+          .where(
+            sql`unaccent(lower(${companies.razaoSocial})) = unaccent(lower(${razaoSocial}))`,
+          )
+          .limit(1);
+        company = found;
+      } catch (err: any) {
+        // Postgres pode não ter a extensão unaccent em ambientes locais; fallback sem unaccent
+        console.warn(
+          "[LOGIN] unaccent not available, falling back to lower comparison:",
+          err?.message || err,
+        );
+        const [found] = await db
+          .select()
+          .from(companies)
+          .where(sql`lower(${companies.razaoSocial}) = lower(${razaoSocial})`)
+          .limit(1);
+        company = found;
+      }
+
+      console.log("[LOGIN] Empresa encontrada:", company);
+
+      if (!company) {
+        console.log("[LOGIN] Empresa não encontrada!");
+        return res.status(401).json({ message: "Empresa não encontrada" });
+      }
+
+      // Buscar usuário pelo e-mail e companyId
       const [user] = await db
         .select()
         .from(users)
-        .where(eq(users.email, email))
+        .where(and(eq(users.email, email), eq(users.companyId, company.id)))
         .limit(1);
+      console.log("[LOGIN] Usuário encontrado:", user);
 
       if (!user) {
-        return res.status(401).json({ message: "Email ou senha incorretos" });
+        console.log(
+          "[LOGIN] Usuário não encontrado para este e-mail e empresa!",
+        );
+        return res
+          .status(401)
+          .json({ message: "Email, senha ou empresa incorretos" });
       }
 
       const isValidPassword = await bcrypt.compare(
@@ -165,20 +225,68 @@ export async function registerRoutes(
         user.password || "",
       );
       if (!isValidPassword) {
-        return res.status(401).json({ message: "Email ou senha incorretos" });
+        console.log("[LOGIN] Senha incorreta!");
+        return res
+          .status(401)
+          .json({ message: "Email, senha ou empresa incorretos" });
       }
 
       // Login usando Passport
       req.login(user, (err: any) => {
         if (err) {
+          console.log("[LOGIN] Erro ao fazer login:", err);
           return res.status(500).json({ message: "Erro ao fazer login" });
         }
+        // Persist active company in session and ensure req.user has companyId
+        try {
+          if (req.session) {
+            req.session.activeCompanyId = company.id;
+            // Ensure session is saved before responding to avoid race conditions
+            req.session.save((saveErr: any) => {
+              if (saveErr) {
+                console.warn(
+                  "[LOGIN] Erro ao salvar sessão com activeCompanyId:",
+                  saveErr,
+                );
+              }
+              // Force companyId on req.user as well
+              req.user.companyId = company.id;
+
+              console.log(
+                "[LOGIN] Login realizado com sucesso para usuário:",
+                user.email,
+                "na empresa:",
+                company.razaoSocial,
+              );
+              res.json({
+                user: { ...user, isB2bUser: true, nome: user.firstName },
+                message: "Login realizado com sucesso",
+              });
+            });
+            return; // response will be sent in save callback
+          } else {
+            req.user.companyId = company.id;
+          }
+        } catch (e) {
+          console.warn(
+            "[LOGIN] Não foi possível salvar companyId na sessão:",
+            e,
+          );
+        }
+
+        console.log(
+          "[LOGIN] Login realizado com sucesso para usuário:",
+          user.email,
+          "na empresa:",
+          company.razaoSocial,
+        );
         res.json({
           user: { ...user, isB2bUser: true, nome: user.firstName },
           message: "Login realizado com sucesso",
         });
       });
     } catch (error: any) {
+      console.log("[LOGIN] Erro inesperado:", error);
       res.status(500).json({ message: error.message });
     }
   });
@@ -188,6 +296,22 @@ export async function registerRoutes(
   });
 
   // ==========================================
+  // --- 🗂️ CATEGORIAS (AUTENTICADO) ---
+  // ==========================================
+  app.get("/api/categories", async (req: any, res) => {
+    if (!req.isAuthenticated()) return res.status(401).send();
+    try {
+      const companyId = req.user.companyId || "1";
+      const result = await db
+        .select()
+        .from(categories)
+        .where(eq(categories.companyId, companyId))
+        .orderBy(categories.name);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
   // 🏢 EMPRESA
   // ==========================================
 
@@ -204,7 +328,11 @@ export async function registerRoutes(
   app.get("/api/company/me", async (req: any, res) => {
     if (!req.isAuthenticated()) return res.status(401).send();
     try {
-      const [company] = await db.select().from(companies).limit(1);
+      const [company] = await db
+        .select()
+        .from(companies)
+        .where(eq(companies.id, req.user.companyId))
+        .limit(1);
       if (!company)
         return res.status(404).json({ message: "Empresa não encontrada" });
       res.json(company);
@@ -264,28 +392,94 @@ export async function registerRoutes(
   // ==========================================
   app.get("/api/users", async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).send();
-    const { companyId, role } = req.query;
-    let query = db.select().from(users);
+    const { role } = req.query;
 
-    // Log para depuração
-    console.log("[API/users] companyId recebido:", companyId);
+    // Debug: mostrar usuário da sessão
+    console.log("[API/users] req.user:", {
+      id: req.user?.id,
+      role: req.user?.role,
+      companyId: req.user?.companyId,
+    });
+    console.log(
+      "[API/users] session.activeCompanyId:",
+      req.session?.activeCompanyId,
+    );
 
-    if (companyId) {
-      query = query.where(eq(users.companyId, String(companyId)));
+    // Validar presença de companyId para não vazar dados
+    const isSuperUser =
+      req.user?.role === "superadmin" || req.user?.role === "super_admin";
+    const sessionCompanyId = req.session?.activeCompanyId;
+    if (!isSuperUser && !sessionCompanyId && !req.user?.companyId) {
       console.log(
-        "[API/users] Filtro aplicado: companyId =",
-        String(companyId),
+        "[API/users] Requisição sem companyId na sessão - bloqueando",
       );
-    }
-    if (role) {
-      // Suporta múltiplos roles separados por vírgula
-      const roles = String(role).split(",");
-      query = query.where(inArray(users.role, roles));
-      console.log("[API/users] Filtro de role aplicado:", roles);
+      return res
+        .status(401)
+        .json({ message: "Sessão inválida: companyId ausente" });
     }
 
-    const result = await query.orderBy(desc(users.createdAt));
-    console.log("[API/users] Resultado da query:", result);
+    // Se for superuser, retorna todos
+    if (isSuperUser) {
+      let query = db.select().from(users);
+      if (role) {
+        const roles = String(role).split(",");
+        query = query.where(inArray(users.role, roles));
+        console.log("[API/users] Filtro de role aplicado (superuser):", roles);
+      }
+      const result = await query.orderBy(desc(users.createdAt));
+      console.log(
+        "[API/users] Resultado da query (superuser):",
+        result.map((r) => ({
+          id: r.id,
+          companyId: r.companyId,
+          email: r.email,
+          role: r.role,
+        })),
+      );
+      return res.json(result);
+    }
+
+    // Usuário normal: garantir que companyId existe e filtrar explicitamente pelo companyId
+    const companyId = String(sessionCompanyId || req.user.companyId);
+    console.log(
+      "[API/users] Executando query filtrada por companyId:",
+      companyId,
+    );
+
+    if (role) {
+      const roles = String(role).split(",");
+      const result = await db
+        .select()
+        .from(users)
+        .where(and(eq(users.companyId, companyId), inArray(users.role, roles)))
+        .orderBy(desc(users.createdAt));
+      console.log(
+        "[API/users] Resultado da query (filtrado + role):",
+        result.map((r) => ({
+          id: r.id,
+          companyId: r.companyId,
+          email: r.email,
+          role: r.role,
+        })),
+      );
+      return res.json(result);
+    }
+
+    const result = await db
+      .select()
+      .from(users)
+      .where(eq(users.companyId, companyId))
+      .orderBy(desc(users.createdAt));
+
+    console.log(
+      "[API/users] Resultado da query (filtrado):",
+      result.map((r) => ({
+        id: r.id,
+        companyId: r.companyId,
+        email: r.email,
+        role: r.role,
+      })),
+    );
     res.json(result);
   });
 
@@ -375,10 +569,19 @@ export async function registerRoutes(
       if (updateData.cnpj) updateData.cnpj = cleanDocument(updateData.cnpj);
       if (updateData.cpf) updateData.cpf = cleanDocument(updateData.cpf);
 
+      // Multi-tenancy seguro: só superadmin pode editar qualquer usuário
+      let whereClause = eq(users.id, req.params.id);
+      if (req.user.role !== "superadmin") {
+        whereClause = and(
+          whereClause,
+          eq(users.companyId, String(req.user.companyId)),
+        );
+      }
+
       const [updated] = await db
         .update(users)
         .set(updateData)
-        .where(eq(users.id, req.params.id))
+        .where(whereClause)
         .returning();
 
       if (!updated)
@@ -394,7 +597,17 @@ export async function registerRoutes(
 
   app.delete("/api/users/:id", async (req: any, res) => {
     if (!req.isAuthenticated()) return res.status(401).send();
-    await db.delete(users).where(eq(users.id, req.params.id));
+    // Multi-tenancy seguro: só superadmin pode excluir qualquer usuário
+    let whereClause = eq(users.id, req.params.id);
+    if (req.user.role !== "superadmin") {
+      whereClause = and(
+        whereClause,
+        eq(users.companyId, String(req.user.companyId)),
+      );
+    }
+    const [deleted] = await db.delete(users).where(whereClause).returning();
+    if (!deleted)
+      return res.status(404).json({ message: "Usuário não encontrado" });
     res.json({ message: "Excluído" });
   });
 
@@ -403,10 +616,12 @@ export async function registerRoutes(
   // ==========================================
   app.get("/api/suppliers", async (req: any, res) => {
     if (!req.isAuthenticated()) return res.status(401).send();
-    const result = await db
-      .select()
-      .from(suppliers)
-      .orderBy(desc(suppliers.id));
+    let query = db.select().from(suppliers);
+    // Multi-tenancy seguro: só superadmin pode ver todos
+    if (req.user.role !== "superadmin") {
+      query = query.where(eq(suppliers.companyId, String(req.user.companyId)));
+    }
+    const result = await query.orderBy(desc(suppliers.id));
     res.json(result);
   });
 
@@ -439,73 +654,65 @@ export async function registerRoutes(
 
   app.patch("/api/suppliers/:id", async (req: any, res) => {
     if (!req.isAuthenticated()) return res.status(401).send();
+    // Multi-tenancy seguro: só superadmin pode editar qualquer fornecedor
+    let whereClause = eq(suppliers.id, parseInt(req.params.id));
+    if (req.user.role !== "superadmin") {
+      whereClause = and(
+        whereClause,
+        eq(suppliers.companyId, String(req.user.companyId)),
+      );
+    }
     const [updated] = await db
       .update(suppliers)
       .set(req.body)
-      .where(eq(suppliers.id, parseInt(req.params.id)))
+      .where(whereClause)
       .returning();
+    if (!updated)
+      return res.status(404).json({ message: "Fornecedor não encontrado" });
     res.json(updated);
   });
 
   app.delete("/api/suppliers/:id", async (req: any, res) => {
     if (!req.isAuthenticated()) return res.status(401).send();
-    await db.delete(suppliers).where(eq(suppliers.id, parseInt(req.params.id)));
+    // Multi-tenancy seguro: só superadmin pode excluir qualquer fornecedor
+    let whereClause = eq(suppliers.id, parseInt(req.params.id));
+    if (req.user.role !== "superadmin") {
+      whereClause = and(
+        whereClause,
+        eq(suppliers.companyId, String(req.user.companyId)),
+      );
+    }
+    const [deleted] = await db.delete(suppliers).where(whereClause).returning();
+    if (!deleted)
+      return res.status(404).json({ message: "Fornecedor não encontrado" });
     res.json({ message: "Excluído" });
   });
 
   // ==========================================
   // --- 🛒 PRODUTOS (MANTIDO IGUAL) ---
   // ==========================================
-  app.get("/api/products", async (req, res) => {
-    const { companyId, role } = req.query;
-    let query = db.select().from(users);
+  app.get("/api/products", async (req: any, res) => {
+    if (!req.isAuthenticated()) return res.status(401).send();
+    const { categoryId } = req.query;
+    let query = db.select().from(products);
 
-    // Log para depuração
-    console.log("[API/users] companyId recebido:", companyId);
-
-    // Corrigir: combinar filtros com and()
+    // Multi-tenancy seguro: só superadmin pode ver todos, demais só veem produtos da própria empresa
     let whereClause = undefined;
-    if (companyId) {
-      whereClause = eq(users.companyId, String(companyId));
-      console.log(
-        "[API/users] Filtro aplicado: companyId =",
-        String(companyId),
-      );
+    if (req.user.role !== "superadmin") {
+      whereClause = eq(products.companyId, String(req.user.companyId));
     }
-    if (role) {
-      // Suporta múltiplos roles separados por vírgula
-      const roles = String(role).split(",");
-      const roleClause = inArray(users.role, roles);
-      whereClause = whereClause ? and(whereClause, roleClause) : roleClause;
-      console.log("[API/users] Filtro de role aplicado:", roles);
+    if (categoryId) {
+      const categoryClause = eq(products.categoryId, Number(categoryId));
+      whereClause = whereClause
+        ? and(whereClause, categoryClause)
+        : categoryClause;
     }
     if (whereClause) {
       query = query.where(whereClause);
     }
 
-    const result = await query.orderBy(desc(users.createdAt));
-    console.log("[API/users] Resultado da query:", result);
+    const result = await query.orderBy(desc(products.createdAt));
     res.json(result);
-    try {
-      // Permite que o superadmin defina o companyId explicitamente
-      const companyId = req.body.companyId || req.user.companyId || "1";
-      const [product] = await db
-        .insert(products)
-        .values({
-          ...req.body,
-          companyId,
-          stock: Number(req.body.stock || 0),
-          price: String(req.body.price || "0"),
-          cost: String(req.body.cost || "0"),
-          categoryId: req.body.categoryId ? Number(req.body.categoryId) : null,
-          supplierId: req.body.supplierId ? Number(req.body.supplierId) : null,
-          createdAt: new Date(),
-        })
-        .returning();
-      res.status(201).json(product);
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
-    }
   });
 
   app.patch("/api/products/:id", async (req: any, res) => {
@@ -524,11 +731,22 @@ export async function registerRoutes(
           : null;
       }
 
+      // Multi-tenancy seguro: só superadmin pode editar qualquer produto
+      let whereClause = eq(products.id, parseInt(req.params.id));
+      if (req.user.role !== "superadmin") {
+        whereClause = and(
+          whereClause,
+          eq(products.companyId, String(req.user.companyId)),
+        );
+      }
+
       const [updated] = await db
         .update(products)
         .set(updateData)
-        .where(eq(products.id, parseInt(req.params.id)))
+        .where(whereClause)
         .returning();
+      if (!updated)
+        return res.status(404).json({ message: "Produto não encontrado" });
       res.json(updated);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
@@ -537,7 +755,17 @@ export async function registerRoutes(
 
   app.delete("/api/products/:id", async (req: any, res) => {
     if (!req.isAuthenticated()) return res.status(401).send();
-    await db.delete(products).where(eq(products.id, parseInt(req.params.id)));
+    // Multi-tenancy seguro: só superadmin pode excluir qualquer produto
+    let whereClause = eq(products.id, parseInt(req.params.id));
+    if (req.user.role !== "superadmin") {
+      whereClause = and(
+        whereClause,
+        eq(products.companyId, String(req.user.companyId)),
+      );
+    }
+    const [deleted] = await db.delete(products).where(whereClause).returning();
+    if (!deleted)
+      return res.status(404).json({ message: "Produto não encontrado" });
     res.json({ message: "Excluído" });
   });
 
@@ -547,7 +775,7 @@ export async function registerRoutes(
   app.get("/api/purchases", async (req: any, res) => {
     if (!req.isAuthenticated()) return res.status(401).send();
     try {
-      const result = await db
+      let query = db
         .select({
           ...purchaseOrders,
           supplierName: suppliers.name,
@@ -560,10 +788,16 @@ export async function registerRoutes(
         .leftJoin(
           purchaseOrderItems,
           eq(purchaseOrders.id, purchaseOrderItems.purchaseOrderId),
-        )
+        );
+      // Multi-tenancy seguro: só superadmin pode ver todos
+      if (req.user.role !== "superadmin") {
+        query = query.where(
+          eq(purchaseOrders.companyId, String(req.user.companyId)),
+        );
+      }
+      const result = await query
         .groupBy(purchaseOrders.id, suppliers.name)
         .orderBy(desc(purchaseOrders.createdAt));
-
       res.json(result);
     } catch (error: any) {
       res
@@ -576,10 +810,18 @@ export async function registerRoutes(
     if (!req.isAuthenticated()) return res.status(401).send();
     const id = parseInt(req.params.id);
     try {
+      // Multi-tenancy seguro: só superadmin pode ver qualquer pedido
+      let whereClause = eq(purchaseOrders.id, id);
+      if (req.user.role !== "superadmin") {
+        whereClause = and(
+          whereClause,
+          eq(purchaseOrders.companyId, String(req.user.companyId)),
+        );
+      }
       const [order] = await db
         .select()
         .from(purchaseOrders)
-        .where(eq(purchaseOrders.id, id))
+        .where(whereClause)
         .limit(1);
       if (!order) return res.status(404).send();
 
@@ -621,6 +863,7 @@ export async function registerRoutes(
           .insert(purchaseOrders)
           .values({
             ...orderData,
+            companyId: req.user.companyId || "1",
             supplierId: supplierId ? Number(supplierId) : null,
             status: "DRAFT",
             number: orderData.number || `PC-${Date.now()}`,
@@ -734,7 +977,7 @@ export async function registerRoutes(
 
       // 🎯 AUTO-CRIAR PAYABLE se o pagamento for PRAZO
       try {
-        const companyId = req.user.company;
+        const companyId = req.user.companyId || "1";
         await createPayableFromPurchaseOrder(orderId, companyId);
         console.log(
           `[Financial] Payable auto-created for purchase order #${orderId}`,
@@ -842,10 +1085,18 @@ export async function registerRoutes(
 
     try {
       await db.transaction(async (tx) => {
+        // Multi-tenancy seguro: só superadmin pode excluir qualquer pedido
+        let whereClause = eq(purchaseOrders.id, orderId);
+        if (req.user.role !== "superadmin") {
+          whereClause = and(
+            whereClause,
+            eq(purchaseOrders.companyId, String(req.user.companyId)),
+          );
+        }
         const [order] = await tx
           .select()
           .from(purchaseOrders)
-          .where(eq(purchaseOrders.id, orderId))
+          .where(whereClause)
           .limit(1);
         if (!order) throw new Error("Pedido não encontrado");
 
@@ -876,7 +1127,7 @@ export async function registerRoutes(
           .delete(purchaseOrderItems)
           .where(eq(purchaseOrderItems.purchaseOrderId, orderId));
 
-        await tx.delete(purchaseOrders).where(eq(purchaseOrders.id, orderId));
+        await tx.delete(purchaseOrders).where(whereClause);
       });
 
       res.json({ message: "Pedido excluído e estoque ajustado com sucesso." });
@@ -891,58 +1142,18 @@ export async function registerRoutes(
   // ==========================================
 
   // 1. GET: Listar Pedidos
-  app.get("/api/orders", async (req: any, res) => {
+  app.get("/api/products", async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).send();
-    try {
-      const conditions = [eq(orders.companyId, req.user.companyId || "1")];
-      if (req.user.role !== "admin" && req.user.role !== "sales") {
-        conditions.push(eq(orders.userId, req.user.id));
-      }
-      const ordersList = await db
-        .select()
-        .from(orders)
-        .where(and(...conditions))
-        .orderBy(desc(orders.createdAt));
-
-      const ordersWithDetails = await Promise.all(
-        ordersList.map(async (order) => {
-          const items = await db
-            .select()
-            .from(orderItems)
-            .where(eq(orderItems.orderId, order.id));
-          let customerName = "Cliente";
-          if (order.userId) {
-            const [customer] = await db
-              .select()
-              .from(users)
-              .where(eq(users.id, order.userId));
-            if (customer)
-              customerName = customer.nome || customer.firstName || "Cliente";
-          }
-
-          // VERIFICA SE O ESTOQUE JÁ FOI BAIXADO (IMPORTANTE PARA OS BOTÕES)
-          const [stockLog] = await db
-            .select()
-            .from(stockMovements)
-            .where(
-              sql`${stockMovements.refType} = 'SALES_ORDER' AND ${stockMovements.refId} = ${order.id} AND ${stockMovements.type} = 'OUT'`,
-            )
-            .limit(1);
-
-          return {
-            ...order,
-            items,
-            customerName,
-            total: order.total || "0",
-            stockPosted: !!stockLog,
-            accountsPosted: !!order.accountsPosted,
-          }; // Flag para o front
-        }),
-      );
-      res.json(ordersWithDetails);
-    } catch (error: any) {
-      res.status(500).json({ message: "Erro: " + error.message });
+    const { categoryId } = req.query;
+    let query = db.select().from(products);
+    let whereClause = eq(products.companyId, String(req.user.companyId));
+    if (categoryId) {
+      const categoryClause = eq(products.categoryId, Number(categoryId));
+      whereClause = and(whereClause, categoryClause);
     }
+    query = query.where(whereClause);
+    const result = await query.orderBy(desc(products.createdAt));
+    res.json(result);
   });
 
   // 2. POST: Criar Pedido
@@ -2516,52 +2727,57 @@ export async function registerRoutes(
   });
 
   // GET: Listar tipos de pagamento ativos
-  app.get("/api/payment-types/active", async (req: any, res) => {
+  app.get("/api/orders", async (req: any, res) => {
     if (!req.isAuthenticated()) return res.status(401).send();
     try {
-      const companyId = req.user.companyId || "1";
-      const result = await db
+      const conditions = [eq(orders.companyId, String(req.user.companyId))];
+      if (req.user.role !== "admin" && req.user.role !== "sales") {
+        conditions.push(eq(orders.userId, req.user.id));
+      }
+      const ordersList = await db
         .select()
-        .from(paymentTypes)
-        .where(
-          and(
-            eq(paymentTypes.companyId, companyId),
-            eq(paymentTypes.active, true),
-          ),
-        )
-        .orderBy(paymentTypes.sortOrder, paymentTypes.name);
-      res.json(result);
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
-    }
-  });
+        .from(orders)
+        .where(and(...conditions))
+        .orderBy(desc(orders.createdAt));
 
-  // POST: Criar tipo de pagamento
-  app.post("/api/payment-types", async (req: any, res) => {
-    if (!req.isAuthenticated()) return res.status(401).send();
-    try {
-      const companyId = req.user.companyId || "1";
-      const [created] = await db
-        .insert(paymentTypes)
-        .values({
-          companyId,
-          name: req.body.name,
-          type: req.body.type,
-          description: req.body.description,
-          active: req.body.active ?? true,
-          feeType: req.body.feeType,
-          feeValue: req.body.feeValue,
-          compensationDays: req.body.compensationDays,
-          isStoreCredit: req.body.isStoreCredit ?? false,
-          paymentTermType: req.body.paymentTermType || "VISTA",
-          paymentTermId: req.body.paymentTermId,
-          sortOrder: req.body.sortOrder,
-          createdAt: new Date(),
-        })
-        .returning();
-      res.status(201).json(created);
+      const ordersWithDetails = await Promise.all(
+        ordersList.map(async (order) => {
+          const items = await db
+            .select()
+            .from(orderItems)
+            .where(eq(orderItems.orderId, order.id));
+          let customerName = "Cliente";
+          if (order.userId) {
+            const [customer] = await db
+              .select()
+              .from(users)
+              .where(eq(users.id, order.userId));
+            if (customer)
+              customerName = customer.nome || customer.firstName || "Cliente";
+          }
+
+          // VERIFICA SE O ESTOQUE JÁ FOI BAIXADO (IMPORTANTE PARA OS BOTÕES)
+          const [stockLog] = await db
+            .select()
+            .from(stockMovements)
+            .where(
+              sql`${stockMovements.refType} = 'SALES_ORDER' AND ${stockMovements.refId} = ${order.id} AND ${stockMovements.type} = 'OUT'`,
+            )
+            .limit(1);
+
+          return {
+            ...order,
+            items,
+            customerName,
+            total: order.total || "0",
+            stockPosted: !!stockLog,
+            accountsPosted: !!order.accountsPosted,
+          };
+        }),
+      );
+      res.json(ordersWithDetails);
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      res.status(500).json({ message: "Erro: " + error.message });
     }
   });
 

@@ -148,7 +148,7 @@ app.use((req, res, next) => {
     await setupVite(httpServer, app);
   }
 
-  const port = parseInt(process.env.PORT || "5000", 10);
+  const port = parseInt(process.env.PORT || "5001", 10);
 
   // CORREÇÃO PARA WINDOWS: Removido reusePort que causa o erro Assertion Failed
   httpServer.listen(
