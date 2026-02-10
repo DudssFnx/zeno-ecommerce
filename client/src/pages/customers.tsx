@@ -21,6 +21,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useCompany } from "@/contexts/CompanyContext";
 import { useToast } from "@/hooks/use-toast";
 import { useCompanyResource } from "@/hooks/useCompanyResource";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -401,8 +402,21 @@ function CustomerFormContent({
   );
 }
 
-export default function CustomersPage({ companyId }: { companyId: string }) {
+export default function CustomersPage({ companyId }: { companyId?: string }) {
   const { toast } = useToast();
+  const { activeCompany } = useCompany();
+  const effectiveCompanyId = companyId || activeCompany?.id;
+
+  // Se ainda não temos a empresa ativa (ex.: carregando no primeiro load), mostra spinner
+  if (!effectiveCompanyId) {
+    return (
+      <div className="flex h-full items-center justify-center p-8">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <span className="ml-3">Carregando dados da empresa...</span>
+      </div>
+    );
+  }
+
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState("active");
   const [showCreateDialog, setShowCreateDialog] = useState(false);
@@ -422,7 +436,7 @@ export default function CustomersPage({ companyId }: { companyId: string }) {
     data: usersData = [],
     isLoading,
     refetch,
-  } = useCompanyResource("users", companyId);
+  } = useCompanyResource("users", effectiveCompanyId);
 
   const allCustomers = useMemo(
     () => (usersData || []).filter((u: any) => u.role === "customer"),
@@ -503,6 +517,11 @@ export default function CustomersPage({ companyId }: { companyId: string }) {
       return res.json();
     },
     onSuccess: () => {
+      // Invalidate the company-scoped users query so the new customer appears on the list
+      if (effectiveCompanyId) {
+        queryClient.invalidateQueries({ queryKey: ["users", effectiveCompanyId] });
+      }
+      // Backwards compat invalidation
       queryClient.invalidateQueries({ queryKey: ["/api/users"] });
       setShowCreateDialog(false);
       setFormData(initialFormState);
