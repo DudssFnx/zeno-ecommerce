@@ -282,7 +282,7 @@ export async function registerRoutes(
         );
         return res
           .status(401)
-          .json({ message: "Email, senha ou empresa incorretos" });
+          .json({ message: "E-mail não encontrado para esta empresa" });
       }
 
       const isValidPassword = await bcrypt.compare(
@@ -291,9 +291,7 @@ export async function registerRoutes(
       );
       if (!isValidPassword) {
         console.log("[LOGIN] Senha incorreta!");
-        return res
-          .status(401)
-          .json({ message: "Email, senha ou empresa incorretos" });
+        return res.status(401).json({ message: "Senha incorreta" });
       }
 
       // Login usando Passport
@@ -366,7 +364,7 @@ export async function registerRoutes(
   app.get("/api/categories", async (req: any, res) => {
     if (!req.isAuthenticated()) return res.status(401).send();
     try {
-      const companyId = req.user.companyId || "1";
+      const companyId = getCompanyId(req);
       const result = await db
         .select()
         .from(categories)
@@ -390,19 +388,78 @@ export async function registerRoutes(
       .replace(/^-+|-+$/g, "");
   }
 
+  // Helper to resolve effective companyId: prefer header (req.companyId) then session (req.user.companyId)
+  function getCompanyId(req: any): string {
+    return req.companyId || req.user?.companyId || "1";
+  }
+
   app.get("/api/company/me", async (req: any, res) => {
     if (!req.isAuthenticated()) return res.status(401).send();
     try {
       const [company] = await db
         .select()
         .from(companies)
-        .where(eq(companies.id, req.user.companyId))
+        .where(eq(companies.id, req.companyId || req.user.companyId))
         .limit(1);
       if (!company)
         return res.status(404).json({ message: "Empresa não encontrada" });
       res.json(company);
     } catch (error) {
       res.status(500).json({ message: "Erro ao buscar empresa" });
+    }
+  });
+
+  // Busca de empresas para autocomplete no login (público)
+  app.get("/api/companies/search", async (req: any, res) => {
+    try {
+      const q = (req.query.query || req.query.q || "").toString().trim();
+      if (!q || q.length < 2) return res.json([]);
+
+      // Tenta por slug gerado a partir da query primeiro
+      const inputSlug = generateSlug(q);
+      const bySlug = await db
+        .select({
+          id: companies.id,
+          razaoSocial: companies.razaoSocial,
+          slug: companies.slug,
+          email: companies.email,
+        })
+        .from(companies)
+        .where(eq(companies.slug, inputSlug))
+        .limit(10);
+      if (bySlug && bySlug.length > 0) return res.json(bySlug);
+
+      // Senão, faz busca por prefixo (tenta unaccent quando disponível)
+      try {
+        const rows = await db
+          .select({
+            id: companies.id,
+            razaoSocial: companies.razaoSocial,
+            slug: companies.slug,
+            email: companies.email,
+          })
+          .from(companies)
+          .where(
+            sql`unaccent(lower(${companies.razaoSocial})) LIKE unaccent(lower(${q} || '%'))`,
+          )
+          .limit(10);
+        return res.json(rows);
+      } catch (err: any) {
+        // Fallback sem unaccent
+        const rows = await db
+          .select({
+            id: companies.id,
+            razaoSocial: companies.razaoSocial,
+            slug: companies.slug,
+            email: companies.email,
+          })
+          .from(companies)
+          .where(sql`lower(${companies.razaoSocial}) LIKE lower(${q} || '%')`)
+          .limit(10);
+        return res.json(rows);
+      }
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
     }
   });
 
@@ -474,9 +531,17 @@ export async function registerRoutes(
     const isSuperUser =
       req.user?.role === "superadmin" || req.user?.role === "super_admin";
     const sessionCompanyId = req.session?.activeCompanyId;
-    if (!isSuperUser && !sessionCompanyId && !req.user?.companyId) {
+    const headerCompanyId = req.companyId as string | undefined;
+
+    // Se não for superuser, garantimos que existe um companyId (header | session | user)
+    if (
+      !isSuperUser &&
+      !headerCompanyId &&
+      !sessionCompanyId &&
+      !req.user?.companyId
+    ) {
       console.log(
-        "[API/users] Requisição sem companyId na sessão - bloqueando",
+        "[API/users] Requisição sem companyId (header/session/user) - bloqueando",
       );
       return res
         .status(401)
@@ -505,14 +570,19 @@ export async function registerRoutes(
     }
 
     // Usuário normal: garantir que companyId existe e filtrar explicitamente pelo companyId
-    const companyId = String(sessionCompanyId || req.user.companyId);
+    const companyId = String(
+      headerCompanyId || sessionCompanyId || req.user.companyId,
+    );
     console.log(
       "[API/users] Executando query filtrada por companyId:",
       companyId,
     );
 
     if (role) {
-      const roles = String(role).split(",");
+      const roles = String(role)
+        .split(",")
+        .map((r) => r.toLowerCase())
+        .filter((r) => r !== "super_admin" && r !== "superadmin");
       const result = await db
         .select()
         .from(users)
@@ -533,7 +603,12 @@ export async function registerRoutes(
     const result = await db
       .select()
       .from(users)
-      .where(eq(users.companyId, companyId))
+      .where(
+        and(
+          eq(users.companyId, companyId),
+          sql`${users.role} != 'super_admin'`,
+        ),
+      )
       .orderBy(desc(users.createdAt));
 
     console.log(
@@ -552,7 +627,7 @@ export async function registerRoutes(
   app.get("/api/sellers", async (req: any, res) => {
     if (!req.isAuthenticated()) return res.status(401).send();
     try {
-      const companyId = req.user.companyId || "1";
+      const companyId = getCompanyId(req);
       const result = await db
         .select()
         .from(users)
@@ -600,12 +675,13 @@ export async function registerRoutes(
       if (cleanData.cnpj) cleanData.cnpj = cleanDocument(cleanData.cnpj);
       if (cleanData.cpf) cleanData.cpf = cleanDocument(cleanData.cpf);
 
+      const companyIdToUse = req.companyId || req.user.companyId || "1";
       const [newUser] = await db
         .insert(users)
         .values({
           ...cleanData,
           password: hashedPassword,
-          companyId: req.user.companyId || "1",
+          companyId: companyIdToUse,
           createdAt: new Date(),
         })
         .returning();
@@ -639,7 +715,7 @@ export async function registerRoutes(
       if (req.user.role !== "superadmin") {
         whereClause = and(
           whereClause,
-          eq(users.companyId, String(req.user.companyId)),
+          eq(users.companyId, String(req.companyId || req.user.companyId)),
         );
       }
 
@@ -684,7 +760,9 @@ export async function registerRoutes(
     let query = db.select().from(suppliers);
     // Multi-tenancy seguro: só superadmin pode ver todos
     if (req.user.role !== "superadmin") {
-      query = query.where(eq(suppliers.companyId, String(req.user.companyId)));
+      query = query.where(
+        eq(suppliers.companyId, String(req.companyId || req.user.companyId)),
+      );
     }
     const result = await query.orderBy(desc(suppliers.id));
     res.json(result);
@@ -764,7 +842,10 @@ export async function registerRoutes(
     // Multi-tenancy seguro: só superadmin pode ver todos, demais só veem produtos da própria empresa
     let whereClause = undefined;
     if (req.user.role !== "superadmin") {
-      whereClause = eq(products.companyId, String(req.user.companyId));
+      whereClause = eq(
+        products.companyId,
+        String(req.companyId || req.user.companyId),
+      );
     }
     if (categoryId) {
       const categoryClause = eq(products.categoryId, Number(categoryId));
@@ -1042,7 +1123,7 @@ export async function registerRoutes(
 
       // 🎯 AUTO-CRIAR PAYABLE se o pagamento for PRAZO
       try {
-        const companyId = req.user.companyId || "1";
+        const companyId = getCompanyId(req);
         await createPayableFromPurchaseOrder(orderId, companyId);
         console.log(
           `[Financial] Payable auto-created for purchase order #${orderId}`,
@@ -1264,7 +1345,7 @@ export async function registerRoutes(
   app.get("/api/orders/guest", async (req: any, res) => {
     if (!req.isAuthenticated()) return res.status(401).send();
     try {
-      const companyId = req.user.companyId || "1";
+      const companyId = getCompanyId(req);
       const result = await db
         .select()
         .from(orders)
@@ -1351,7 +1432,7 @@ export async function registerRoutes(
       if (!parsedIds.length)
         return res.status(400).json({ message: "Nenhum ID válido informado" });
 
-      const companyId = req.user.companyId || "1";
+      const companyId = getCompanyId(req);
       const processed: number[] = [];
       const ignored: number[] = [];
 
@@ -2795,7 +2876,9 @@ export async function registerRoutes(
   app.get("/api/orders", async (req: any, res) => {
     if (!req.isAuthenticated()) return res.status(401).send();
     try {
-      const conditions = [eq(orders.companyId, String(req.user.companyId))];
+      const conditions = [
+        eq(orders.companyId, String(req.companyId || req.user.companyId)),
+      ];
       if (req.user.role !== "admin" && req.user.role !== "sales") {
         conditions.push(eq(orders.userId, req.user.id));
       }
