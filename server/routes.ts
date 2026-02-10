@@ -164,36 +164,101 @@ export async function registerRoutes(
   app.post("/api/auth/login", async (req: any, res) => {
     try {
       const { email, password, razaoSocial } = req.body;
-      console.log("[LOGIN] Razão social recebida:", razaoSocial);
-      if (!email || !password || !razaoSocial) {
+      // Normalize razaoSocial: trim + collapse spaces to avoid mismatch caused by extra whitespace
+      const sanitizedRazao =
+        typeof razaoSocial === "string"
+          ? razaoSocial.replace(/\s+/g, " ").trim()
+          : undefined;
+      console.log("[LOGIN] Razão social recebida:", sanitizedRazao);
+      if (!email || !password) {
         return res
           .status(400)
-          .json({ message: "Email, senha e razão social são obrigatórios" });
+          .json({ message: "Email e senha são obrigatórios" });
       }
 
       // Buscar empresa pela razão social (case insensitive, ignorando acentos se disponível)
       let company: any = null;
-      try {
-        const [found] = await db
+
+      if (sanitizedRazao) {
+        // Primeiro tente por slug (mais tolerante a espaços e acentos)
+        const inputSlug = generateSlug(sanitizedRazao);
+        const [bySlug] = await db
           .select()
           .from(companies)
-          .where(
-            sql`unaccent(lower(${companies.razaoSocial})) = unaccent(lower(${razaoSocial}))`,
-          )
+          .where(eq(companies.slug, inputSlug))
           .limit(1);
-        company = found;
-      } catch (err: any) {
-        // Postgres pode não ter a extensão unaccent em ambientes locais; fallback sem unaccent
-        console.warn(
-          "[LOGIN] unaccent not available, falling back to lower comparison:",
-          err?.message || err,
-        );
-        const [found] = await db
+        if (bySlug) {
+          company = bySlug;
+        } else {
+          try {
+            const [found] = await db
+              .select()
+              .from(companies)
+              .where(
+                sql`unaccent(lower(${companies.razaoSocial})) = unaccent(lower(${sanitizedRazao}))`,
+              )
+              .limit(1);
+            company = found;
+          } catch (err: any) {
+            // Postgres pode não ter a extensão unaccent em ambientes locais; fallback sem unaccent
+            console.warn(
+              "[LOGIN] unaccent not available, falling back to lower comparison:",
+              err?.message || err,
+            );
+            const [found] = await db
+              .select()
+              .from(companies)
+              .where(
+                sql`lower(${companies.razaoSocial}) = lower(${sanitizedRazao})`,
+              )
+              .limit(1);
+            company = found;
+          }
+        }
+      } else {
+        // Sem razaoSocial: tentar inferir pela existência de usuário único com esse email
+        const usersFound = await db
           .select()
-          .from(companies)
-          .where(sql`lower(${companies.razaoSocial}) = lower(${razaoSocial})`)
-          .limit(1);
-        company = found;
+          .from(users)
+          .where(eq(users.email, email));
+        if (usersFound.length === 1) {
+          const companyId = usersFound[0].companyId;
+          const [foundCompany] = await db
+            .select()
+            .from(companies)
+            .where(eq(companies.id, companyId))
+            .limit(1);
+          company = foundCompany;
+          console.log(
+            "[LOGIN] Empresa inferida por email:",
+            company?.razaoSocial || company?.id,
+          );
+        } else if (usersFound.length > 1) {
+          console.warn(
+            "[LOGIN] Multiple companies found for email; razaoSocial required",
+          );
+          return res.status(400).json({
+            message:
+              "Múltiplas empresas encontradas para este e-mail. Informe 'razaoSocial'.",
+          });
+        } else {
+          // se nenhum usuário com esse email, e houver apenas 1 empresa no sistema, usamos ela
+          const companiesList = await db.select().from(companies).limit(2);
+          if (companiesList.length === 1) {
+            company = companiesList[0];
+            console.log(
+              "[LOGIN] Empresa única no sistema, usando:",
+              company.razaoSocial,
+            );
+          } else {
+            console.log(
+              "[LOGIN] Nenhuma empresa encontrada por email ou há múltiplas; exigindo razaoSocial",
+            );
+            return res.status(401).json({
+              message: "Empresa não encontrada; informe 'razaoSocial'.",
+            });
+          }
+        }
       }
 
       console.log("[LOGIN] Empresa encontrada:", company);

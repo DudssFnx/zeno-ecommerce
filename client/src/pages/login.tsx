@@ -20,6 +20,7 @@ import { z } from "zod";
 const loginSchema = z.object({
   email: z.string().min(1, "Campo obrigatorio"),
   password: z.string().min(1, "Senha obrigatoria"),
+  razaoSocial: z.string().optional(),
 });
 
 type LoginData = z.infer<typeof loginSchema>;
@@ -34,6 +35,7 @@ export default function LoginPage() {
     defaultValues: {
       email: "",
       password: "",
+      razaoSocial: "",
     },
   });
 
@@ -97,6 +99,25 @@ export default function LoginPage() {
             onSubmit={form.handleSubmit(handleSubmit)}
             className="space-y-4"
           >
+            <FormField
+              control={form.control}
+              name="razaoSocial"
+              render={({ field }) => (
+                <FormItem>
+                  <FormControl>
+                    <Input
+                      type="text"
+                      placeholder="Razão social (opcional)"
+                      className="h-12 bg-zinc-800 border-zinc-700 text-white placeholder:text-zinc-500"
+                      {...field}
+                      data-testid="input-login-razao"
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
             <FormField
               control={form.control}
               name="email"
