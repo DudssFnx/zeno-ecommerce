@@ -22,9 +22,10 @@ import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
+import { useCompanyResource } from "@/hooks/useCompanyResource";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { User } from "@shared/schema";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import {
   AlertCircle, // 🛑 Ícone do Alerta
   Ban,
@@ -400,7 +401,7 @@ function CustomerFormContent({
   );
 }
 
-export default function CustomersPage() {
+export default function CustomersPage({ companyId }: { companyId: string }) {
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState("active");
@@ -413,46 +414,38 @@ export default function CustomersPage() {
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(
     null,
   );
-
-  // Estado de Erro para exibir no box vermelho
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
   const [formData, setFormData] = useState<CustomerFormState>(initialFormState);
 
+  // Multi-tenant: busca clientes da empresa
   const {
     data: usersData = [],
     isLoading,
     refetch,
-  } = useQuery<CustomerType[]>({
-    queryKey: ["/api/users"],
-  });
+  } = useCompanyResource("users", companyId);
 
   const allCustomers = useMemo(
-    () => usersData.filter((u) => u.role === "customer"),
+    () => (usersData || []).filter((u: any) => u.role === "customer"),
     [usersData],
   );
-
-  const pendingCustomers = allCustomers.filter((u) => !u.approved);
+  const pendingCustomers = allCustomers.filter((u: any) => !u.approved);
   const activeCustomers = allCustomers.filter(
-    (u) => u.approved && u.ativo !== false,
+    (u: any) => u.approved && u.ativo !== false,
   );
   const inactiveCustomers = allCustomers.filter(
-    (u) => u.approved && u.ativo === false,
+    (u: any) => u.approved && u.ativo === false,
   );
-
   const filterList = (list: CustomerType[]) => {
-    return list.filter((u) => {
-      const term = searchQuery.toLowerCase();
-      return (
+    const term = searchQuery.toLowerCase();
+    return list.filter(
+      (u) =>
         (u.firstName?.toLowerCase().includes(term) ?? false) ||
         (u.company?.toLowerCase().includes(term) ?? false) ||
         (u.email?.toLowerCase().includes(term) ?? false) ||
         (u.cnpj?.includes(term) ?? false) ||
-        (u.cpf?.includes(term) ?? false)
-      );
-    });
+        (u.cpf?.includes(term) ?? false),
+    );
   };
-
   const getDisplayedList = () => {
     switch (activeTab) {
       case "pending":

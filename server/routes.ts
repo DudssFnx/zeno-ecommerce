@@ -267,16 +267,25 @@ export async function registerRoutes(
     const { companyId, role } = req.query;
     let query = db.select().from(users);
 
+    // Log para depuração
+    console.log("[API/users] companyId recebido:", companyId);
+
     if (companyId) {
       query = query.where(eq(users.companyId, String(companyId)));
+      console.log(
+        "[API/users] Filtro aplicado: companyId =",
+        String(companyId),
+      );
     }
     if (role) {
       // Suporta múltiplos roles separados por vírgula
       const roles = String(role).split(",");
       query = query.where(inArray(users.role, roles));
+      console.log("[API/users] Filtro de role aplicado:", roles);
     }
 
     const result = await query.orderBy(desc(users.createdAt));
+    console.log("[API/users] Resultado da query:", result);
     res.json(result);
   });
 
@@ -448,26 +457,35 @@ export async function registerRoutes(
   // --- 🛒 PRODUTOS (MANTIDO IGUAL) ---
   // ==========================================
   app.get("/api/products", async (req, res) => {
-    const { companyId } = req.query;
-    let query = db.select().from(products);
+    const { companyId, role } = req.query;
+    let query = db.select().from(users);
 
+    // Log para depuração
+    console.log("[API/users] companyId recebido:", companyId);
+
+    // Corrigir: combinar filtros com and()
+    let whereClause = undefined;
     if (companyId) {
-      query = query.where(eq(products.companyId, String(companyId)));
+      whereClause = eq(users.companyId, String(companyId));
+      console.log(
+        "[API/users] Filtro aplicado: companyId =",
+        String(companyId),
+      );
+    }
+    if (role) {
+      // Suporta múltiplos roles separados por vírgula
+      const roles = String(role).split(",");
+      const roleClause = inArray(users.role, roles);
+      whereClause = whereClause ? and(whereClause, roleClause) : roleClause;
+      console.log("[API/users] Filtro de role aplicado:", roles);
+    }
+    if (whereClause) {
+      query = query.where(whereClause);
     }
 
-    const result = await query.orderBy(desc(products.id));
-    const mapped = result.map((p) => ({
-      ...p,
-      nome: p.name,
-      estoque: p.stock,
-      precoVarejo: p.price,
-      precoAtacado: p.cost,
-    }));
-    res.json({ products: mapped, total: result.length });
-  });
-
-  app.post("/api/products", async (req: any, res) => {
-    if (!req.isAuthenticated()) return res.status(401).send();
+    const result = await query.orderBy(desc(users.createdAt));
+    console.log("[API/users] Resultado da query:", result);
+    res.json(result);
     try {
       // Permite que o superadmin defina o companyId explicitamente
       const companyId = req.body.companyId || req.user.companyId || "1";

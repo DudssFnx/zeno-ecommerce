@@ -42,6 +42,12 @@ function useCompanyStats(companyId: string | null) {
         axios.get(`/api/users?companyId=${companyId}&role=admin,employee`),
         axios.get(`/api/users?companyId=${companyId}&role=customer`),
       ]);
+      // Log para debug: mostrar resultado real da requisição de clientes
+      console.log(
+        "[DEBUG] Clientes retornados para companyId",
+        companyId,
+        cli.data,
+      );
       return {
         totalProdutos: prod.data?.total ?? prod.data?.products?.length ?? 0,
         totalFuncionarios: func.data?.length ?? 0,

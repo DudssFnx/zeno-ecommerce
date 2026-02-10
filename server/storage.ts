@@ -99,6 +99,7 @@ export class DatabaseStorage implements IStorage {
           insertUser.approved !== undefined ? insertUser.approved : false,
         customerType: "varejo",
         modules: insertUser.modules, // Opcional, se passar já salva
+        companyId: insertUser.companyId, // Garante o companyId do usuário logado
       })
       .returning();
     return user;
@@ -267,6 +268,7 @@ export class DatabaseStorage implements IStorage {
         descricao: insert.descricao,
         imagem: insert.imagem,
         status: "ATIVO",
+        companyId: insert.companyId, // Garante o companyId do usuário logado
       })
       .returning();
     return p;
@@ -348,6 +350,7 @@ export class DatabaseStorage implements IStorage {
         status: "ORCAMENTO",
         total: String(totalCalculado),
         notes: data.notes,
+        companyId: data.companyId, // Garante o companyId do usuário logado
       })
       .returning();
 
