@@ -27,11 +27,13 @@ BLING_REFRESH_TOKEN=token_de_refresh
 ## Endpoints Principais
 
 ### Base URL
+
 ```
 https://api.bling.com.br/Api/v3
 ```
 
 ### Listar Produtos
+
 ```
 GET /produtos
 ```
@@ -46,6 +48,7 @@ GET /produtos
 | `codigo` | string | SKUs separados por vírgula | - |
 
 **Resposta:**
+
 ```json
 {
   "data": [
@@ -53,8 +56,8 @@ GET /produtos
       "id": 12345,
       "nome": "Produto Exemplo",
       "codigo": "SKU-001",
-      "preco": 99.90,
-      "precoCusto": 50.00,
+      "preco": 99.9,
+      "precoCusto": 50.0,
       "tipo": "P",
       "situacao": "A",
       "formato": "S",
@@ -102,16 +105,19 @@ GET /produtos
 ```
 
 ### Obter Produto por ID
+
 ```
 GET /produtos/{idProduto}
 ```
 
 ### Categorias de Produtos
+
 ```
 GET /categorias/produtos
 ```
 
 ### Estoques
+
 ```
 GET /estoques
 GET /estoques/saldos
@@ -122,11 +128,13 @@ GET /estoques/saldos
 ### Fluxo de Autorização
 
 1. **Redirecionar usuário para autorização:**
+
 ```
 https://www.bling.com.br/Api/v3/oauth/authorize?response_type=code&client_id={CLIENT_ID}&redirect_uri={REDIRECT_URI}&state={STATE}
 ```
 
 2. **Trocar código por tokens:**
+
 ```bash
 POST https://www.bling.com.br/Api/v3/oauth/token
 Content-Type: application/x-www-form-urlencoded
@@ -136,6 +144,7 @@ Authorization: Basic base64(client_id:client_secret)
 ```
 
 3. **Refresh Token (quando o access_token expirar):**
+
 ```bash
 POST https://www.bling.com.br/Api/v3/oauth/token
 Content-Type: application/x-www-form-urlencoded
@@ -145,6 +154,7 @@ Authorization: Basic base64(client_id:client_secret)
 ```
 
 ### Headers de Requisição
+
 ```
 Authorization: Bearer {access_token}
 Content-Type: application/json
@@ -153,23 +163,24 @@ Accept: application/json
 
 ## Mapeamento Bling -> Catálogo B2B
 
-| Campo Bling | Campo Catálogo | Notas |
-|-------------|----------------|-------|
-| `id` | - | Armazenar como referência externa |
-| `nome` | `name` | Nome do produto |
-| `codigo` | `sku` | Código/SKU do produto |
-| `preco` | `price` | Preço de venda |
-| `descricaoCurta` | `description` | Descrição do produto |
-| `marca` | `brand` | Marca do produto |
-| `categoria.descricao` | `categoryId` | Buscar/criar categoria |
-| `estoque.saldoVirtual` | `stock` | Quantidade em estoque |
-| `midia.imagens.externas[0].link` | `image` | URL da imagem |
-| `situacao` | `active` | A=Ativo, I=Inativo |
-| `gtin` | - | Código de barras (opcional) |
+| Campo Bling                      | Campo Catálogo | Notas                             |
+| -------------------------------- | -------------- | --------------------------------- |
+| `id`                             | -              | Armazenar como referência externa |
+| `nome`                           | `name`         | Nome do produto                   |
+| `codigo`                         | `sku`          | Código/SKU do produto             |
+| `preco`                          | `price`        | Preço de venda                    |
+| `descricaoCurta`                 | `description`  | Descrição do produto              |
+| `marca`                          | `brand`        | Marca do produto                  |
+| `categoria.descricao`            | `categoryId`   | Buscar/criar categoria            |
+| `estoque.saldoVirtual`           | `stock`        | Quantidade em estoque             |
+| `midia.imagens.externas[0].link` | `image`        | URL da imagem                     |
+| `situacao`                       | `active`       | A=Ativo, I=Inativo                |
+| `gtin`                           | -              | Código de barras (opcional)       |
 
 ## Implementação Sugerida
 
 ### Estrutura de Arquivos
+
 ```
 server/
   services/
@@ -181,31 +192,76 @@ server/
     bling.ts       # Endpoints da integração
 ```
 
-### Endpoints da Aplicação
+### Endpoints da Aplicação (detalhado)
 
-```typescript
-// Iniciar autenticação
-GET /api/bling/auth
+A integração é multi-tenant: cada empresa pode salvar credenciais próprias e autorizar o Bling separadamente. O fluxo usa uma tabela de sessão OAuth (`bling_oauth_sessions`) para mapear o parâmetro `state` para a `companyId` e persiste `bling_tokens` com `companyId` (tokens criptografados).
 
-// Callback OAuth
-GET /api/bling/callback?code={code}&state={state}
+Principais endpoints (company-scoped quando autenticado):
 
-// Importar produtos
-POST /api/bling/sync/products
+- POST /api/bling/credentials
+  - Salva `clientId` / `clientSecret` opcionalmente por empresa (guarda em `bling_credentials`).
+  - Uso: { clientId, clientSecret, redirectUri? }
+  - Resposta: { success: true }
 
-// Status da integração
-GET /api/bling/status
-```
+- GET /api/bling/credentials
+  - Retorna se a empresa tem credenciais salvas (clientId parcialmente mascarado) e `redirectUri` quando disponível.
+
+- POST /api/bling/test-credentials
+  - Recebe `clientId`/`clientSecret` temporariamente (ou usa credenciais salvas) e retorna a URL de autorização para iniciar o OAuth:
+    - Resposta: { ok: true, authUrl }
+
+- GET /api/bling/auth
+  - Redireciona o usuário para o endpoint de autorização do Bling. Internamente cria uma sessão (`state`) mapeada para `companyId` para resolver o callback.
+
+- GET /api/bling/callback?code={code}&state={state}
+  - Callback OAuth: resolve `companyId` a partir do `state`, troca `code` por tokens e salva tokens criptografados em `bling_tokens` associados à `companyId`.
+
+- POST /api/bling/disconnect
+  - Remove tokens (desconecta o Bling) para a empresa autenticada.
+
+- POST /api/bling/sync/categories
+  - Inicia sync de categorias em background para a `companyId` do usuário; retorna { started: true } imediatamente.
+
+- POST /api/bling/sync/products
+  - Inicia sync de produtos em background para a `companyId` do usuário; retorna { started: true }.
+
+- GET /api/bling/sync/progress
+  - SSE (Server-Sent Events) que envia o snapshot atual e atualizações de progresso da sincronização (status, fase, created/updated/errors, estimatedRemaining).
+
+- GET /api/bling/categories/preview
+  - Retorna lista leve de categorias no Bling (respeita credenciais da empresa).
+
+- GET /api/bling/products/preview?page={n}
+  - Retorna página de produtos do Bling (respeita credenciais da empresa).
+
+- POST /api/bling/categories/import
+  - Recebe { categoryIds: number[] } e importa categorias selecionadas para o catálogo da empresa.
+
+- POST /api/bling/products/import
+  - Recebe { productIds: number[] } e importa produtos selecionados para a empresa solicitante (garante `companyId` no registro criado).
+
+- POST /api/bling/webhook
+  - Receiver top-level para webhooks do Bling. Verifica assinatura HMAC-SHA256 (cabeçalhos `X-Bling-Signature-256` / `X-Bling-Signature` aceitos), valida com `clientSecret` e processa eventos (`product.created|updated|deleted`, `stock.created|updated`).
+
+Observações técnicas:
+
+- Tokens são salvos criptografados e associados a `companyId`; existe lógica para refresh por empresa (`refreshAccessTokenForCompany`) e para obter token válido (`getValidAccessToken(companyId)`).
+- Todos os requests para a API do Bling usam `blingApiRequest(endpoint, companyId?)` que tenta refresh quando recebe 401.
+- Syncs repectam rate limits, usam retries com backoff e controle de concorrência; progresso é publicado via SSE.
+- As migrations importantes: `0006_bling_oauth_sessions.sql` (mapeia state -> company_id) e a tabela de tokens (`bling_tokens`) devem estar aplicadas antes de usar OAuth multi-empresa.
 
 ## Tratamento de Erros
 
 ### Códigos HTTP
+
 - `401` - Token expirado (fazer refresh)
 - `429` - Rate limit (aguardar e tentar novamente)
 - `500` - Erro interno do Bling
 
 ### Rate Limiting
+
 A API do Bling tem limite de requisições. Implementar:
+
 - Delay entre requisições (100ms)
 - Retry com backoff exponencial
 - Cache de dados frequentes
@@ -259,7 +315,7 @@ import crypto from "crypto";
 
 function verifyWebhookSignature(payload: string, signature: string): boolean {
   const clientSecret = process.env.BLING_CLIENT_SECRET;
-  
+
   const expectedSignature = crypto
     .createHmac("sha256", clientSecret)
     .update(payload, "utf8")
@@ -267,7 +323,7 @@ function verifyWebhookSignature(payload: string, signature: string): boolean {
 
   return crypto.timingSafeEqual(
     Buffer.from(expectedSignature, "hex"),
-    Buffer.from(signature, "hex")
+    Buffer.from(signature, "hex"),
   );
 }
 ```
@@ -285,7 +341,7 @@ function verifyWebhookSignature(payload: string, signature: string): boolean {
     "id": 67890,
     "nome": "Novo Produto",
     "codigo": "SKU-001",
-    "preco": 99.90,
+    "preco": 99.9,
     "situacao": "A"
   }
 }
@@ -301,13 +357,13 @@ function verifyWebhookSignature(payload: string, signature: string): boolean {
 
 ### Eventos Suportados na Aplicação
 
-| Evento | Ação |
-|--------|------|
-| `product.created` | Cria produto no catálogo |
-| `product.updated` | Atualiza produto existente |
-| `product.deleted` | Remove produto do catálogo |
-| `stock.created` | Atualiza estoque do produto |
-| `stock.updated` | Atualiza estoque do produto |
+| Evento            | Ação                        |
+| ----------------- | --------------------------- |
+| `product.created` | Cria produto no catálogo    |
+| `product.updated` | Atualiza produto existente  |
+| `product.deleted` | Remove produto do catálogo  |
+| `stock.created`   | Atualiza estoque do produto |
+| `stock.updated`   | Atualiza estoque do produto |
 
 ## Links Úteis
 
