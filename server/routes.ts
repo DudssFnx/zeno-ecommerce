@@ -3211,14 +3211,33 @@ export async function registerRoutes(
 
   app.post("/api/bling/credentials", requireCompany, async (req: any, res) => {
     try {
-      const { clientId, clientSecret, apiEndpoint, redirectUri } = req.body;
-      const companyId = String(req.companyId || req.user.companyId);
-      if (!clientId || !clientSecret) {
-        return res
-          .status(400)
-          .json({ message: "clientId and clientSecret are required" });
-      }
+        let { clientId, clientSecret, apiEndpoint, redirectUri } = req.body;
+        const companyId = String(req.companyId || req.user.companyId);
 
+        // Allow updating credentials without resending the secret: reuse existing secret if none provided
+        if (!clientId) {
+          return res
+            .status(400)
+            .json({ message: "clientId is required" });
+        }
+
+        if (!clientSecret) {
+          // try to reuse existing secret for company
+          const rows = await db
+            .select()
+            .from(blingCredentials)
+            .where(eq(blingCredentials.companyId, companyId))
+            .orderBy(desc(blingCredentials.id))
+            .limit(1);
+          const prev = rows?.[0];
+          if (prev && prev.clientSecret) {
+            clientSecret = prev.clientSecret;
+            console.log("[Bling] Reusing existing clientSecret for company:", companyId);
+          } else {
+            return res
+              .status(400)
+              .json({ message: "clientSecret is required (no existing secret to reuse)" });
+          }
       // Validate and normalize apiEndpoint: it must be a base API URL, not an OAuth/authorize URL or contain query params
       let normalizedApiEndpoint: string | null = apiEndpoint || null;
       let normalized = false;
@@ -3480,6 +3499,28 @@ export async function registerRoutes(
     },
   );
 
+  // GET: reveal client secret (protected) - use only if user needs to view stored secret
+  app.get(
+    "/api/bling/credentials/secret",
+    requireCompany,
+    async (req: any, res) => {
+      try {
+        const companyId = String(req.companyId || req.user.companyId);
+        const rows = await db
+          .select()
+          .from(blingCredentials)
+          .where(eq(blingCredentials.companyId, companyId))
+          .orderBy(desc(blingCredentials.id))
+          .limit(1);
+        if (!rows || rows.length === 0) return res.status(404).json({ message: "not found" });
+        const row = rows[0];
+        res.json({ clientSecret: row.clientSecret });
+      } catch (err: any) {
+        res.status(500).json({ message: err.message });
+      }
+    },
+  );
+
   // Product import & preview endpoints
   app.get(
     "/api/bling/products/preview",
@@ -3487,7 +3528,7 @@ export async function registerRoutes(
     async (req: any, res) => {
       try {
         const page = Number(req.query.page || 1);
-        const limit = Number(req.query.limit || 50);
+        const limit = Number(req.query.limit || 100);
         const products = await import("./services/bling").then((m) =>
           m.fetchBlingProductsList(page, limit),
         );

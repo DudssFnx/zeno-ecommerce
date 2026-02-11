@@ -29,6 +29,8 @@ import {
   Search,
   Unlink,
   XCircle,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -90,6 +92,16 @@ export default function BlingPage() {
   const [loadingCategories, setLoadingCategories] = useState(false);
   const [loadingProducts, setLoadingProducts] = useState(false);
 
+  // pagination for manual product preview
+  const [productsPage, setProductsPage] = useState(1);
+  const [pageSize, setPageSize] = useState<number>(100);
+  const [hasMoreProducts, setHasMoreProducts] = useState(false);
+
+  // credentials masking
+  const [clientSecretMasked, setClientSecretMasked] = useState("");
+  const [showSecret, setShowSecret] = useState(false);
+  const [revealLoading, setRevealLoading] = useState(false);
+
   const { data: status, isLoading } = useQuery<BlingStatus>({
     queryKey: ["/api/bling/status"],
   });
@@ -113,7 +125,8 @@ export default function BlingPage() {
   useEffect(() => {
     if (credentials?.hasCredentials) {
       setClientId(credentials.clientId || "");
-      setClientSecret(""); // do not populate secret
+      setClientSecret(""); // don't auto-populate raw secret
+      setClientSecretMasked(credentials.clientSecretMasked || "");
       setApiEndpoint(
         credentials.apiEndpoint || "https://api.bling.com.br/Api/v3",
       );
@@ -121,18 +134,20 @@ export default function BlingPage() {
         credentials.redirectUri ||
           `${window.location.origin}/api/bling/callback`,
       );
+      setProductsPage(1);
+      setHasMoreProducts(false);
+      setBlingProducts([]);
     }
   }, [credentials]);
 
   const saveCredentials = async () => {
     setSavingCreds(true);
     try {
-      const resp = await apiRequest("POST", "/api/bling/credentials", {
-        clientId,
-        clientSecret,
-        apiEndpoint,
-        redirectUri,
-      });
+      const payload: any = { clientId, apiEndpoint, redirectUri };
+      // include clientSecret only if user typed a value (prevents accidental overwrite with empty)
+      if (clientSecret && clientSecret.length > 0) payload.clientSecret = clientSecret;
+
+      const resp = await apiRequest("POST", "/api/bling/credentials", payload);
       const data = await resp.json();
       if (!resp.ok)
         throw new Error(data.message || "Failed to save credentials");
@@ -152,6 +167,8 @@ export default function BlingPage() {
         });
       }
 
+      // reset clientSecret input after save to avoid keeping raw secret in memory
+      setClientSecret("");
       refetchCredentials();
     } catch (err: any) {
       toast({
@@ -399,13 +416,25 @@ export default function BlingPage() {
     }
   };
 
-  const loadBlingProducts = async () => {
+  const loadBlingProducts = async (page: number = 1) => {
     setLoadingProducts(true);
     try {
-      const response = await apiRequest("GET", "/api/bling/products/preview");
+      const response = await apiRequest(
+        "GET",
+        `/api/bling/products/preview?page=${page}&limit=${pageSize}`,
+      );
       const data = await response.json();
-      setBlingProducts(data.products || []);
-      setSelectedProducts([]);
+      const products = data.products || [];
+
+      if (page === 1) {
+        setBlingProducts(products);
+        setSelectedProducts([]);
+      } else {
+        setBlingProducts((prev) => [...prev, ...products]);
+      }
+
+      setProductsPage(page);
+      setHasMoreProducts(products.length === pageSize);
     } catch (error: any) {
       toast({
         title: "Erro ao carregar produtos",
@@ -661,12 +690,56 @@ export default function BlingPage() {
                 </div>
                 <div>
                   <Label htmlFor="client-secret">Client Secret</Label>
-                  <Input
-                    id="client-secret"
-                    value={clientSecret}
-                    onChange={(e) => setClientSecret(e.target.value)}
-                    placeholder="Client Secret"
-                  />
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id="client-secret"
+                      value={showSecret ? clientSecret : clientSecretMasked}
+                      onChange={(e) => setClientSecret(e.target.value)}
+                      placeholder="Client Secret"
+                      type={showSecret ? "text" : "password"}
+                    />
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={async () => {
+                        if (showSecret) {
+                          // hide secret
+                          setShowSecret(false);
+                          setClientSecret("");
+                        } else {
+                          // reveal secret from server
+                          setRevealLoading(true);
+                          try {
+                            const r = await apiRequest(
+                              "GET",
+                              "/api/bling/credentials/secret",
+                            );
+                            if (!r.ok) throw new Error("Failed to fetch secret");
+                            const d = await r.json();
+                            setClientSecret(d.clientSecret || "");
+                            setShowSecret(true);
+                          } catch (e: any) {
+                            toast({
+                              title: "Erro",
+                              description:
+                                e.message || "Falha ao revelar secret",
+                              variant: "destructive",
+                            });
+                          } finally {
+                            setRevealLoading(false);
+                          }
+                        }
+                      }}
+                    >
+                      {revealLoading ? (
+                        <Loader2 className="h-4 w-4" />
+                      ) : showSecret ? (
+                        <EyeOff className="h-4 w-4" />
+                      ) : (
+                        <Eye className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </div>
                 </div>
                 <div className="sm:col-span-2">
                   <Label htmlFor="api-endpoint">API Endpoint</Label>
@@ -1144,19 +1217,47 @@ export default function BlingPage() {
 
               <TabsContent value="products" className="space-y-4">
                 <div className="flex flex-wrap items-center gap-2">
-                  <Button
-                    variant="outline"
-                    onClick={loadBlingProducts}
-                    disabled={loadingProducts}
-                    data-testid="button-load-products"
-                  >
-                    {loadingProducts ? (
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    ) : (
-                      <Search className="h-4 w-4 mr-2" />
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      onClick={() => loadBlingProducts(1)}
+                      disabled={loadingProducts}
+                      data-testid="button-load-products"
+                    >
+                      {loadingProducts ? (
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      ) : (
+                        <Search className="h-4 w-4 mr-2" />
+                      )}
+                      Carregar Produtos
+                    </Button>
+
+                    <select
+                      value={pageSize}
+                      onChange={(e) => {
+                        setPageSize(Number(e.target.value));
+                        setProductsPage(1);
+                        setBlingProducts([]);
+                      }}
+                      className="bg-muted rounded-md px-2 py-1 text-sm"
+                      aria-label="Tamanho da página"
+                    >
+                      <option value={25}>25</option>
+                      <option value={50}>50</option>
+                      <option value={100}>100</option>
+                    </select>
+
+                    {blingProducts.length > 0 && hasMoreProducts && (
+                      <Button
+                        variant="outline"
+                        onClick={() => loadBlingProducts(productsPage + 1)}
+                        disabled={loadingProducts}
+                        size="sm"
+                      >
+                        Carregar mais
+                      </Button>
                     )}
-                    Carregar Produtos
-                  </Button>
+                  </div>
                   {blingProducts.length > 0 && (
                     <>
                       <Button
