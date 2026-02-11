@@ -3326,6 +3326,8 @@ export async function registerRoutes(
       console.log("[Bling] Redirecting to auth URL for company:", companyId);
       console.log("[Bling] Using redirectUri:", redirectUri);
       console.log("[Bling] authUrl:", authUrl);
+      // store last auth url for debug retrieval
+      try { lastBlingAuthUrl = authUrl; } catch (e) { /* ignore */ }
       res.redirect(authUrl);
     } catch (error: any) {
       console.error("[Bling] Error in /api/bling/auth:", error);
@@ -3397,6 +3399,17 @@ export async function registerRoutes(
     } catch (error: any) {
       console.error("[Bling] Error in /api/bling/callback:", error);
       res.status(500).json({ message: error.message });
+    }
+  });
+
+  // In-memory debug: store last auth URL generated (company-scoped). Useful for quick checks during authorization.
+  let lastBlingAuthUrl: string | null = null;
+
+  app.get("/api/bling/debug/last-auth-url", requireCompany, async (req: any, res) => {
+    try {
+      res.json({ lastAuthUrl: lastBlingAuthUrl });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
     }
   });
 
