@@ -3082,6 +3082,7 @@ export async function registerRoutes(
         clientId: row.clientId || null,
         clientSecretMasked: masked,
         apiEndpoint: row.apiEndpoint || null,
+        redirectUri: row.redirectUri || null,
       });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
@@ -3280,9 +3281,22 @@ export async function registerRoutes(
   );
 
   // START: OAuth flow endpoints
-  app.get("/api/bling/auth", requireCompany, async (req: any, res) => {
+  app.get("/api/bling/auth", async (req: any, res) => {
     try {
-      const companyId = String(req.companyId || req.user.companyId);
+      if (!req.isAuthenticated || !req.isAuthenticated()) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      const companyId = String(req.companyId || req.user?.companyId);
+      if (!companyId) {
+        return res
+          .status(400)
+          .json({
+            message:
+              "Company ID is required. Set X-Company-Id header or ensure your session has a companyId.",
+          });
+      }
+
       // Prefer credentials stored in DB
       const rows = await db
         .select()
@@ -3300,7 +3314,7 @@ export async function registerRoutes(
         });
       }
 
-      const redirectUri = `${req.protocol}://${req.get("host")}/api/bling/callback`;
+      const redirectUri = row.redirectUri || `${req.protocol}://${req.get("host")}/api/bling/callback`;
       const state = Buffer.from(
         JSON.stringify({
           companyId,
@@ -3308,7 +3322,10 @@ export async function registerRoutes(
         }),
       ).toString("base64");
       const authUrl = `https://www.bling.com.br/Api/v3/oauth/authorize?response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}`;
+      // DEBUG: Log the full auth URL (including redirect_uri) so we can verify it matches the redirect registered on Bling
       console.log("[Bling] Redirecting to auth URL for company:", companyId);
+      console.log("[Bling] Using redirectUri:", redirectUri);
+      console.log("[Bling] authUrl:", authUrl);
       res.redirect(authUrl);
     } catch (error: any) {
       console.error("[Bling] Error in /api/bling/auth:", error);
@@ -3344,6 +3361,7 @@ export async function registerRoutes(
           .send("No Bling credentials saved for this company");
 
       // Exchange code for tokens using company credentials
+      const redirectUri = row.redirectUri || `${req.protocol}://${req.get("host")}/api/bling/callback`;
       const tokenResp = await fetch(
         `https://www.bling.com.br/Api/v3/oauth/token`,
         {
@@ -3359,7 +3377,7 @@ export async function registerRoutes(
           body: new URLSearchParams({
             grant_type: "authorization_code",
             code: code as string,
-            redirect_uri: `${req.protocol}://${req.get("host")}/api/bling/callback`,
+            redirect_uri: redirectUri,
           }),
         },
       );

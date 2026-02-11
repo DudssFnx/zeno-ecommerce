@@ -106,6 +106,7 @@ export default function BlingPage() {
   const [clientId, setClientId] = useState("");
   const [clientSecret, setClientSecret] = useState("");
   const [apiEndpoint, setApiEndpoint] = useState<string | null>(null);
+  const [redirectUri, setRedirectUri] = useState<string | null>(null);
   const [savingCreds, setSavingCreds] = useState(false);
   const [testingCreds, setTestingCreds] = useState(false);
 
@@ -115,6 +116,9 @@ export default function BlingPage() {
       setClientSecret(""); // do not populate secret
       setApiEndpoint(
         credentials.apiEndpoint || "https://api.bling.com.br/Api/v3",
+      );
+      setRedirectUri(
+        credentials.redirectUri || `${window.location.origin}/api/bling/callback`,
       );
     }
   }, [credentials]);
@@ -126,6 +130,7 @@ export default function BlingPage() {
         clientId,
         clientSecret,
         apiEndpoint,
+        redirectUri,
       });
       const data = await resp.json();
       if (!resp.ok)
@@ -608,6 +613,18 @@ export default function BlingPage() {
                     onChange={(e) => setApiEndpoint(e.target.value)}
                     placeholder="https://api.bling.com.br/Api/v3"
                   />
+                </div>
+                <div className="sm:col-span-2">
+                  <Label htmlFor="redirect-uri">Redirect URI</Label>
+                  <Input
+                    id="redirect-uri"
+                    value={redirectUri || ""}
+                    onChange={(e) => setRedirectUri(e.target.value)}
+                    placeholder={`${window.location.origin}/api/bling/callback`}
+                  />
+                  <CardDescription>
+                    Deve ser idêntico ao Redirect URI registrado no app do Bling (match exato).
+                  </CardDescription>
                 </div>
               </div>
 
