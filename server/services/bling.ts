@@ -1712,6 +1712,10 @@ export async function importBlingProductsByIds(
       const result = await importBlingProductById(id, companyId);
       if (result.created) imported++;
       else if (result.updated) skipped++; // treat update as skipped for UX
+      else {
+        // No creation or update — treat as an error (e.g., product not found)
+        errors.push(`Product ${id}: ${result.message || "not imported"}`);
+      }
     } catch (error) {
       const err = error as any;
       errors.push(`Product ${id}: ${err?.message || String(err)}`);

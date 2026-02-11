@@ -675,10 +675,18 @@ export default function BlingPage() {
       return response.json();
     },
     onSuccess: (data: ImportResult) => {
-      toast({
-        title: "Produtos importados",
-        description: `${data.imported} importados, ${data.skipped} já existentes`,
-      });
+      if ((data.imported || 0) === 0 && (data.skipped || 0) === 0 && (data.errors || []).length > 0) {
+        toast({
+          title: "Erro ao importar",
+          description: `Nenhum produto importado. Erros: ${data.errors.slice(0,3).join('; ')}`,
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Produtos importados",
+          description: `${data.imported} importados, ${data.skipped} já existentes`,
+        });
+      }
       queryClient.invalidateQueries({ queryKey: ["/api/products"] });
       setSelectedProducts([]);
       loadBlingProducts();
