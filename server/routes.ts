@@ -3677,28 +3677,35 @@ export async function registerRoutes(
         const matches: any[] = [];
 
         for (let page = 1; page <= maxPages; page++) {
-          const products = await import("./services/bling").then((m) =>
-            m.fetchBlingProductsList(page, limit),
-          );
+          try {
+            const products = await import("./services/bling").then((m) =>
+              m.fetchBlingProductsList(page, limit),
+            );
 
-          if (!products || products.length === 0) break;
+            if (!products || products.length === 0) break;
 
-          for (const p of products) {
-            const name = String(p.nome || "").toLowerCase();
-            const code = String(p.codigo || "").toLowerCase();
-            if (
-              name.includes(q.toLowerCase()) ||
-              code.includes(q.toLowerCase())
-            ) {
-              matches.push(p);
+            for (const p of products) {
+              const name = String(p.nome || "").toLowerCase();
+              const code = String(p.codigo || "").toLowerCase();
+              if (
+                name.includes(q.toLowerCase()) ||
+                code.includes(q.toLowerCase())
+              ) {
+                matches.push(p);
+              }
             }
+
+            // defensive cap to avoid returning huge payloads
+            if (matches.length >= limit * 5) break;
+
+            // if we fetched less than a full page, no more pages
+            if (products.length < limit) break;
+          } catch (err: any) {
+            console.error(`[bling search] error fetching page ${page}:`, err);
+            return res
+              .status(500)
+              .json({ message: `Error fetching page ${page}: ${err?.message || String(err)}` });
           }
-
-          // defensive cap to avoid returning huge payloads
-          if (matches.length >= limit * 5) break;
-
-          // if we fetched less than a full page, no more pages
-          if (products.length < limit) break;
         }
 
         res.json({ products: matches });

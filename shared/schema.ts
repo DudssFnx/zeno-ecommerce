@@ -3,6 +3,7 @@ import {
   boolean,
   decimal,
   integer,
+  bigint,
   jsonb,
   pgEnum,
   pgTable,
@@ -130,7 +131,7 @@ export const categories = pgTable("categories", {
   slug: text("slug"),
   parentId: integer("parent_id"),
   hideFromVarejo: boolean("hide_from_varejo"),
-  blingId: integer("bling_id"),
+  blingId: bigint("bling_id"),
 });
 export type Category = typeof categories.$inferSelect;
 export type InsertCategory = typeof categories.$inferInsert;
@@ -212,7 +213,7 @@ export const products = pgTable("products", {
   ipiCst: text("ipi_cst"),
   ipiAliquota: decimal("ipi_aliquota"),
 
-  blingId: integer("bling_id"),
+  blingId: bigint("bling_id"),
   blingLastSyncedAt: timestamp("bling_last_synced_at"),
   pisCst: text("pis_cst"),
   pisAliquota: decimal("pis_aliquota"),
