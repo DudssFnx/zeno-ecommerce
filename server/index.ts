@@ -105,6 +105,24 @@ app.use((req, res, next) => {
       "[MIGRATION] Ensured column api_endpoint exists on bling_credentials",
     );
 
+    // Sanitize any saved credentials that mistakenly contain authorize URLs or query strings
+    try {
+      const result = await pool.query(`UPDATE bling_credentials
+        SET api_endpoint = 'https://api.bling.com.br/Api/v3'
+        WHERE api_endpoint IS NOT NULL AND (
+          api_endpoint ILIKE '%/oauth/%' OR
+          api_endpoint ILIKE '%authorize%' OR
+          api_endpoint LIKE '%?%'
+        );`);
+      if (result && result.rowCount) {
+        console.log(
+          `[MIGRATION] Sanitized ${result.rowCount} bling_credentials api_endpoint values (replaced with default API endpoint)`,
+        );
+      }
+    } catch (err) {
+      console.error('[MIGRATION] Failed to sanitize bling_credentials.api_endpoint:', err);
+    }
+
     // Ensure webhook endpoints table exists
     try {
       await pool.query(`CREATE TABLE IF NOT EXISTS bling_webhook_endpoints (

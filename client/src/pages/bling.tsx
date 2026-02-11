@@ -118,7 +118,8 @@ export default function BlingPage() {
         credentials.apiEndpoint || "https://api.bling.com.br/Api/v3",
       );
       setRedirectUri(
-        credentials.redirectUri || `${window.location.origin}/api/bling/callback`,
+        credentials.redirectUri ||
+          `${window.location.origin}/api/bling/callback`,
       );
     }
   }, [credentials]);
@@ -133,12 +134,22 @@ export default function BlingPage() {
         redirectUri,
       });
       const data = await resp.json();
-      if (!resp.ok)
-        throw new Error(data.message || "Failed to save credentials");
-      toast({
-        title: "Credenciais salvas",
-        description: "Credenciais Bling atualizadas para a empresa.",
-      });
+      if (!resp.ok) throw new Error(data.message || "Failed to save credentials");
+
+      if (data.normalized) {
+        toast({
+          title: "API Endpoint normalizado",
+          description: data.message ||
+            "O endpoint informado foi ajustado para o endpoint padrão do Bling",
+          variant: "warning",
+        });
+      } else {
+        toast({
+          title: "Credenciais salvas",
+          description: "Credenciais Bling atualizadas para a empresa.",
+        });
+      }
+
       refetchCredentials();
     } catch (err: any) {
       toast({
@@ -623,7 +634,8 @@ export default function BlingPage() {
                     placeholder={`${window.location.origin}/api/bling/callback`}
                   />
                   <CardDescription>
-                    Deve ser idêntico ao Redirect URI registrado no app do Bling (match exato).
+                    Deve ser idêntico ao Redirect URI registrado no app do Bling
+                    (match exato).
                   </CardDescription>
                 </div>
               </div>

@@ -3202,6 +3202,28 @@ export async function registerRoutes(
           .json({ message: "clientId and clientSecret are required" });
       }
 
+      // Validate and normalize apiEndpoint: it must be a base API URL, not an OAuth/authorize URL or contain query params
+      let normalizedApiEndpoint: string | null = apiEndpoint || null;
+      let normalized = false;
+      if (normalizedApiEndpoint) {
+        try {
+          const parsed = new URL(String(normalizedApiEndpoint));
+          // Reject if it contains query string or looks like an OAuth authorize URL
+          if (parsed.search && parsed.search !== "") {
+            normalizedApiEndpoint = "https://api.bling.com.br/Api/v3";
+            normalized = true;
+          }
+          if (/\/oauth\b|authorize/i.test(parsed.pathname)) {
+            normalizedApiEndpoint = "https://api.bling.com.br/Api/v3";
+            normalized = true;
+          }
+        } catch (e) {
+          // If invalid URL, fallback to default
+          normalizedApiEndpoint = "https://api.bling.com.br/Api/v3";
+          normalized = true;
+        }
+      }
+
       // Remove credenciais antigas da empresa e insere as novas
       await db
         .delete(blingCredentials)
@@ -3212,20 +3234,28 @@ export async function registerRoutes(
           companyId,
           clientId,
           clientSecret,
-          apiEndpoint,
+          apiEndpoint: normalizedApiEndpoint,
           redirectUri,
           createdAt: new Date(),
           updatedAt: new Date(),
         })
         .returning();
-      res.json({
+
+      const responsePayload: any = {
         ok: true,
         credentials: {
           id: inserted.id,
           clientId: inserted.clientId,
           apiEndpoint: inserted.apiEndpoint,
         },
-      });
+      };
+      if (normalized) {
+        responsePayload.normalized = true;
+        responsePayload.message =
+          "The provided API Endpoint looked like an authorization URL or contained query params and was normalized to https://api.bling.com.br/Api/v3";
+      }
+
+      res.json(responsePayload);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
@@ -3289,12 +3319,10 @@ export async function registerRoutes(
 
       const companyId = String(req.companyId || req.user?.companyId);
       if (!companyId) {
-        return res
-          .status(400)
-          .json({
-            message:
-              "Company ID is required. Set X-Company-Id header or ensure your session has a companyId.",
-          });
+        return res.status(400).json({
+          message:
+            "Company ID is required. Set X-Company-Id header or ensure your session has a companyId.",
+        });
       }
 
       // Prefer credentials stored in DB
@@ -3314,7 +3342,9 @@ export async function registerRoutes(
         });
       }
 
-      const redirectUri = row.redirectUri || `${req.protocol}://${req.get("host")}/api/bling/callback`;
+      const redirectUri =
+        row.redirectUri ||
+        `${req.protocol}://${req.get("host")}/api/bling/callback`;
       const state = Buffer.from(
         JSON.stringify({
           companyId,
@@ -3327,7 +3357,11 @@ export async function registerRoutes(
       console.log("[Bling] Using redirectUri:", redirectUri);
       console.log("[Bling] authUrl:", authUrl);
       // store last auth url for debug retrieval
-      try { lastBlingAuthUrl = authUrl; } catch (e) { /* ignore */ }
+      try {
+        lastBlingAuthUrl = authUrl;
+      } catch (e) {
+        /* ignore */
+      }
       res.redirect(authUrl);
     } catch (error: any) {
       console.error("[Bling] Error in /api/bling/auth:", error);
@@ -3363,7 +3397,9 @@ export async function registerRoutes(
           .send("No Bling credentials saved for this company");
 
       // Exchange code for tokens using company credentials
-      const redirectUri = row.redirectUri || `${req.protocol}://${req.get("host")}/api/bling/callback`;
+      const redirectUri =
+        row.redirectUri ||
+        `${req.protocol}://${req.get("host")}/api/bling/callback`;
       const tokenResp = await fetch(
         `https://www.bling.com.br/Api/v3/oauth/token`,
         {
@@ -3405,13 +3441,17 @@ export async function registerRoutes(
   // In-memory debug: store last auth URL generated (company-scoped). Useful for quick checks during authorization.
   let lastBlingAuthUrl: string | null = null;
 
-  app.get("/api/bling/debug/last-auth-url", requireCompany, async (req: any, res) => {
-    try {
-      res.json({ lastAuthUrl: lastBlingAuthUrl });
-    } catch (err: any) {
-      res.status(500).json({ message: err.message });
-    }
-  });
+  app.get(
+    "/api/bling/debug/last-auth-url",
+    requireCompany,
+    async (req: any, res) => {
+      try {
+        res.json({ lastAuthUrl: lastBlingAuthUrl });
+      } catch (err: any) {
+        res.status(500).json({ message: err.message });
+      }
+    },
+  );
 
   // END: OAuth flow endpoints
 
