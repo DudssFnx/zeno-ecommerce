@@ -211,6 +211,9 @@ export const products = pgTable("products", {
   icmsAliquota: decimal("icms_aliquota"),
   ipiCst: text("ipi_cst"),
   ipiAliquota: decimal("ipi_aliquota"),
+
+  blingId: integer("bling_id"),
+  blingLastSyncedAt: timestamp("bling_last_synced_at"),
   pisCst: text("pis_cst"),
   pisAliquota: decimal("pis_aliquota"),
   cofinsCst: text("cofins_cst"),

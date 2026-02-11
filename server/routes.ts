@@ -3119,6 +3119,18 @@ export async function registerRoutes(
     }
   });
 
+  // Trigger a full products sync (imports/updates all products) - uses SSE progress
+  app.post("/api/bling/sync/products", requireCompany, async (req: any, res) => {
+    try {
+      // Kick off sync in background and immediately return a starting response
+      import("./services/bling").then((m) => m.syncProducts());
+      res.json({ ok: true, message: "Sync started" });
+    } catch (error: any) {
+      console.error("[Bling] Error starting product sync:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // DEBUG: public status endpoint (no auth) - use only in local/dev for debugging
   app.get("/api/bling/status/public", async (req: any, res) => {
     try {
@@ -3449,6 +3461,92 @@ export async function registerRoutes(
         res.json({ lastAuthUrl: lastBlingAuthUrl });
       } catch (err: any) {
         res.status(500).json({ message: err.message });
+      }
+    },
+  );
+
+  // Product import & preview endpoints
+  app.get(
+    "/api/bling/products/preview",
+    requireCompany,
+    async (req: any, res) => {
+      try {
+        const page = Number(req.query.page || 1);
+        const limit = Number(req.query.limit || 50);
+        const products = await import("./services/bling").then((m) =>
+          m.fetchBlingProductsList(page, limit),
+        );
+        res.json({ products });
+      } catch (error: any) {
+        res.status(500).json({ message: error.message });
+      }
+    },
+  );
+
+  app.get("/api/bling/products/:id", requireCompany, async (req: any, res) => {
+    try {
+      const id = Number(req.params.id);
+      const product = await import("./services/bling").then((m) =>
+        m.fetchBlingProductDetails(id),
+      );
+      res.json({ product });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post(
+    "/api/bling/products/:id/import",
+    requireCompany,
+    async (req: any, res) => {
+      try {
+        const id = Number(req.params.id);
+        const companyId = String(req.companyId || req.user.companyId);
+        const result = await import("./services/bling").then((m) =>
+          m.importBlingProductById(id, companyId),
+        );
+        res.json(result);
+      } catch (error: any) {
+        res.status(500).json({ message: error.message });
+      }
+    },
+  );
+
+  app.post(
+    "/api/bling/products/import",
+    requireCompany,
+    async (req: any, res) => {
+      try {
+        const { productIds } = req.body;
+        if (!Array.isArray(productIds) || productIds.length === 0)
+          return res
+            .status(400)
+            .json({ message: "productIds must be a non-empty array" });
+        const companyId = String(req.companyId || req.user.companyId);
+        const result = await import("./services/bling").then((m) =>
+          m.importBlingProductsByIds(productIds, companyId),
+        );
+        res.json(result);
+      } catch (error: any) {
+        res.status(500).json({ message: error.message });
+      }
+    },
+  );
+
+  app.post(
+    "/api/bling/products/:id/sync",
+    requireCompany,
+    async (req: any, res) => {
+      try {
+        const id = Number(req.params.id);
+        // Re-import will update existing product
+        const companyId = String(req.companyId || req.user.companyId);
+        const result = await import("./services/bling").then((m) =>
+          m.importBlingProductById(id, companyId),
+        );
+        res.json(result);
+      } catch (error: any) {
+        res.status(500).json({ message: error.message });
       }
     },
   );

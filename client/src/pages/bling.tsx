@@ -134,12 +134,14 @@ export default function BlingPage() {
         redirectUri,
       });
       const data = await resp.json();
-      if (!resp.ok) throw new Error(data.message || "Failed to save credentials");
+      if (!resp.ok)
+        throw new Error(data.message || "Failed to save credentials");
 
       if (data.normalized) {
         toast({
           title: "API Endpoint normalizado",
-          description: data.message ||
+          description:
+            data.message ||
             "O endpoint informado foi ajustado para o endpoint padrão do Bling",
           variant: "warning",
         });
@@ -465,6 +467,36 @@ export default function BlingPage() {
         description: error.message || "Falha ao importar produtos selecionados",
         variant: "destructive",
       });
+    },
+  });
+
+  const importSingleProductMutation = useMutation({
+    mutationFn: async (productId: number) => {
+      const response = await apiRequest("POST", `/api/bling/products/${productId}/import`);
+      return response.json();
+    },
+    onSuccess: (data: any) => {
+      toast({ title: "Produto importado", description: data.message || "Produto importado" });
+      queryClient.invalidateQueries({ queryKey: ["/api/products"] });
+      loadBlingProducts();
+    },
+    onError: (error: any) => {
+      toast({ title: "Erro ao importar produto", description: error.message || "Falha ao importar produto", variant: "destructive" });
+    },
+  });
+
+  const syncSingleProductMutation = useMutation({
+    mutationFn: async (productId: number) => {
+      const response = await apiRequest("POST", `/api/bling/products/${productId}/sync`);
+      return response.json();
+    },
+    onSuccess: (data: any) => {
+      toast({ title: "Produto atualizado", description: data.message || "Produto atualizado" });
+      queryClient.invalidateQueries({ queryKey: ["/api/products"] });
+      loadBlingProducts();
+    },
+    onError: (error: any) => {
+      toast({ title: "Erro ao atualizar produto", description: error.message || "Falha ao atualizar produto", variant: "destructive" });
     },
   });
 
@@ -1152,14 +1184,40 @@ export default function BlingPage() {
                               </span>
                             </div>
                           </div>
-                          <Badge
-                            variant={
-                              product.situacao === "A" ? "default" : "secondary"
-                            }
-                            className="text-xs"
-                          >
-                            {product.situacao === "A" ? "Ativo" : "Inativo"}
-                          </Badge>
+                          <div className="flex items-center gap-2">
+                            <Badge
+                              variant={
+                                product.situacao === "A" ? "default" : "secondary"
+                              }
+                              className="text-xs"
+                            >
+                              {product.situacao === "A" ? "Ativo" : "Inativo"}
+                            </Badge>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                importSingleProductMutation.mutate(product.id);
+                              }}
+                              disabled={importSingleProductMutation.isPending}
+                              data-testid={`button-import-product-${product.id}`}
+                            >
+                              <Download className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                syncSingleProductMutation.mutate(product.id);
+                              }}
+                              disabled={syncSingleProductMutation.isPending}
+                              data-testid={`button-sync-product-${product.id}`}
+                            >
+                              <RefreshCw className="h-4 w-4" />
+                            </Button>
+                          </div>
                         </label>
                       ))}
                     </div>

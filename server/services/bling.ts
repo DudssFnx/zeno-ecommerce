@@ -1428,7 +1428,9 @@ async function handleProductEvent(
       categoryId,
       description: data.descricaoCurta || data.descricaoComplementar || null,
       price: String(data.preco || 0),
-    };
+      blingId: data.id,
+      blingLastSyncedAt: new Date(),
+    } as any;
 
     const existing = await db
       .select()
@@ -1499,7 +1501,10 @@ async function handleProductEvent(
       fullProduct.estoque?.saldoFisico ??
       0,
     image: imageUrl,
-  };
+    // Link product to Bling
+    blingId: fullProduct.id,
+    blingLastSyncedAt: new Date(),
+  } as any; // cast because InsertProduct type may not include bling fields
 
   const existing = await db
     .select()
@@ -1524,6 +1529,8 @@ async function handleProductEvent(
         price: productData.price,
         stock: productData.stock,
         image: productData.image,
+        blingId: productData.blingId,
+        blingLastSyncedAt: productData.blingLastSyncedAt,
       })
       .where(eq(products.sku, sku));
     return {
@@ -1557,12 +1564,24 @@ async function handleStockEvent(
   const blingProductId = data.produto.id;
   const newStock = data.saldoVirtualTotal;
 
-  const allProducts = await db.select().from(products);
-  const product = allProducts.find(
-    (p) =>
-      p.sku === `BLING-${blingProductId}` ||
-      p.sku.includes(String(blingProductId)),
-  );
+  // Prefer exact match by blingId for reliability
+  const [found] = await db
+    .select()
+    .from(products)
+    .where(eq(products.blingId, blingProductId))
+    .limit(1);
+
+  let product = found;
+
+  // Fallback: try matching by SKU patterns
+  if (!product) {
+    const allProducts = await db.select().from(products);
+    product = allProducts.find(
+      (p) =>
+        p.sku === `BLING-${blingProductId}` ||
+        p.sku.includes(String(blingProductId)),
+    );
+  }
 
   if (product) {
     await db
@@ -1579,6 +1598,106 @@ async function handleStockEvent(
     success: true,
     message: `Product ${blingProductId} not found for stock update`,
   };
+}
+
+export async function importBlingProductById(
+  productId: number,
+  companyId?: string,
+): Promise<{ created: boolean; updated: boolean; message?: string }> {
+  const fullProduct = await fetchBlingProductDetails(productId);
+  if (!fullProduct) return { created: false, updated: false, message: "product not found" };
+
+  const sku = fullProduct.codigo || `BLING-${fullProduct.id}`;
+
+  // Extract image URL
+  let imageUrl: string | null = null;
+  if (fullProduct.imagens && fullProduct.imagens.length > 0) {
+    const sortedImages = [...fullProduct.imagens].sort(
+      (a, b) => (a.ordem || 0) - (b.ordem || 0),
+    );
+    imageUrl = sortedImages[0]?.linkExterno || sortedImages[0]?.link || null;
+  }
+  if (!imageUrl && fullProduct.midia?.imagens?.externas?.[0]?.link) {
+    imageUrl = fullProduct.midia.imagens.externas[0].link;
+  }
+  if (!imageUrl && fullProduct.midia?.imagens?.internas?.[0]?.link) {
+    imageUrl = fullProduct.midia.imagens.internas[0].link;
+  }
+
+  // Find category by blingId
+  let categoryId: number | null = null;
+  if (fullProduct.categoria?.id) {
+    const existingCategories = await db.select().from(categories);
+    const matchingCategory = existingCategories.find(
+      (c) => c.blingId === fullProduct.categoria?.id,
+    );
+    if (matchingCategory) {
+      categoryId = matchingCategory.id;
+    }
+  }
+
+  const productData: any = {
+    name: fullProduct.nome,
+    sku,
+    categoryId,
+    brand: fullProduct.marca || null,
+    description: fullProduct.descricaoComplementar || fullProduct.descricaoCurta || null,
+    price: String(fullProduct.preco || 0),
+    stock: fullProduct.estoque?.saldoVirtual ?? fullProduct.estoque?.saldoFisico ?? 0,
+    image: imageUrl,
+    blingId: fullProduct.id,
+    blingLastSyncedAt: new Date(),
+  };
+
+  const existing = await db
+    .select()
+    .from(products)
+    .where(eq(products.sku, sku))
+    .limit(1);
+
+  if (existing.length === 0) {
+    await db.insert(products).values(productData);
+    return { created: true, updated: false, message: `Product ${sku} created` };
+  } else {
+    await db
+      .update(products)
+      .set({
+        name: productData.name,
+        categoryId: productData.categoryId,
+        brand: productData.brand,
+        description: productData.description,
+        price: productData.price,
+        stock: productData.stock,
+        image: productData.image,
+        blingId: productData.blingId,
+        blingLastSyncedAt: productData.blingLastSyncedAt,
+      })
+      .where(eq(products.sku, sku));
+    return { created: false, updated: true, message: `Product ${sku} updated` };
+  }
+}
+
+export async function importBlingProductsByIds(
+  productIds: number[],
+  companyId?: string,
+): Promise<{ imported: number; skipped: number; errors: string[] }> {
+  let imported = 0;
+  let skipped = 0;
+  const errors: string[] = [];
+
+  for (const id of productIds) {
+    try {
+      const result = await importBlingProductById(id, companyId);
+      if (result.created) imported++;
+      else if (result.updated) skipped++; // treat update as skipped for UX
+    } catch (error: any) {
+      errors.push(`Product ${id}: ${error?.message || String(error)}`);
+    }
+    // Basic rate limit friendliness
+    await new Promise((r) => setTimeout(r, 300));
+  }
+
+  return { imported, skipped, errors };
 }
 
 // ========== ORDER CREATION ==========
