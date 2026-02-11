@@ -3,6 +3,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -83,6 +89,10 @@ export default function PurchasesPage() {
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [isBulkProcessing, setIsBulkProcessing] = useState(false);
   const [processingId, setProcessingId] = useState<number | null>(null);
+  // Modal state to show updated products after post-stock
+  const [updatedProductsModal, setUpdatedProductsModal] = useState<
+    any[] | null
+  >(null);
 
   const { data: orders = [], isLoading } = useQuery<PurchaseOrderWithDetails[]>(
     {
@@ -107,12 +117,29 @@ export default function PurchasesPage() {
   const postStockMutation = useMutation({
     mutationFn: async (id: number) => {
       setProcessingId(id);
-      await apiRequest("POST", `/api/purchases/${id}/post-stock`);
+      const res = await apiRequest("POST", `/api/purchases/${id}/post-stock`);
+      return await res.json();
     },
-    onSuccess: () => {
+    onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/purchases"] });
       queryClient.invalidateQueries({ queryKey: ["/api/products"] });
-      toast({ title: "Sucesso", description: "Estoque lançado." });
+      if (data?.updatedProducts && data.updatedProducts.length > 0) {
+        const count = data.updatedProducts.length;
+        const costCount = data.updatedProducts.filter(
+          (u: any) => u.updatedCost,
+        ).length;
+        const priceCount = data.updatedProducts.filter(
+          (u: any) => u.updatedPrice,
+        ).length;
+        toast({
+          title: "Estoque lançado",
+          description: `Estoque lançado. ${count} produto(s) atualizado(s): ${costCount} custo(s), ${priceCount} preço(s).`,
+        });
+        // Open modal with details
+        setUpdatedProductsModal(data.updatedProducts);
+      } else {
+        toast({ title: "Sucesso", description: "Estoque lançado." });
+      }
       setProcessingId(null);
     },
     onError: (err: any) => {
@@ -191,12 +218,27 @@ export default function PurchasesPage() {
 
     setIsBulkProcessing(true);
     try {
-      await Promise.all(
+      const results = await Promise.all(
         drafts.map((order) =>
-          apiRequest("POST", `/api/purchases/${order.id}/post-stock`),
+          apiRequest("POST", `/api/purchases/${order.id}/post-stock`).then(
+            (r) => r.json(),
+          ),
         ),
       );
-      toast({ title: "Sucesso", description: "Pedidos lançados." });
+      // Agrega atualizações de produtos de todos os resultados
+      const updatedProducts = results.flatMap((r) => r?.updatedProducts || []);
+      if (updatedProducts.length > 0) {
+        const costCount = updatedProducts.filter((u) => u.updatedCost).length;
+        const priceCount = updatedProducts.filter((u) => u.updatedPrice).length;
+        toast({
+          title: "Sucesso",
+          description: `Pedidos lançados. ${updatedProducts.length} produto(s) atualizado(s): ${costCount} custo(s), ${priceCount} preço(s).`,
+        });
+        setUpdatedProductsModal(updatedProducts);
+      } else {
+        toast({ title: "Sucesso", description: "Pedidos lançados." });
+      }
+
       queryClient.invalidateQueries({ queryKey: ["/api/purchases"] });
       queryClient.invalidateQueries({ queryKey: ["/api/products"] });
       setSelectedIds([]);
@@ -581,6 +623,45 @@ export default function PurchasesPage() {
           )}
         </CardContent>
       </Card>
+      {updatedProductsModal && updatedProductsModal.length > 0 && (
+        <Dialog open={true} onOpenChange={() => setUpdatedProductsModal(null)}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>Produtos atualizados</DialogTitle>
+            </DialogHeader>
+            <div className="p-4 space-y-3 max-h-80 overflow-y-auto">
+              {updatedProductsModal.map((u) => (
+                <div
+                  key={u.productId}
+                  className="flex items-center justify-between border-b pb-2"
+                >
+                  <div>
+                    <div className="font-bold">
+                      {u.name || `#${u.productId}`}
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                      {u.updatedCost && u.cost
+                        ? `Custo atualizado: R$ ${Number(u.cost).toFixed(2)}`
+                        : ""}
+                      {u.updatedPrice && u.price
+                        ? ` ${u.updatedPrice ? `Preço atualizado: R$ ${Number(u.price).toFixed(2)}` : ""}`
+                        : ""}
+                    </div>
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    Estoque: {u.newStock ?? "-"}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="flex justify-end p-4">
+              <Button onClick={() => setUpdatedProductsModal(null)}>
+                Fechar
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }

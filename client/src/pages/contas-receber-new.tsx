@@ -860,12 +860,56 @@ export default function ContasReceberPage() {
       setSelectedReceivable(details);
       setPaymentAmount(details.amountRemaining);
       setShowPaymentModal(true);
-    } catch {
-      toast({
-        title: "Erro",
-        description: "Não foi possível carregar os detalhes.",
-        variant: "destructive",
-      });
+    } catch (error: any) {
+      console.error("[ERROR] openPaymentModal", error);
+
+      // Fallback: tentar obter parcelas e pagamentos via endpoints existentes
+      try {
+        const instRes = await apiRequest(
+          "GET",
+          `/api/receivables/installments?receivableId=${receivable.id}`,
+        );
+        const installments: any[] = await instRes.json();
+
+        const payRes = await apiRequest("GET", "/api/receivables/payments");
+        const allPayments: any[] = await payRes.json();
+        const payments = allPayments.filter(
+          (p) => p.receivableId === receivable.id,
+        );
+
+        const details = {
+          ...receivable,
+          installments,
+          payments,
+        } as ReceivableWithDetails;
+
+        setSelectedReceivable(details);
+        const amtRem =
+          details.amountRemaining ||
+          (details.installments && details.installments.length > 0
+            ? details.installments.reduce(
+                (acc: any, i: any) => acc + Number(i.amountRemaining || 0),
+                0,
+              )
+            : undefined);
+        setPaymentAmount(amtRem || receivable.amountRemaining || "0");
+        setShowPaymentModal(true);
+
+        toast({
+          title: "Aviso",
+          description:
+            "Usando dados reduzidos (fallback) — aplique a migration para correção permanente.",
+          variant: "warning",
+        });
+      } catch (fallbackError) {
+        console.error("[ERROR] openPaymentModal fallback", fallbackError);
+        toast({
+          title: "Erro",
+          description:
+            error?.message || "Não foi possível carregar os detalhes.",
+          variant: "destructive",
+        });
+      }
     }
   };
 
@@ -875,12 +919,47 @@ export default function ContasReceberPage() {
       const details: ReceivableWithDetails = await res.json();
       setSelectedReceivable(details);
       setShowDetailsModal(true);
-    } catch {
-      toast({
-        title: "Erro",
-        description: "Não foi possível carregar os detalhes.",
-        variant: "destructive",
-      });
+    } catch (error: any) {
+      console.error("[ERROR] openDetailsModal", error);
+
+      // Fallback: tentar buscar parcelas e pagamentos e montar detalhes locais
+      try {
+        const instRes = await apiRequest(
+          "GET",
+          `/api/receivables/installments?receivableId=${receivable.id}`,
+        );
+        const installments: any[] = await instRes.json();
+
+        const payRes = await apiRequest("GET", "/api/receivables/payments");
+        const allPayments: any[] = await payRes.json();
+        const payments = allPayments.filter(
+          (p) => p.receivableId === receivable.id,
+        );
+
+        const details = {
+          ...receivable,
+          installments,
+          payments,
+        } as ReceivableWithDetails;
+
+        setSelectedReceivable(details);
+        setShowDetailsModal(true);
+
+        toast({
+          title: "Aviso",
+          description:
+            "Usando dados reduzidos (fallback) — aplique a migration para correção permanente.",
+          variant: "warning",
+        });
+      } catch (fallbackError) {
+        console.error("[ERROR] openDetailsModal fallback", fallbackError);
+        toast({
+          title: "Erro",
+          description:
+            error?.message || "Não foi possível carregar os detalhes.",
+          variant: "destructive",
+        });
+      }
     }
   };
 

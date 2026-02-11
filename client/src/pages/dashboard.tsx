@@ -10,6 +10,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useAuth } from "@/contexts/AuthContext";
+import { apiRequest } from "@/lib/queryClient";
 import type { Product, Order as SchemaOrder, User } from "@shared/schema";
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
@@ -268,11 +269,10 @@ export default function DashboardPage() {
     useQuery<AdminSalesStats>({
       queryKey: ["/api/admin/sales-stats", periodFilter],
       queryFn: async () => {
-        const res = await fetch(
+        const res = await apiRequest(
+          "GET",
           `/api/admin/sales-stats?period=${periodFilter}`,
-          { credentials: "include" },
         );
-        if (!res.ok) throw new Error("Failed to fetch");
         return res.json();
       },
       enabled: shouldFetchAdminData,

@@ -12,7 +12,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation } from "@tanstack/react-query";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useLocation } from "wouter";
 import { z } from "zod";
@@ -30,6 +30,10 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
 
+  const [suggestions, setSuggestions] = useState<any[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const debounceRef = useRef<number | null>(null);
+
   const form = useForm<LoginData>({
     resolver: zodResolver(loginSchema),
     defaultValues: {
@@ -38,6 +42,35 @@ export default function LoginPage() {
       razaoSocial: "",
     },
   });
+
+  const razaoValue = form.watch("razaoSocial");
+
+  useEffect(() => {
+    const q = (razaoValue || "").trim();
+    if (!q || q.length < 2) {
+      setSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+    if (debounceRef.current) window.clearTimeout(debounceRef.current);
+    debounceRef.current = window.setTimeout(async () => {
+      try {
+        const res = await apiRequest(
+          "GET",
+          `/api/companies/search?query=${encodeURIComponent(q)}`,
+        );
+        const data = await res.json();
+        setSuggestions(data);
+        setShowSuggestions(true);
+      } catch (e) {
+        setSuggestions([]);
+        setShowSuggestions(false);
+      }
+    }, 250);
+    return () => {
+      if (debounceRef.current) window.clearTimeout(debounceRef.current);
+    };
+  }, [razaoValue]);
 
   const loginMutation = useMutation({
     mutationFn: async (data: LoginData) => {
@@ -62,7 +95,20 @@ export default function LoginPage() {
       }
     },
     onError: (err: Error) => {
-      setError(err.message || "E-mail ou senha incorretos");
+      // apiRequest throws errors like: "401: {\"message\":\"Empresa não encontrada\"}"
+      let msg = err.message || "E-mail ou senha incorretos";
+      const colonIdx = msg.indexOf(":");
+      if (colonIdx !== -1) {
+        const maybeJson = msg.slice(colonIdx + 1).trim();
+        try {
+          const parsed = JSON.parse(maybeJson);
+          if (parsed && parsed.message) msg = parsed.message;
+          else msg = maybeJson;
+        } catch (_) {
+          msg = maybeJson;
+        }
+      }
+      setError(msg);
     },
   });
 
@@ -105,13 +151,40 @@ export default function LoginPage() {
               render={({ field }) => (
                 <FormItem>
                   <FormControl>
-                    <Input
-                      type="text"
-                      placeholder="Razão social (opcional)"
-                      className="h-12 bg-zinc-800 border-zinc-700 text-white placeholder:text-zinc-500"
-                      {...field}
-                      data-testid="input-login-razao"
-                    />
+                    <div className="relative">
+                      <Input
+                        type="text"
+                        placeholder="Razão social (opcional)"
+                        className="h-12 bg-zinc-800 border-zinc-700 text-white placeholder:text-zinc-500"
+                        {...field}
+                        data-testid="input-login-razao"
+                        onFocus={() =>
+                          setShowSuggestions(suggestions.length > 0)
+                        }
+                      />
+
+                      {showSuggestions && suggestions.length > 0 && (
+                        <div className="absolute z-50 left-0 right-0 mt-1 bg-zinc-800 border border-zinc-700 rounded-md overflow-hidden">
+                          {suggestions.map((s) => (
+                            <div
+                              key={s.id}
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                form.setValue("razaoSocial", s.razaoSocial);
+                                setShowSuggestions(false);
+                                setSuggestions([]);
+                              }}
+                              className="px-3 py-2 hover:bg-zinc-700 cursor-pointer text-sm"
+                            >
+                              {s.razaoSocial}
+                              <div className="text-[11px] text-zinc-400">
+                                {s.email || s.slug}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </FormControl>
                   <FormMessage />
                 </FormItem>

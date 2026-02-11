@@ -30,6 +30,7 @@ import {
   listReceivables,
   listReceivedPayments,
   recordReceivablePayment,
+  recreateInstallments,
   reopenReceivable,
   updateInstallment,
   updateOverdueReceivables,
@@ -51,7 +52,7 @@ export function registerFinancialRoutes(app: Express): void {
       if (!req.isAuthenticated())
         return res.status(401).json({ message: "Não autenticado" });
 
-      const companyId = req.user.companyId || "1";
+      const companyId = req.companyId || req.user.companyId || "1";
       const terms = await listPaymentTerms(companyId);
 
       res.json(terms);
@@ -68,7 +69,7 @@ export function registerFinancialRoutes(app: Express): void {
       if (!req.isAuthenticated())
         return res.status(401).json({ message: "Não autenticado" });
 
-      const companyId = req.user.companyId || "1";
+      const companyId = req.companyId || req.user.companyId || "1";
       const terms = await listActivePaymentTerms(companyId);
 
       res.json(terms);
@@ -105,7 +106,7 @@ export function registerFinancialRoutes(app: Express): void {
       if (!req.isAuthenticated())
         return res.status(401).json({ message: "Não autenticado" });
 
-      const companyId = req.user.companyId || "1";
+      const companyId = req.companyId || req.user.companyId || "1";
       const data: InsertPaymentTerm = {
         companyId,
         ...req.body,
@@ -170,7 +171,7 @@ export function registerFinancialRoutes(app: Express): void {
       if (!req.isAuthenticated())
         return res.status(401).json({ message: "Não autenticado" });
 
-      const companyId = req.user.companyId || "1";
+      const companyId = req.companyId || req.user.companyId || "1";
       const { status, customerId, isOverdue } = req.query;
 
       const filters: any = {};
@@ -193,7 +194,7 @@ export function registerFinancialRoutes(app: Express): void {
       if (!req.isAuthenticated())
         return res.status(401).json({ message: "Não autenticado" });
 
-      const companyId = req.user.companyId || "1";
+      const companyId = req.companyId || req.user.companyId || "1";
       const dashboard = await getReceivableDashboard(companyId);
 
       res.json(dashboard);
@@ -210,17 +211,18 @@ export function registerFinancialRoutes(app: Express): void {
       if (!req.isAuthenticated())
         return res.status(401).json({ message: "Não autenticado" });
 
-      const companyId = req.user.companyId || "1";
-      const { status, customerId, isOverdue } = req.query;
+      const companyId = req.companyId || req.user.companyId || "1";
+      const { status, customerId, isOverdue, receivableId } = req.query;
 
       console.log(
-        `[DEBUG] GET /api/receivables/installments - companyId: ${companyId}`,
+        `[DEBUG] GET /api/receivables/installments - companyId: ${companyId} receivableId: ${receivableId || "none"}`,
       );
 
       const filters: any = {};
       if (status) filters.status = status;
       if (customerId) filters.customerId = customerId;
       if (isOverdue !== undefined) filters.isOverdue = isOverdue === "true";
+      if (receivableId) filters.receivableId = Number(receivableId);
 
       const installments = await listInstallments(companyId, filters);
       console.log(`[DEBUG] Installments retornados: ${installments.length}`);
@@ -239,7 +241,7 @@ export function registerFinancialRoutes(app: Express): void {
       if (!req.isAuthenticated())
         return res.status(401).json({ message: "Não autenticado" });
 
-      const companyId = req.user.companyId || "1";
+      const companyId = req.companyId || req.user.companyId || "1";
       const payments = await listReceivedPayments(companyId);
       res.json(payments);
     } catch (error: any) {
@@ -255,7 +257,7 @@ export function registerFinancialRoutes(app: Express): void {
       if (!req.isAuthenticated())
         return res.status(401).json({ message: "Não autenticado" });
 
-      const companyId = req.user.companyId || "1";
+      const companyId = req.companyId || req.user.companyId || "1";
       const {
         customerId,
         amount,
@@ -303,14 +305,55 @@ export function registerFinancialRoutes(app: Express): void {
         return res.status(401).json({ message: "Não autenticado" });
 
       const { id } = req.params;
-      const receivable = await getReceivableWithDetails(parseInt(id));
+      const effectiveCompanyId =
+        req.companyId || req.user?.companyId || "unknown";
+      console.log(
+        `[DEBUG] GET /api/receivables/:id - user: ${req.user?.id || "unknown"} headerCompanyId: ${req.companyId || "none"} effectiveCompanyId: ${effectiveCompanyId} id: ${id}`,
+      );
+
+      let receivable: any;
+      try {
+        receivable = await getReceivableWithDetails(parseInt(id));
+      } catch (err: any) {
+        console.error(
+          `[WARN] getReceivableWithDetails failed for id=${id}:`,
+          err?.message || err,
+        );
+        if (/does not exist/i.test(err?.message || "")) {
+          // Fallback at route level: assemble minimal details from safe endpoints
+          console.warn(
+            `[WARN] Falling back to safe queries for receivable ${id}`,
+          );
+          const installments = await listInstallments(
+            req.user.companyId || "1",
+            { receivableId: Number(id) },
+          );
+          const paymentsAll = await listReceivedPayments(
+            req.user.companyId || "1",
+          );
+          const payments = paymentsAll.filter(
+            (p: any) => p.receivableId === Number(id),
+          );
+          const [basicReceivable] = await db
+            .select()
+            .from(receivables)
+            .where(eq(receivables.id, Number(id)))
+            .limit(1);
+          if (!basicReceivable)
+            return res.status(404).json({ message: "Conta não encontrada" });
+          receivable = { ...basicReceivable, installments, payments };
+        } else {
+          throw err;
+        }
+      }
 
       if (!receivable)
         return res.status(404).json({ message: "Conta não encontrada" });
 
       res.json(receivable);
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      console.error(`[ERROR] GET /api/receivables/:id -`, error.stack || error);
+      res.status(500).json({ message: error.message || "Erro interno" });
     }
   });
 
@@ -324,7 +367,7 @@ export function registerFinancialRoutes(app: Express): void {
         if (!req.isAuthenticated())
           return res.status(401).json({ message: "Não autenticado" });
 
-        const companyId = req.user.companyId || "1";
+        const companyId = req.companyId || req.user.companyId || "1";
         const { orderId } = req.params;
 
         const receivable = await createReceivableFromOrder(
@@ -352,20 +395,178 @@ export function registerFinancialRoutes(app: Express): void {
       if (!req.isAuthenticated())
         return res.status(401).json({ message: "Não autenticado" });
 
-      const companyId = req.user.companyId || "1";
+      const companyId = req.companyId || req.user.companyId || "1";
       const { id } = req.params;
       const paymentData = {
         ...req.body,
         receivedBy: req.user.firstName || req.user.id,
       };
 
-      const payment = await recordReceivablePayment(
-        parseInt(id),
-        companyId,
-        paymentData,
+      console.log(
+        `[DEBUG] POST /api/receivables/${id}/payment - user: ${req.user?.id || "unknown"} companyId: ${companyId} payload: ${JSON.stringify(req.body)}`,
       );
 
-      res.status(201).json(payment);
+      try {
+        const payment = await recordReceivablePayment(
+          parseInt(id),
+          companyId,
+          paymentData,
+        );
+
+        console.log(
+          `[DEBUG] POST /api/receivables/${id}/payment - payment recorded: ${payment?.id || "no-id"}`,
+        );
+        return res.status(201).json(payment);
+      } catch (err: any) {
+        console.error(
+          `[ERROR] POST /api/receivables/${id}/payment failed:`,
+          err?.message || err,
+        );
+
+        if (/does not exist/i.test(err?.message || "")) {
+          // Try reduced payload without optional fields
+          const reduced = {
+            amount: paymentData.amount,
+            paymentMethod: paymentData.paymentMethod,
+            paymentDate: paymentData.paymentDate,
+            notes: paymentData.notes,
+            installmentId: paymentData.installmentId,
+            receivedBy: paymentData.receivedBy,
+          };
+          try {
+            const reducedPayment = await recordReceivablePayment(
+              parseInt(id),
+              companyId,
+              reduced as any,
+            );
+            console.log(
+              `[DEBUG] POST /api/receivables/${id}/payment - reduced payment recorded: ${reducedPayment?.id || "no-id"}`,
+            );
+            return res.status(201).json(reducedPayment);
+          } catch (err2: any) {
+            console.error(
+              `[ERROR] reduced attempt failed:`,
+              err2?.message || err2,
+            );
+            // Final manual fallback
+            try {
+              await db.transaction(async (tx) => {
+                const paymentNumber = `PAG-REC-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                await tx.execute(sql`
+                  INSERT INTO receivable_payments (company_id, receivable_id, installment_id, payment_number, amount, payment_method, reference, payment_date, received_at, notes, received_by)
+                  VALUES (${companyId}, ${parseInt(id)}, ${paymentData.installmentId || null}, ${paymentNumber}, ${paymentData.amount.toString()}, ${paymentData.paymentMethod}, ${paymentData.reference || null}, ${paymentData.paymentDate}, now(), ${paymentData.notes || null}, ${paymentData.receivedBy || null})
+                `);
+
+                const [ins] = await tx
+                  .select({
+                    id: receivablePayments.id,
+                    amount: receivablePayments.amount,
+                    installmentId: receivablePayments.installmentId,
+                  })
+                  .from(receivablePayments)
+                  .where(eq(receivablePayments.paymentNumber, paymentNumber))
+                  .limit(1);
+
+                if (paymentData.installmentId && ins) {
+                  const [inst] = await tx
+                    .select()
+                    .from(receivableInstallments)
+                    .where(
+                      eq(receivableInstallments.id, paymentData.installmentId),
+                    )
+                    .limit(1);
+
+                  if (inst) {
+                    const newAmountPaid =
+                      Number(inst.amountPaid) + Number(ins.amount);
+                    const newAmountRemaining = Math.max(
+                      0,
+                      Number(inst.amount) - newAmountPaid,
+                    );
+                    await tx
+                      .update(receivableInstallments)
+                      .set({
+                        amountPaid: newAmountPaid.toString(),
+                        amountRemaining: newAmountRemaining.toString(),
+                        status: newAmountRemaining === 0 ? "PAGA" : inst.status,
+                        paidAt: newAmountRemaining === 0 ? new Date() : null,
+                      })
+                      .where(
+                        eq(
+                          receivableInstallments.id,
+                          paymentData.installmentId,
+                        ),
+                      );
+                  }
+                }
+
+                const [rec] = await tx
+                  .select()
+                  .from(receivables)
+                  .where(eq(receivables.id, parseInt(id)))
+                  .limit(1);
+
+                if (rec && ins) {
+                  const newAmountPaid =
+                    Number(rec.amountPaid) + Number(ins.amount);
+                  const newAmountRemaining = Math.max(
+                    0,
+                    Number(rec.amount) - newAmountPaid,
+                  );
+                  const newStatus =
+                    newAmountRemaining === 0
+                      ? "PAGA"
+                      : newAmountPaid > 0
+                        ? "PARCIAL"
+                        : rec.status;
+                  await tx
+                    .update(receivables)
+                    .set({
+                      amountPaid: newAmountPaid.toString(),
+                      amountRemaining: newAmountRemaining.toString(),
+                      status: newStatus,
+                      paidAt: newStatus === "PAGA" ? new Date() : null,
+                    })
+                    .where(eq(receivables.id, parseInt(id)));
+                }
+              });
+
+              const [finalPayment] = await db
+                .select({
+                  id: receivablePayments.id,
+                  companyId: receivablePayments.companyId,
+                  receivableId: receivablePayments.receivableId,
+                  installmentId: receivablePayments.installmentId,
+                  paymentNumber: receivablePayments.paymentNumber,
+                  amount: receivablePayments.amount,
+                  paymentMethod: receivablePayments.paymentMethod,
+                  paymentDate: receivablePayments.paymentDate,
+                  receivedAt: receivablePayments.receivedAt,
+                  receivedBy: receivablePayments.receivedBy,
+                  notes: receivablePayments.notes,
+                })
+                .from(receivablePayments)
+                .where(eq(receivablePayments.receivableId, parseInt(id)))
+                .orderBy(desc(receivablePayments.receivedAt))
+                .limit(1);
+
+              console.log(
+                `[DEBUG] POST /api/receivables/${id}/payment - fallback manual succeeded: ${finalPayment?.id || "no-id"}`,
+              );
+              return res.status(201).json(finalPayment);
+            } catch (finalErr) {
+              console.error(`[ERROR] final fallback failed:`, finalErr);
+              return res
+                .status(500)
+                .json({ message: finalErr?.message || "Erro interno" });
+            }
+          }
+        }
+
+        return res
+          .status(500)
+          .json({ message: err?.message || "Erro interno" });
+      }
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
@@ -445,6 +646,73 @@ export function registerFinancialRoutes(app: Express): void {
   );
 
   /**
+   * POST /api/receivables/repair-inconsistent - Scan & repair receivables com parcelas inconsistentes
+   * - Somente opera em receivables sem pagamentos (seguro)
+   * - Recria parcelas com base no paymentTermId do receivable
+   */
+  app.post(
+    "/api/receivables/repair-inconsistent",
+    async (req: any, res: Response) => {
+      try {
+        if (!req.isAuthenticated())
+          return res.status(401).json({ message: "Não autenticado" });
+
+        const companyId = req.companyId || req.user.companyId || "1";
+        const receivablesList = await listReceivables(companyId);
+
+        const repaired: number[] = [];
+        const skipped: Array<{ id: number; reason: string }> = [];
+
+        for (const r of receivablesList) {
+          try {
+            const details = await getReceivableWithDetails(r.id);
+            if (!details) {
+              skipped.push({ id: r.id, reason: "receivable_not_found" });
+              continue;
+            }
+
+            const installments = details.installments || [];
+            const payments = details.payments || [];
+            const totalCents = Math.round(Number(r.amount) * 100);
+            const sumCents = installments.reduce(
+              (acc: number, it: any) =>
+                acc + Math.round(Number(it.amount) * 100),
+              0,
+            );
+
+            if (payments.length > 0) {
+              skipped.push({ id: r.id, reason: "has_payments" });
+              continue;
+            }
+
+            // Se já está consistente, pula
+            if (installments.length > 0 && sumCents === totalCents) {
+              skipped.push({ id: r.id, reason: "ok" });
+              continue;
+            }
+
+            // Precisa de paymentTermId para recriar
+            const paymentTermId = r.paymentTermId;
+            if (!paymentTermId) {
+              skipped.push({ id: r.id, reason: "no_payment_term" });
+              continue;
+            }
+
+            await recreateInstallments(r.id, paymentTermId);
+            repaired.push(r.id);
+          } catch (err: any) {
+            skipped.push({ id: r.id, reason: err?.message || "error" });
+          }
+        }
+
+        res.json({ repaired, skipped });
+      } catch (error: any) {
+        res.status(500).json({ message: error.message });
+      }
+    },
+  );
+
+  /**
    * DELETE /api/receivables/installments/:id - Excluir parcela
    * Se for a última parcela, também exclui o receivable e remove accountsPosted do pedido
    */
@@ -455,7 +723,7 @@ export function registerFinancialRoutes(app: Express): void {
         if (!req.isAuthenticated())
           return res.status(401).json({ message: "Não autenticado" });
 
-        const companyId = req.user.companyId || "1";
+        const companyId = req.companyId || req.user.companyId || "1";
         const { id } = req.params;
         const result = await deleteInstallment(parseInt(id), companyId);
 
@@ -476,7 +744,7 @@ export function registerFinancialRoutes(app: Express): void {
         if (!req.isAuthenticated())
           return res.status(401).json({ message: "Não autenticado" });
 
-        const companyId = req.user.companyId || "1";
+        const companyId = req.companyId || req.user.companyId || "1";
         const { id } = req.params;
         const { amount, dueDate, notes } = req.body;
 
@@ -551,7 +819,7 @@ export function registerFinancialRoutes(app: Express): void {
       if (!req.isAuthenticated())
         return res.status(401).json({ message: "Não autenticado" });
 
-      const companyId = req.user.companyId || "1";
+      const companyId = req.companyId || req.user.companyId || "1";
       const { status, supplierId, isOverdue } = req.query;
 
       const filters: any = {};
@@ -574,7 +842,7 @@ export function registerFinancialRoutes(app: Express): void {
       if (!req.isAuthenticated())
         return res.status(401).json({ message: "Não autenticado" });
 
-      const companyId = req.user.companyId || "1";
+      const companyId = req.companyId || req.user.companyId || "1";
       const dashboard = await getPayableDashboard(companyId);
 
       res.json(dashboard);
@@ -613,7 +881,7 @@ export function registerFinancialRoutes(app: Express): void {
         if (!req.isAuthenticated())
           return res.status(401).json({ message: "Não autenticado" });
 
-        const companyId = req.user.companyId || "1";
+        const companyId = req.companyId || req.user.companyId || "1";
         const { purchaseOrderId } = req.params;
 
         const payable = await createPayableFromPurchaseOrder(
@@ -641,7 +909,7 @@ export function registerFinancialRoutes(app: Express): void {
       if (!req.isAuthenticated())
         return res.status(401).json({ message: "Não autenticado" });
 
-      const companyId = req.user.companyId || "1";
+      const companyId = req.companyId || req.user.companyId || "1";
       const { id } = req.params;
       const paymentData = {
         ...req.body,

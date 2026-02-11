@@ -363,6 +363,7 @@ export const purchaseOrderItems = pgTable("purchase_order_items", {
   quantity: decimal("quantity"),
   qty: decimal("qty"),
   unitCost: decimal("unit_cost"),
+  sellPrice: decimal("sell_price"),
   lineTotal: decimal("line_total"),
   descriptionSnapshot: text("description_snapshot"),
   skuSnapshot: text("sku_snapshot"),

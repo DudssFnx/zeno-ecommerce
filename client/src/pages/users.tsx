@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { useCompany } from "@/contexts/CompanyContext";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { User } from "@shared/schema";
@@ -180,6 +181,10 @@ export default function UsersPage() {
     queryKey: ["/api/users"],
   });
 
+  // Company context used to invalidate company-scoped cache when available
+  const { activeCompany } = useCompany();
+  const effectiveCompanyId = activeCompany?.id;
+
   // --- Handlers para Criação ---
 
   // Ao mudar o cargo no Create, atualiza os módulos
@@ -239,6 +244,12 @@ export default function UsersPage() {
       }
     },
     onSuccess: () => {
+      // Invalidate both global and company-scoped users queries
+      if (effectiveCompanyId) {
+        queryClient.invalidateQueries({
+          queryKey: ["users", effectiveCompanyId],
+        });
+      }
       queryClient.invalidateQueries({ queryKey: ["/api/users"] });
       toast({ title: "Sucesso", description: "Dados atualizados." });
     },
@@ -261,6 +272,12 @@ export default function UsersPage() {
       return response.json();
     },
     onSuccess: () => {
+      // Invalidate both global and company-scoped users queries
+      if (effectiveCompanyId) {
+        queryClient.invalidateQueries({
+          queryKey: ["users", effectiveCompanyId],
+        });
+      }
       queryClient.invalidateQueries({ queryKey: ["/api/users"] });
       setIsCreateOpen(false);
       // Reset form
@@ -287,6 +304,12 @@ export default function UsersPage() {
       await apiRequest("DELETE", `/api/users/${id}`);
     },
     onSuccess: () => {
+      // Invalidate both global and company-scoped users queries
+      if (effectiveCompanyId) {
+        queryClient.invalidateQueries({
+          queryKey: ["users", effectiveCompanyId],
+        });
+      }
       queryClient.invalidateQueries({ queryKey: ["/api/users"] });
       toast({ title: "Removido", description: "Usuário excluído da equipe." });
     },

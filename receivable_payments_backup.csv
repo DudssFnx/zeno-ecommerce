@@ -1,0 +1,2 @@
+id,company_id,receivable_id,installment_id,payment_number,amount,payment_method,reference,payment_date,received_at,notes,received_by,created_at
+1,1,1,2,PAG-REC-1770338230038-10ei6yj5b,30133.33,Pix,,2026-02-05,2026-02-06 00:37:10.038,Ref. Ped. teste,Admin,2026-02-06 00:37:34.374243

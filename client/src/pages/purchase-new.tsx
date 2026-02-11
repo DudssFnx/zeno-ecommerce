@@ -52,10 +52,42 @@ export default function PurchaseNewPage() {
   const { data: suppliers = [] } = useQuery<Supplier[]>({
     queryKey: ["/api/suppliers"],
   });
-  const { data: productsData } = useQuery<{ products: Product[] }>({
+
+  // Fetch products explicitly and accept either array or { products: [] } shape
+  const { data: productsData = [] } = useQuery<Product[]>({
     queryKey: ["/api/products"],
+    queryFn: async () => {
+      const res = await fetch("/api/products?limit=10000");
+      if (!res.ok) return [];
+      return res.json();
+    },
   });
-  const products = productsData?.products || [];
+
+  const products: Product[] = Array.isArray(productsData)
+    ? productsData
+    : (productsData as any)?.products || [];
+
+  // Filtra produtos inválidos e normaliza termo de busca (aceita `nome`, `name` ou `sku`)
+  const visibleProducts = products.filter(
+    (p) => p && (p.nome || (p as any).name || p.sku),
+  );
+  const normalizedSearch = productSearch.toLowerCase().trim();
+
+  // Lista já filtrada pelo termo de pesquisa (nome/name ou SKU)
+  const filteredProducts =
+    normalizedSearch.length >= 2
+      ? visibleProducts.filter((p) => {
+          const term = normalizedSearch;
+          const nameForSearch = (p?.nome || (p as any).name || "")
+            .toString()
+            .toLowerCase();
+          const skuForSearch = (p?.sku || "").toString().toLowerCase();
+          return nameForSearch.includes(term) || skuForSearch.includes(term);
+        })
+      : [];
+
+  // Limita a 10 resultados para não poluir a tela
+  const filteredProductsLimited = filteredProducts.slice(0, 10);
 
   // Função para calcular margem
   const calculateMargin = (cost: string, sell: string) => {
@@ -67,6 +99,20 @@ export default function PurchaseNewPage() {
 
   const createMutation = useMutation({
     mutationFn: async () => {
+      // Validação cliente: proibir valores negativos nos campos de preço
+      for (const item of items) {
+        if (item.unitCost && parseFloat(item.unitCost) < 0) {
+          throw new Error(
+            `Valor de custo inválido para o produto ${item.productName}`,
+          );
+        }
+        if (item.sellPrice && parseFloat(item.sellPrice) < 0) {
+          throw new Error(
+            `Valor de venda inválido para o produto ${item.productName}`,
+          );
+        }
+      }
+
       const payload = {
         supplierId: supplierId ? parseInt(supplierId) : null,
         notes,
@@ -74,8 +120,9 @@ export default function PurchaseNewPage() {
         items: items.map((item) => ({
           productId: item.productId,
           qty: item.qty,
-          unitCost: item.unitCost,
-          sellPrice: item.sellPrice, // Importante para o lançamento futuro
+          // Enviar null quando o campo estiver vazio para preservar o valor original do produto
+          unitCost: item.unitCost === "" ? null : item.unitCost,
+          sellPrice: item.sellPrice === "" ? null : item.sellPrice,
           descriptionSnapshot: item.productName,
           skuSnapshot: item.sku,
         })),
@@ -122,9 +169,25 @@ export default function PurchaseNewPage() {
   const updateItem = (index: number, field: keyof OrderItem, value: string) => {
     const updated = [...items];
     (updated[index] as any)[field] = value;
-    updated[index].lineTotal =
-      parseFloat(updated[index].qty || "0") *
-      parseFloat(updated[index].unitCost || "0");
+
+    // Calcula custo efetivo: usa unitCost fornecido, senão usa o custo do produto
+    const item = updated[index];
+    const product = products.find((p) => p.id === item.productId) as any;
+    const qty = parseFloat(item.qty || "0") || 0;
+    let effectiveUnitCost = 0;
+
+    if (
+      item.unitCost === "" ||
+      item.unitCost === null ||
+      item.unitCost === undefined
+    ) {
+      effectiveUnitCost =
+        parseFloat(product?.precoAtacado || product?.cost || "0") || 0;
+    } else {
+      effectiveUnitCost = parseFloat(item.unitCost) || 0;
+    }
+
+    item.lineTotal = qty * effectiveUnitCost;
     setItems(updated);
   };
 
@@ -284,24 +347,45 @@ export default function PurchaseNewPage() {
           </DialogHeader>
           <Input
             placeholder="Nome ou SKU..."
+            value={productSearch}
             onChange={(e) => setProductSearch(e.target.value)}
             className="h-12"
           />
-          <div className="max-h-60 overflow-y-auto mt-4 border rounded-md">
-            {products
-              .filter((p) =>
-                p.nome.toLowerCase().includes(productSearch.toLowerCase()),
-              )
-              .map((p) => (
-                <div
-                  key={p.id}
-                  className="flex items-center justify-between p-3 hover:bg-accent cursor-pointer border-b"
-                  onClick={() => addProduct(p)}
-                >
-                  <span>{p.nome}</span>
-                  <Plus className="h-4 w-4" />
-                </div>
-              ))}
+          <div className="max-h-60 overflow-y-auto mt-4 border rounded-md bg-popover">
+            {normalizedSearch.length < 2 ? (
+              <div className="p-3 text-sm text-muted-foreground">
+                Digite 2 ou mais caracteres
+              </div>
+            ) : filteredProductsLimited.length === 0 ? (
+              <div className="p-3 text-sm text-muted-foreground">
+                Nenhum produto encontrado
+              </div>
+            ) : (
+              filteredProductsLimited.map((p) => {
+                const title = (p.nome || (p as any).name || p.sku || "")
+                  .toString()
+                  .trim();
+                return (
+                  <div
+                    key={p.id}
+                    className="flex items-center justify-between p-3 hover:bg-accent cursor-pointer border-b"
+                    onClick={() => addProduct(p)}
+                  >
+                    <div>
+                      <div className="font-bold text-foreground">
+                        {title || "Sem nome"}
+                      </div>
+                      {p.sku && p.sku !== title && (
+                        <div className="text-xs text-muted-foreground font-mono italic opacity-80">
+                          {p.sku}
+                        </div>
+                      )}
+                    </div>
+                    <Plus className="h-4 w-4" />
+                  </div>
+                );
+              })
+            )}
           </div>
         </DialogContent>
       </Dialog>

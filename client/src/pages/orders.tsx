@@ -63,7 +63,7 @@ import {
   User as UserIcon,
   X,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type User = InferSelectModel<typeof b2bUsers>;
 type Product = InferSelectModel<typeof b2bProducts>;
@@ -113,6 +113,8 @@ export default function OrdersPage() {
   const [selectedSellerId, setSelectedSellerId] = useState<string>("");
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [productSearch, setProductSearch] = useState("");
+  const [isProductDropdownOpen, setIsProductDropdownOpen] = useState(false);
+  const productInputWrapperRef = useRef<HTMLDivElement | null>(null);
   const [globalDiscount, setGlobalDiscount] = useState<number>(0);
   const [otherExpenses, setOtherExpenses] = useState<number>(0);
   const [deliveryDeadline, setDeliveryDeadline] = useState<string>("0");
@@ -173,10 +175,36 @@ export default function OrdersPage() {
       if (!response.ok) throw new Error("Erro ao buscar produtos");
       return response.json();
     },
-    enabled: showAllOrders && isCreateOpen,
+    enabled: isCreateOpen,
   });
 
-  const productsData = productsResponse?.products || [];
+  // Buscar tipos de pagamento para permitir seleção no financeiro
+  const { data: paymentTypesData } = useQuery<
+    {
+      id: number;
+      name: string;
+      paymentTermType: string;
+      paymentTermId: number | null;
+      active: boolean;
+    }[]
+  >({
+    queryKey: ["/api/payment-types"],
+    queryFn: async () => {
+      const res = await fetch("/api/payment-types", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch payment types");
+      return res.json();
+    },
+    enabled: isCreateOpen,
+  });
+
+  const activePaymentTypes = (paymentTypesData || []).filter((pt) => pt.active);
+  const [selectedPaymentTypeId, setSelectedPaymentTypeId] = useState<
+    number | null
+  >(null);
+
+  const productsData = Array.isArray(productsResponse)
+    ? productsResponse
+    : productsResponse?.products || [];
 
   // --- LÓGICA DE SELEÇÃO ---
   const mappedOrders = ordersData
@@ -479,18 +507,35 @@ export default function OrdersPage() {
           .slice(0, 15)
       : [];
 
+  const normalizedProductSearch = productSearch.toLowerCase().trim();
+
   const filteredProducts =
-    productSearch.length >= 1
+    normalizedProductSearch.length >= 2
       ? productsData
           .filter((p) => {
-            const search = productSearch.toLowerCase();
+            const search = normalizedProductSearch;
+            const nameForSearch = ((p as any).name || (p as any).nome || "")
+              .toString()
+              .toLowerCase();
+            const skuForSearch = (p.sku || "").toString().toLowerCase();
             return (
-              p.name.toLowerCase().includes(search) ||
-              p.sku.toLowerCase().includes(search)
+              nameForSearch.includes(search) || skuForSearch.includes(search)
             );
           })
-          .slice(0, 50)
+          .slice(0, 10)
       : [];
+
+  // Fecha o dropdown de produtos ao clicar fora
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (!productInputWrapperRef.current) return;
+      if (!productInputWrapperRef.current.contains(e.target as Node)) {
+        setIsProductDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
 
   const handleAddProduct = (product: any) => {
     const existing = cartItems.find((item) => item.productId === product.id);
@@ -509,6 +554,7 @@ export default function OrdersPage() {
     };
     setCartItems([...cartItems, newItem]);
     setProductSearch("");
+    setIsProductDropdownOpen(false);
   };
 
   const updateCartItem = (id: number, field: keyof CartItem, value: number) => {
@@ -629,6 +675,8 @@ export default function OrdersPage() {
       total: totalOrderValue.toString(),
       notes: notes.trim() || null, // Apenas as observações do vendedor
       paymentNotes: paymentCondition.trim() || null, // Condição de pagamento (ex: "30 60 90 120")
+      paymentMethod: paymentMethod || null,
+      paymentTypeId: selectedPaymentTypeId || null,
       status: "ORCAMENTO",
     };
     createOrderMutation.mutate(payload);
@@ -956,40 +1004,60 @@ export default function OrdersPage() {
                   <CardTitle className="text-sm font-semibold flex items-center gap-2 text-orange-600">
                     <ShoppingCart className="h-4 w-4" /> Itens
                   </CardTitle>
-                  <div className="relative w-96">
+                  <div className="relative w-96" ref={productInputWrapperRef}>
                     <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-muted-foreground" />
                     <Input
                       placeholder="Adicionar produto (Nome/SKU)..."
                       className="pl-8 h-8 text-sm bg-background"
                       value={productSearch}
                       onChange={(e) => setProductSearch(e.target.value)}
+                      onFocus={() => setIsProductDropdownOpen(true)}
+                      onClick={() => setIsProductDropdownOpen(true)}
                     />
-                    {productSearch && filteredProducts.length > 0 && (
-                      <div className="absolute z-50 w-full mt-1 bg-popover border rounded-md shadow-xl max-h-60 overflow-y-auto right-0 p-1">
-                        {filteredProducts.map((p) => (
-                          <div
-                            key={p.id}
-                            className="px-3 py-2 hover:bg-accent cursor-pointer rounded-sm text-sm flex justify-between items-center border-b last:border-0"
-                            onClick={() => handleAddProduct(p)}
-                          >
-                            <div>
-                              <span className="font-medium">{p.name}</span>
-                              <span className="text-xs text-muted-foreground ml-2">
-                                SKU: {p.sku}
-                              </span>
-                            </div>
-                            <div className="text-right">
-                              <div className="font-bold text-green-600 text-xs">
-                                R$ {p.price}
+                    {isProductDropdownOpen &&
+                      (normalizedProductSearch.length < 2 ? (
+                        <div className="absolute z-50 w-full mt-1 bg-popover border rounded-md shadow-xl max-h-60 overflow-y-auto right-0 p-3 text-sm text-muted-foreground">
+                          Digite 2 ou mais caracteres
+                        </div>
+                      ) : filteredProducts.length === 0 ? (
+                        <div className="absolute z-50 w-full mt-1 bg-popover border rounded-md shadow-xl max-h-60 overflow-y-auto right-0 p-3 text-sm text-muted-foreground">
+                          Nenhum produto encontrado
+                        </div>
+                      ) : (
+                        <div className="absolute z-50 w-full mt-1 bg-popover border rounded-md shadow-xl max-h-60 overflow-y-auto right-0 p-1">
+                          {filteredProducts.map((p) => (
+                            <div
+                              key={p.id}
+                              className="px-3 py-2 hover:bg-accent cursor-pointer rounded-sm text-sm flex justify-between items-center border-b last:border-0"
+                              onClick={() => {
+                                handleAddProduct(p);
+                                setIsProductDropdownOpen(false);
+                              }}
+                            >
+                              <div>
+                                <div className="font-medium">
+                                  {(p as any).name || (p as any).nome || p.sku}
+                                </div>
+                                {p.sku &&
+                                  p.sku !==
+                                    ((p as any).name || (p as any).nome) && (
+                                    <div className="text-xs text-muted-foreground font-mono italic opacity-80">
+                                      {p.sku}
+                                    </div>
+                                  )}
                               </div>
-                              <div className="text-[10px] text-muted-foreground">
-                                Est: {p.stock}
+                              <div className="text-right">
+                                <div className="font-bold text-green-600 text-xs">
+                                  R$ {p.price}
+                                </div>
+                                <div className="text-[10px] text-muted-foreground">
+                                  Est: {p.stock}
+                                </div>
                               </div>
                             </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                          ))}
+                        </div>
+                      ))}
                   </div>
                 </CardHeader>
                 <CardContent className="p-0">
@@ -1167,6 +1235,39 @@ export default function OrdersPage() {
                             }
                           />
                         </div>
+
+                        <div className="w-44 space-y-1">
+                          <Label className="text-[10px]">Forma Pagamento</Label>
+                          <Select
+                            value={selectedPaymentTypeId?.toString() || ""}
+                            onValueChange={(val) => {
+                              const id = val ? parseInt(val) : null;
+                              setSelectedPaymentTypeId(id);
+                              const pt = (paymentTypesData || []).find(
+                                (p) => p.id === id,
+                              );
+                              setPaymentMethod(pt?.name || "");
+                            }}
+                          >
+                            <SelectTrigger className="h-7 text-xs">
+                              <SelectValue placeholder="Selecione..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {activePaymentTypes.map((pt) => (
+                                <SelectItem
+                                  key={pt.id}
+                                  value={pt.id.toString()}
+                                >
+                                  {pt.name}{" "}
+                                  {pt.paymentTermType === "PRAZO"
+                                    ? "(A Prazo)"
+                                    : "(À Vista)"}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
                         <Button
                           variant="outline"
                           className="h-7 text-xs border-green-600 text-green-600 hover:bg-green-600 hover:text-white"

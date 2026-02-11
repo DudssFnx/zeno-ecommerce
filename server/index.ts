@@ -2,6 +2,7 @@ import "dotenv/config"; // Carrega as variáveis do .env logo no início
 import express, { NextFunction, type Request, Response } from "express";
 import { createServer } from "http";
 import { pool } from "./db";
+import { extractCompanyContext } from "./middleware/company";
 import { setupAuth } from "./replitAuth";
 import { registerRoutes } from "./routes";
 import { seedSuperAdmin } from "./scripts/seedSuperAdmin";
@@ -88,6 +89,9 @@ app.use((req, res, next) => {
 (async () => {
   // 0. Configurar autenticação (Passport + Session) ANTES das rotas
   await setupAuth(app);
+
+  // 0.5 Extrair company context de header X-Company-Id para suportar seleção de empresa pelo cliente
+  app.use(extractCompanyContext);
 
   // 1. Registrar rotas da API
   await registerRoutes(httpServer, app);

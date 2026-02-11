@@ -21,6 +21,7 @@ import { registerFinancialRoutes } from "./financialRoutes";
 import { createPayableFromPurchaseOrder } from "./services/payables.service";
 import {
   cancelReceivablesByOrderId,
+  createAndSettleReceivableFromOrder,
   createReceivableFromOrder,
   hasReceivablesForOrder,
   reopenReceivablesByOrderId,
@@ -861,6 +862,37 @@ export async function registerRoutes(
     res.json(result);
   });
 
+  app.post("/api/products", async (req: any, res) => {
+    if (!req.isAuthenticated()) return res.status(401).send();
+    try {
+      const body = { ...req.body };
+      if (body.categoryId !== undefined) {
+        body.categoryId = body.categoryId ? Number(body.categoryId) : null;
+      }
+      if (body.supplierId !== undefined) {
+        body.supplierId = body.supplierId ? Number(body.supplierId) : null;
+      }
+      const companyIdToUse = req.companyId || req.user.companyId || "1";
+      const [newProduct] = await db
+        .insert(products)
+        .values({
+          ...body,
+          companyId: companyIdToUse,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .returning();
+      res.status(201).json(newProduct);
+    } catch (error: any) {
+      if (error.code === "23505") {
+        return res
+          .status(409)
+          .json({ message: "Conflito: Produto já existe." });
+      }
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   app.patch("/api/products/:id", async (req: any, res) => {
     if (!req.isAuthenticated()) return res.status(401).send();
     try {
@@ -1018,18 +1050,74 @@ export async function registerRoutes(
           .returning();
 
         if (items && items.length > 0) {
-          const orderItemsData = items.map((item: any) => ({
-            purchaseOrderId: newOrder.id,
-            productId: Number(item.productId),
-            qty: String(item.qty || "0"),
-            unitCost: String(item.unitCost || "0.00"),
-            sellPrice: String(item.sellPrice || "0.00"),
-            lineTotal: String(
-              (parseFloat(item.qty) || 0) * (parseFloat(item.unitCost) || 0),
-            ),
-            descriptionSnapshot: String(item.descriptionSnapshot || "Produto"),
-            skuSnapshot: String(item.skuSnapshot || "N/A"),
-          }));
+          const orderItemsData: any[] = [];
+          for (const item of items) {
+            const productId = Number(item.productId);
+            const qty = parseFloat(String(item.qty || "0"));
+
+            // Validações básicas
+            if (isNaN(qty) || qty <= 0) {
+              throw new Error(
+                `Quantidade inválida para o produto ${productId}`,
+              );
+            }
+
+            // Busca produto para pegar valores originais se necessário
+            const [product] = await tx
+              .select()
+              .from(products)
+              .where(eq(products.id, productId))
+              .limit(1);
+
+            if (!product) {
+              throw new Error(`Produto não encontrado: ${productId}`);
+            }
+
+            // Unit cost
+            const unitCostProvided =
+              item.unitCost !== null &&
+              item.unitCost !== undefined &&
+              item.unitCost !== "";
+            if (unitCostProvided && parseFloat(String(item.unitCost)) < 0) {
+              throw new Error(
+                `Valor de custo inválido para o produto ${productId}`,
+              );
+            }
+            const unitCostStr = unitCostProvided ? String(item.unitCost) : null;
+
+            // Sell price
+            const sellPriceProvided =
+              item.sellPrice !== null &&
+              item.sellPrice !== undefined &&
+              item.sellPrice !== "";
+            if (sellPriceProvided && parseFloat(String(item.sellPrice)) < 0) {
+              throw new Error(
+                `Valor de venda inválido para o produto ${productId}`,
+              );
+            }
+            const sellPriceStr = sellPriceProvided
+              ? String(item.sellPrice)
+              : null;
+
+            // Linha total: usa unitCost fornecido ou o custo atual do produto
+            const effectiveUnitCost = unitCostProvided
+              ? parseFloat(String(item.unitCost)) || 0
+              : parseFloat(String(product.cost || 0)) || 0;
+
+            orderItemsData.push({
+              purchaseOrderId: newOrder.id,
+              productId,
+              qty: String(qty),
+              unitCost: unitCostStr,
+              sellPrice: sellPriceStr,
+              lineTotal: String(effectiveUnitCost * qty),
+              descriptionSnapshot: String(
+                item.descriptionSnapshot || product.name || "Produto",
+              ),
+              skuSnapshot: String(item.skuSnapshot || product.sku || "N/A"),
+            });
+          }
+
           await tx.insert(purchaseOrderItems).values(orderItemsData);
         }
         return newOrder;
@@ -1046,6 +1134,7 @@ export async function registerRoutes(
     if (!req.isAuthenticated()) return res.status(401).send();
     const orderId = parseInt(req.params.id);
     try {
+      const updatedProducts: Array<any> = [];
       await db.transaction(async (tx) => {
         const [order] = await tx
           .select()
@@ -1082,22 +1171,96 @@ export async function registerRoutes(
             `[PURCHASE] Adicionando ${qty} unidades ao produto ${item.productId}`,
           );
 
-          const unitCostStr = String(item.unitCost || "0");
-          const unitCost = parseFloat(unitCostStr);
+          // Busca produto para obter valores atuais (se necessários)
+          const [productRow] = await tx
+            .select()
+            .from(products)
+            .where(eq(products.id, item.productId))
+            .limit(1);
+
+          const unitCostProvided =
+            item.unitCost !== null &&
+            item.unitCost !== undefined &&
+            item.unitCost !== "";
+          const sellPriceProvided =
+            item.sellPrice !== null &&
+            item.sellPrice !== undefined &&
+            item.sellPrice !== "";
+
+          let unitCostStr: string | null = null;
+          let sellPriceStr: string | null = null;
+
+          if (unitCostProvided) {
+            unitCostStr = String(item.unitCost);
+            const unitCost = parseFloat(unitCostStr);
+            if (isNaN(unitCost) || unitCost < 0) {
+              throw new Error(
+                `Valor de custo inválido para produto ${item.productId}`,
+              );
+            }
+          }
+
+          if (sellPriceProvided) {
+            sellPriceStr = String(item.sellPrice);
+            const sellPrice = parseFloat(sellPriceStr);
+            if (isNaN(sellPrice) || sellPrice < 0) {
+              throw new Error(
+                `Valor de venda inválido para produto ${item.productId}`,
+              );
+            }
+          }
 
           const updateData: any = {
             stock: sql`COALESCE(${products.stock}, 0) + ${qty}`,
             updatedAt: new Date(),
           };
 
-          if (unitCost > 0) {
-            updateData.cost = unitCostStr;
+          // Atualiza custo se informado e >= 1
+          if (unitCostStr !== null) {
+            const unitCost = parseFloat(unitCostStr);
+            if (unitCost >= 1) updateData.cost = unitCostStr;
+          }
+
+          // Atualiza preço de venda se informado e >= 1
+          let updatedCost = false;
+          let updatedPrice = false;
+
+          if (sellPriceStr !== null) {
+            const sellPrice = parseFloat(sellPriceStr);
+            if (sellPrice >= 1) {
+              updateData.price = sellPriceStr;
+              updatedPrice = true;
+            }
+          }
+
+          if (unitCostStr !== null) {
+            const unitCost = parseFloat(unitCostStr);
+            if (unitCost >= 1) {
+              updateData.cost = unitCostStr;
+              updatedCost = true;
+            }
           }
 
           await tx
             .update(products)
             .set(updateData)
             .where(eq(products.id, item.productId));
+
+          // Registrar quais produtos tiveram custo/preço atualizados e calcular novo estoque
+          const newStock =
+            (productRow?.stock ? parseFloat(String(productRow.stock)) : 0) +
+            qty;
+          if (updatedCost || updatedPrice) {
+            updatedProducts.push({
+              productId: item.productId,
+              name: productRow?.name || productRow?.nome || null,
+              updatedCost,
+              updatedPrice,
+              cost: updatedCost ? unitCostStr : null,
+              price: updatedPrice ? sellPriceStr : null,
+              newStock,
+            });
+          }
 
           await tx.insert(stockMovements).values({
             type: "IN",
@@ -1106,7 +1269,10 @@ export async function registerRoutes(
             refId: orderId,
             productId: item.productId,
             qty: qtyStr,
-            unitCost: unitCostStr,
+            unitCost:
+              unitCostStr !== null
+                ? unitCostStr
+                : String(productRow?.cost || 0),
             notes: `Entrada Pedido ${order.number}`,
           });
         }
@@ -1136,7 +1302,7 @@ export async function registerRoutes(
         );
       }
 
-      res.json({ message: "Estoque lançado com sucesso!" });
+      res.json({ message: "Estoque lançado com sucesso!", updatedProducts });
     } catch (error: any) {
       console.error(
         `[PURCHASE ERROR] Erro ao lançar estoque: ${error.message}`,
@@ -1932,6 +2098,7 @@ export async function registerRoutes(
             `[Financial] Pedido #${id} não tem forma de pagamento - receivable não criado`,
           );
         } else {
+          // Tenta criar receivable normal (PRAZO)
           const receivable = await createReceivableFromOrder(id, companyId);
 
           if (receivable) {
@@ -1946,9 +2113,42 @@ export async function registerRoutes(
               .where(eq(orders.id, id));
             console.log(`[Financial] Receivable auto-created for order #${id}`);
           } else {
-            console.log(
-              `[Financial] Receivable não criado para pedido #${id} - provavelmente pagamento não é PRAZO`,
-            );
+            // Se não criou receivable, verificar se é à vista e criar+quitar automaticamente
+            const [paymentType] = await db
+              .select()
+              .from(paymentTypes)
+              .where(eq(paymentTypes.id, orderForReceivable.paymentTypeId))
+              .limit(1);
+
+            if (paymentType && paymentType.paymentTermType === "VISTA") {
+              const settled = await createAndSettleReceivableFromOrder(
+                id,
+                companyId,
+                userName,
+              );
+
+              if (settled) {
+                await db
+                  .update(orders)
+                  .set({
+                    accountsPosted: true,
+                    accountsPostedAt: new Date(),
+                    accountsPostedBy: userName,
+                  })
+                  .where(eq(orders.id, id));
+                console.log(
+                  `[Financial] Receivable (à vista) auto-created and settled for order #${id}`,
+                );
+              } else {
+                console.log(
+                  `[Financial] Receivable (à vista) não criado para pedido #${id}`,
+                );
+              }
+            } else {
+              console.log(
+                `[Financial] Receivable não criado para pedido #${id} - provavelmente pagamento não é PRAZO`,
+              );
+            }
           }
         }
       } catch (error: any) {
@@ -2166,6 +2366,7 @@ export async function registerRoutes(
         id,
         "Estorno de contas do pedido",
         userName,
+        req.user.companyId || "1",
       );
 
       // Marcar pedido como contas estornadas
@@ -2534,6 +2735,7 @@ export async function registerRoutes(
               id,
               `Pedido ${status === "CANCELADO" ? "cancelado" : "voltou para orçamento"}`,
               req.user.id,
+              req.user.companyId || "1",
             );
             console.log(
               `[DEBUG] >> ${cancelled.length} conta(s) a receber cancelada(s)`,

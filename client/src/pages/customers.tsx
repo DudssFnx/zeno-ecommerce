@@ -519,7 +519,9 @@ export default function CustomersPage({ companyId }: { companyId?: string }) {
     onSuccess: () => {
       // Invalidate the company-scoped users query so the new customer appears on the list
       if (effectiveCompanyId) {
-        queryClient.invalidateQueries({ queryKey: ["users", effectiveCompanyId] });
+        queryClient.invalidateQueries({
+          queryKey: ["users", effectiveCompanyId],
+        });
       }
       // Backwards compat invalidation
       queryClient.invalidateQueries({ queryKey: ["/api/users"] });
@@ -546,6 +548,12 @@ export default function CustomersPage({ companyId }: { companyId?: string }) {
       return res.json();
     },
     onSuccess: () => {
+      // Invalidate both the legacy '/api/users' cache and the company-scoped cache
+      if (effectiveCompanyId) {
+        queryClient.invalidateQueries({
+          queryKey: ["users", effectiveCompanyId],
+        });
+      }
       queryClient.invalidateQueries({ queryKey: ["/api/users"] });
       toast({ title: "Atualizado", description: "Dados salvos com sucesso." });
       setShowEditDialog(false);

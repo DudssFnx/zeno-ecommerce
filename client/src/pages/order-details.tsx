@@ -653,6 +653,38 @@ export default function OrderDetailsPage() {
     },
   });
 
+  const handlePostAccounts = async () => {
+    // Cliente: valida se existe forma de pagamento e se é do tipo PRAZO antes de chamar a API
+    if (!orderData.paymentTypeId) {
+      toast({
+        title: "Forma de pagamento não selecionada",
+        description:
+          "Defina a forma de pagamento do pedido para poder lançar contas a receber.",
+        variant: "destructive",
+      });
+      return;
+    }
+    const pt = (paymentTypesData || []).find(
+      (p) => p.id === orderData.paymentTypeId,
+    );
+    if (!pt) {
+      toast({ title: "Forma de pagamento inválida", variant: "destructive" });
+      return;
+    }
+    if (pt.paymentTermType !== "PRAZO") {
+      toast({
+        title: "Forma de pagamento inválida",
+        description: `A forma de pagamento "${pt.name}" não é do tipo A PRAZO. Selecione uma forma de pagamento do tipo A PRAZO.`,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (confirm("Lançar contas a receber para este pedido?")) {
+      postAccountsMutation.mutate();
+    }
+  };
+
   const reverseAccountsMutation = useMutation({
     mutationFn: async () => {
       await apiRequest("POST", `/api/orders/${orderId}/reverse-accounts`, {});
@@ -1718,7 +1750,7 @@ export default function OrderDetailsPage() {
                           size="sm"
                           variant="outline"
                           className="border-emerald-500 text-emerald-600 hover:bg-emerald-50"
-                          onClick={() => postAccountsMutation.mutate()}
+                          onClick={() => handlePostAccounts()}
                           disabled={postAccountsMutation.isPending}
                         >
                           {postAccountsMutation.isPending && (

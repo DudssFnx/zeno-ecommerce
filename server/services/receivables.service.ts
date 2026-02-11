@@ -106,6 +106,86 @@ export async function createReceivableFromOrder(
     const dueDate = format(firstPaymentDate, "yyyy-MM-dd");
     const issueDateStr = format(issueDate, "yyyy-MM-dd");
 
+    // PRECAUÇÃO: evitar criação duplicada se já existe receivable para este pedido
+    const [existingReceivable] = await tx
+      .select()
+      .from(receivables)
+      .where(eq(receivables.orderId, order.id))
+      .limit(1);
+
+    if (existingReceivable) {
+      console.log(
+        `[Receivables] Pedido #${order.orderNumber} já tem receivable #${existingReceivable.receivableNumber}, verificando parcelas...`,
+      );
+
+      // Buscar parcelas e pagamentos para checar consistência
+      const installments = await tx
+        .select()
+        .from(receivableInstallments)
+        .where(eq(receivableInstallments.receivableId, existingReceivable.id));
+
+      const payments = await tx
+        .select({ id: receivablePayments.id })
+        .from(receivablePayments)
+        .where(eq(receivablePayments.receivableId, existingReceivable.id));
+
+      const totalCentsExisting = Math.round(
+        Number(existingReceivable.amount) * 100,
+      );
+      const sumInstallmentCents = installments.reduce(
+        (acc: number, it: any) => acc + Math.round(Number(it.amount) * 100),
+        0,
+      );
+
+      // Se não há pagamentos e temos contagem/valor errado, recriar parcelas
+      if (
+        payments.length === 0 &&
+        (installments.length !== Number(paymentTerm.installmentCount) ||
+          sumInstallmentCents !== totalCentsExisting)
+      ) {
+        console.log(
+          `[Receivables] Parcela(s) inconsistente(s) detectada(s) para receivable #${existingReceivable.receivableNumber}. Recriando parcelas...`,
+        );
+
+        await tx
+          .delete(receivableInstallments)
+          .where(
+            eq(receivableInstallments.receivableId, existingReceivable.id),
+          );
+
+        // Recriar parcelas com distribuição de centavos
+        const count = Number(paymentTerm.installmentCount) || 1;
+        const base = Math.floor(totalCentsExisting / count);
+        const remainder = totalCentsExisting - base * count;
+
+        for (let i = 1; i <= count; i++) {
+          const instDueDate = addDays(
+            firstPaymentDate,
+            (i - 1) * paymentTerm.intervalDays,
+          );
+          const cents = base + (i <= remainder ? 1 : 0);
+          const amt = (cents / 100).toFixed(2);
+
+          await tx.insert(receivableInstallments).values({
+            receivableId: existingReceivable.id,
+            installmentNumber: i,
+            amount: amt,
+            amountPaid: "0",
+            amountRemaining: amt,
+            dueDate: format(instDueDate, "yyyy-MM-dd"),
+            status: "ABERTA",
+            isOverdue: false,
+          });
+        }
+
+        console.log(
+          `[Receivables] Parcela(s) recriada(s) para receivable #${existingReceivable.receivableNumber}`,
+        );
+      }
+
+      return existingReceivable;
+    }
+
     // 8. Criar receivable
     const [receivable] = await tx
       .insert(receivables)
@@ -131,22 +211,27 @@ export async function createReceivableFromOrder(
       `[Receivables] ✅ Conta a receber criada: #${receivable.receivableNumber} para pedido #${order.orderNumber}, valor: ${order.total}, empresa: ${companyId}`,
     );
 
-    // 9. Criar parcelas
-    const installmentAmount =
-      Number(order.total) / paymentTerm.installmentCount;
+    // 9. Criar parcelas com distribuição correta de centavos
+    const totalCents = Math.round(Number(order.total) * 100);
+    const count = Number(paymentTerm.installmentCount) || 1;
+    const base = Math.floor(totalCents / count);
+    const remainder = totalCents - base * count; // valor em centavos a distribuir nas primeiras parcelas
 
-    for (let i = 1; i <= paymentTerm.installmentCount; i++) {
+    for (let i = 1; i <= count; i++) {
       const instDueDate = addDays(
         firstPaymentDate,
         (i - 1) * paymentTerm.intervalDays,
       );
 
+      const cents = base + (i <= remainder ? 1 : 0);
+      const amt = (cents / 100).toFixed(2);
+
       await tx.insert(receivableInstallments).values({
         receivableId: receivable.id,
         installmentNumber: i,
-        amount: installmentAmount.toString(),
+        amount: amt,
         amountPaid: "0",
-        amountRemaining: installmentAmount.toString(),
+        amountRemaining: amt,
         dueDate: format(instDueDate, "yyyy-MM-dd"),
         status: "ABERTA",
         isOverdue: false,
@@ -158,34 +243,194 @@ export async function createReceivableFromOrder(
 }
 
 /**
+ * Criar e quitar receivable para vendas à vista (cria receivable, parcela e registra pagamento)
+ */
+export async function createAndSettleReceivableFromOrder(
+  orderId: number,
+  companyId: string,
+  settledBy?: string,
+) {
+  return await db.transaction(async (tx) => {
+    const [order] = await tx
+      .select()
+      .from(orders)
+      .where(eq(orders.id, orderId))
+      .limit(1);
+
+    if (!order) throw new Error("Pedido não encontrado");
+
+    if (!order.paymentTypeId) {
+      console.log(
+        `[Receivables] Pedido #${orderId} não tem forma de pagamento definida`,
+      );
+      return null;
+    }
+
+    const [paymentType] = await tx
+      .select()
+      .from(paymentTypes)
+      .where(eq(paymentTypes.id, order.paymentTypeId))
+      .limit(1);
+
+    if (!paymentType) {
+      console.log(
+        `[Receivables] Forma de pagamento ID ${order.paymentTypeId} não encontrada`,
+      );
+      return null;
+    }
+
+    // Criar receivable (com status PAGA e paidAt)
+    const issueDate = new Date();
+    const issueDateStr = format(issueDate, "yyyy-MM-dd");
+
+    const [receivable] = await tx
+      .insert(receivables)
+      .values({
+        companyId,
+        receivableNumber: generateReceivableNumber(),
+        description: `Pedido #${order.orderNumber}`,
+        orderId: order.id,
+        customerId: order.userId,
+        paymentTypeId: order.paymentTypeId,
+        paymentTermId: order.paymentTermId || paymentType.paymentTermId,
+        amount: order.total,
+        amountPaid: order.total,
+        amountRemaining: "0",
+        issueDate: issueDateStr,
+        dueDate: issueDateStr,
+        status: "PAGA",
+        isOverdue: false,
+        paidAt: new Date(),
+      })
+      .returning();
+
+    // Criar parcela única já paga
+    const [installment] = await tx
+      .insert(receivableInstallments)
+      .values({
+        receivableId: receivable.id,
+        installmentNumber: 1,
+        amount: order.total,
+        amountPaid: order.total,
+        amountRemaining: "0",
+        dueDate: issueDateStr,
+        status: "PAGA",
+        isOverdue: false,
+        paidAt: new Date(),
+      })
+      .returning();
+
+    // Registrar pagamento na tabela receivable_payments
+    const paymentNumber = generatePaymentNumber();
+    await tx.insert(receivablePayments).values({
+      companyId,
+      receivableId: receivable.id,
+      installmentId: installment.id,
+      paymentNumber,
+      amount: order.total,
+      paymentMethod: order.paymentMethod || paymentType.name || "À VISTA",
+      paymentDate: issueDateStr,
+      receivedAt: new Date(),
+      receivedBy: settledBy || null,
+      notes: "Pagamento automático à vista na fatura",
+    });
+
+    console.log(
+      `[Receivables] ✅ Conta à receber (à vista) criada e quitada: #${receivable.receivableNumber} para pedido #${order.orderNumber}, valor: ${order.total}`,
+    );
+
+    return receivable;
+  });
+}
+
+/**
  * Buscar receivable com detalhes (installments + payments)
  */
 export async function getReceivableWithDetails(receivableId: number) {
-  const [receivable] = await db
-    .select()
-    .from(receivables)
-    .where(eq(receivables.id, receivableId))
-    .limit(1);
+  try {
+    const [receivable] = await db
+      .select()
+      .from(receivables)
+      .where(eq(receivables.id, receivableId))
+      .limit(1);
 
-  if (!receivable) return null;
+    if (!receivable) return null;
 
-  const installments = await db
-    .select()
-    .from(receivableInstallments)
-    .where(eq(receivableInstallments.receivableId, receivableId))
-    .orderBy(receivableInstallments.installmentNumber);
+    const installments = await db
+      .select()
+      .from(receivableInstallments)
+      .where(eq(receivableInstallments.receivableId, receivableId))
+      .orderBy(receivableInstallments.installmentNumber);
 
-  const payments = await db
-    .select()
-    .from(receivablePayments)
-    .where(eq(receivablePayments.receivableId, receivableId))
-    .orderBy(desc(receivablePayments.receivedAt));
+    // Selecionar explicitamente colunas para evitar erro em schemas antigos
+    const payments = await db
+      .select({
+        id: receivablePayments.id,
+        companyId: receivablePayments.companyId,
+        receivableId: receivablePayments.receivableId,
+        installmentId: receivablePayments.installmentId,
+        paymentNumber: receivablePayments.paymentNumber,
+        amount: receivablePayments.amount,
+        paymentMethod: receivablePayments.paymentMethod,
+        paymentDate: receivablePayments.paymentDate,
+        receivedAt: receivablePayments.receivedAt,
+        receivedBy: receivablePayments.receivedBy,
+        notes: receivablePayments.notes,
+      })
+      .from(receivablePayments)
+      .where(eq(receivablePayments.receivableId, receivableId))
+      .orderBy(desc(receivablePayments.receivedAt));
 
-  return {
-    ...receivable,
-    installments,
-    payments,
-  };
+    return {
+      ...receivable,
+      installments,
+      payments,
+    };
+  } catch (error: any) {
+    console.error(
+      `[ERROR] getReceivableWithDetails(${receivableId}) -`,
+      error.stack || error,
+    );
+
+    // Fallback: some installations may not have recently added columns (e.g. original_amount).
+    // If the failure is due to missing columns, run safe/raw queries selecting only known columns
+    if (/does not exist/i.test(error.message || "")) {
+      console.warn(
+        `[WARN] getReceivableWithDetails: detected missing column in receivable_payments, using fallback safe queries.`,
+      );
+
+      // Re-fetch receivable and installments using normal queries
+      const [receivable2] = await db
+        .select()
+        .from(receivables)
+        .where(eq(receivables.id, receivableId))
+        .limit(1);
+
+      if (!receivable2) return null;
+
+      const installments = await db
+        .select()
+        .from(receivableInstallments)
+        .where(eq(receivableInstallments.receivableId, receivableId))
+        .orderBy(receivableInstallments.installmentNumber);
+
+      // Select a conservative set of columns that exist in older schemas
+      const payments = await db.execute(sql`
+        SELECT id, company_id, receivable_id, installment_id, payment_number, amount, payment_method, reference, payment_date, received_at, notes, received_by, created_at
+        FROM receivable_payments
+        WHERE receivable_id = ${receivableId}
+        ORDER BY received_at DESC
+      `);
+
+      return {
+        ...receivable2,
+        installments,
+        payments,
+      };
+    }
+
+    throw error;
+  }
 }
 
 /**
@@ -230,9 +475,85 @@ export async function listInstallments(
     status?: string;
     customerId?: string;
     isOverdue?: boolean;
+    receivableId?: number;
   },
 ) {
-  console.log(`[DEBUG] listInstallments - companyId: ${companyId}`);
+  console.log(
+    `[DEBUG] listInstallments - companyId: ${companyId} filters: ${JSON.stringify(filters)}`,
+  );
+
+  // Se for pedido direto por receivableId, usar caminho otimizado
+  if (filters?.receivableId) {
+    const recId = Number(filters.receivableId);
+    const [singleRec] = await db
+      .select()
+      .from(receivables)
+      .where(
+        and(eq(receivables.companyId, companyId), eq(receivables.id, recId)),
+      )
+      .limit(1);
+
+    if (!singleRec) return [];
+
+    const installments = await db
+      .select()
+      .from(receivableInstallments)
+      .where(eq(receivableInstallments.receivableId, recId))
+      .orderBy(receivableInstallments.installmentNumber);
+
+    // Se não há parcelas, criar parcela virtual
+    let allInstallments = installments;
+    if (allInstallments.length === 0) {
+      allInstallments = [
+        {
+          id: singleRec.id,
+          receivableId: singleRec.id,
+          installmentNumber: 1,
+          amount: singleRec.amount,
+          amountPaid: singleRec.amountPaid,
+          amountRemaining: singleRec.amountRemaining,
+          dueDate: singleRec.dueDate,
+          status: singleRec.status,
+          isOverdue: singleRec.isOverdue,
+          paidAt: singleRec.paidAt,
+        },
+      ];
+    }
+
+    // Enriquecer com dados do receivable (mesma forma que o fluxo principal)
+    let sellerId: string | null = null;
+    if (singleRec.orderId) {
+      const [orderRow] = await db
+        .select({ invoicedBy: orders.invoicedBy })
+        .from(orders)
+        .where(eq(orders.id, singleRec.orderId))
+        .limit(1);
+      sellerId = orderRow?.invoicedBy || null;
+    }
+
+    const enrichedInstallments = allInstallments.map((inst) => {
+      const orderNumber =
+        singleRec?.description?.replace("Pedido #", "") ||
+        String(singleRec?.orderId || "");
+      const installmentStr = String(inst.installmentNumber).padStart(3, "0");
+      const displayNumber = `${orderNumber}/${installmentStr}`;
+
+      return {
+        ...inst,
+        receivable: singleRec,
+        customerId: singleRec?.customerId,
+        orderId: singleRec?.orderId,
+        displayNumber,
+        description: singleRec?.description,
+        receivableNumber: singleRec?.receivableNumber,
+        sellerId,
+      };
+    });
+
+    return enrichedInstallments.sort((a, b) =>
+      a.dueDate.localeCompare(b.dueDate),
+    );
+  }
 
   // 1. Buscar todos os receivables da empresa
   const allReceivables = await db
@@ -546,13 +867,19 @@ export async function listReceivedPayments(companyId: string) {
     .filter((pt) => pt.paymentTermType === "VISTA")
     .map((pt) => pt.id);
 
-  // Filtrar pedidos faturados com pagamento à vista
+  // Evitar duplicidade: obter conjunto de orderIds que já tem receivables
+  const receivableOrderIds = new Set(
+    allReceivables.map((r: any) => r.orderId).filter((id: any) => !!id),
+  );
+
+  // Filtrar pedidos faturados com pagamento à vista e que NÃO têm receivable criado
   const cashSales = cashOrders
     .filter(
       (order) =>
         order.status === "FATURADO" &&
         order.paymentTypeId &&
-        vistaPaymentTypeIds.includes(order.paymentTypeId),
+        vistaPaymentTypeIds.includes(order.paymentTypeId) &&
+        !receivableOrderIds.has(order.id),
     )
     .map((order) => {
       const paymentType = allPaymentTypes.find(
@@ -752,97 +1079,178 @@ export async function recordReceivablePayment(
     categoryId?: number; // Categoria financeira
   },
 ) {
-  return await db.transaction(async (tx) => {
-    // 1. Buscar receivable
-    const [receivable] = await tx
-      .select()
-      .from(receivables)
-      .where(eq(receivables.id, receivableId))
-      .limit(1);
+  try {
+    return await db.transaction(async (tx) => {
+      // 1. Buscar receivable
+      const [receivable] = await tx
+        .select()
+        .from(receivables)
+        .where(eq(receivables.id, receivableId))
+        .limit(1);
 
-    if (!receivable) throw new Error("Conta a receber não encontrada");
+      if (!receivable) throw new Error("Conta a receber não encontrada");
 
-    // Calcular valor base para baixar na parcela
-    // Valor líquido = original - desconto + juros + multa - tarifa
-    // Mas vamos usar o amount como o valor que está sendo baixado da parcela
-    const amountToDeduct = data.originalAmount || data.amount;
+      // Calcular valor base para baixar na parcela
+      // Valor líquido = original - desconto + juros + multa - tarifa
+      // Mas vamos usar o amount como o valor que está sendo baixado da parcela
+      const amountToDeduct = data.originalAmount || data.amount;
 
-    // 2. Registrar pagamento
-    const [payment] = await tx
-      .insert(receivablePayments)
-      .values({
+      // 2. Registrar pagamento
+      const paymentValues: any = {
         companyId,
         receivableId,
         installmentId: data.installmentId,
         paymentNumber: generatePaymentNumber(),
         amount: data.amount.toString(),
-        originalAmount: data.originalAmount?.toString(),
-        interest: (data.interest || 0).toString(),
-        discount: (data.discount || 0).toString(),
-        fine: (data.fine || 0).toString(),
-        fee: (data.fee || 0).toString(),
         paymentMethod: data.paymentMethod,
-        financialAccountId: data.financialAccountId,
-        categoryId: data.categoryId,
         reference: data.reference,
         paymentDate: data.paymentDate,
         receivedAt: new Date(),
         notes: data.notes,
         receivedBy: data.receivedBy,
-      })
-      .returning();
+      };
 
-    // 3. Se tem installmentId, atualizar parcela
-    if (data.installmentId) {
-      const [inst] = await tx
-        .select()
-        .from(receivableInstallments)
-        .where(eq(receivableInstallments.id, data.installmentId))
-        .limit(1);
+      if (data.originalAmount !== undefined && data.originalAmount !== null) {
+        paymentValues.originalAmount = data.originalAmount.toString();
+      }
+      if (data.interest !== undefined)
+        paymentValues.interest = (data.interest || 0).toString();
+      if (data.discount !== undefined)
+        paymentValues.discount = (data.discount || 0).toString();
+      if (data.fine !== undefined)
+        paymentValues.fine = (data.fine || 0).toString();
+      if (data.fee !== undefined)
+        paymentValues.fee = (data.fee || 0).toString();
+      if (data.financialAccountId !== undefined)
+        paymentValues.financialAccountId = data.financialAccountId;
+      if (data.categoryId !== undefined)
+        paymentValues.categoryId = data.categoryId;
 
-      const newAmountPaid = Number(inst.amountPaid) + amountToDeduct;
+      const paymentNumber = generatePaymentNumber();
+      paymentValues.paymentNumber = paymentNumber;
+
+      let payment: any;
+
+      try {
+        const [inserted] = await tx
+          .insert(receivablePayments)
+          .values(paymentValues)
+          .returning({
+            id: receivablePayments.id,
+            companyId: receivablePayments.companyId,
+            receivableId: receivablePayments.receivableId,
+            installmentId: receivablePayments.installmentId,
+            paymentNumber: receivablePayments.paymentNumber,
+            amount: receivablePayments.amount,
+            paymentMethod: receivablePayments.paymentMethod,
+            paymentDate: receivablePayments.paymentDate,
+            receivedAt: receivablePayments.receivedAt,
+            receivedBy: receivablePayments.receivedBy,
+            notes: receivablePayments.notes,
+          });
+        payment = inserted;
+      } catch (e: any) {
+        console.error(
+          `[WARN] insert receivable_payments failed, attempting fallback insert -`,
+          e.message || e,
+        );
+        if (/does not exist/i.test(e.message || "")) {
+          // Fallback raw insert without optional columns that may not exist in old schemas
+          const sqlStmt = sql`
+          INSERT INTO receivable_payments (
+            company_id, receivable_id, installment_id, payment_number, amount, payment_method, reference, payment_date, received_at, notes, received_by
+          ) VALUES (
+            ${companyId}, ${receivableId}, ${data.installmentId || null}, ${paymentNumber}, ${data.amount.toString()}, ${data.paymentMethod}, ${data.reference || null}, ${data.paymentDate}, now(), ${data.notes || null}, ${data.receivedBy || null}
+          )`;
+
+          await tx.execute(sqlStmt);
+
+          // Fetch the inserted row by payment_number
+          const [fetched] = await tx
+            .select({
+              id: receivablePayments.id,
+              companyId: receivablePayments.companyId,
+              receivableId: receivablePayments.receivableId,
+              installmentId: receivablePayments.installmentId,
+              paymentNumber: receivablePayments.paymentNumber,
+              amount: receivablePayments.amount,
+              paymentMethod: receivablePayments.paymentMethod,
+              paymentDate: receivablePayments.paymentDate,
+              receivedAt: receivablePayments.receivedAt,
+              receivedBy: receivablePayments.receivedBy,
+              notes: receivablePayments.notes,
+            })
+            .from(receivablePayments)
+            .where(eq(receivablePayments.paymentNumber, paymentNumber))
+            .limit(1);
+          payment = fetched;
+
+          console.warn(
+            `[WARN] Fallback insert succeeded for payment_number=${paymentNumber}`,
+          );
+        } else {
+          throw e;
+        }
+      }
+
+      // 3. Se tem installmentId, atualizar parcela
+      if (data.installmentId) {
+        const [inst] = await tx
+          .select()
+          .from(receivableInstallments)
+          .where(eq(receivableInstallments.id, data.installmentId))
+          .limit(1);
+
+        const newAmountPaid = Number(inst.amountPaid) + amountToDeduct;
+        const newAmountRemaining = Math.max(
+          0,
+          Number(inst.amount) - newAmountPaid,
+        );
+
+        await tx
+          .update(receivableInstallments)
+          .set({
+            amountPaid: newAmountPaid.toString(),
+            amountRemaining: newAmountRemaining.toString(),
+            status: newAmountRemaining === 0 ? "PAGA" : inst.status,
+            paidAt: newAmountRemaining === 0 ? new Date() : null,
+          })
+          .where(eq(receivableInstallments.id, data.installmentId));
+      }
+
+      // 4. Atualizar receivable
+      const newAmountPaid = Number(receivable.amountPaid) + amountToDeduct;
       const newAmountRemaining = Math.max(
         0,
-        Number(inst.amount) - newAmountPaid,
+        Number(receivable.amount) - newAmountPaid,
       );
 
+      let newStatus = receivable.status;
+      if (newAmountRemaining === 0) {
+        newStatus = "PAGA";
+      } else if (newAmountPaid > 0 && newAmountRemaining > 0) {
+        newStatus = "PARCIAL";
+      }
+
       await tx
-        .update(receivableInstallments)
+        .update(receivables)
         .set({
           amountPaid: newAmountPaid.toString(),
           amountRemaining: newAmountRemaining.toString(),
-          status: newAmountRemaining === 0 ? "PAGA" : inst.status,
-          paidAt: newAmountRemaining === 0 ? new Date() : null,
+          status: newStatus,
+          paidAt: newStatus === "PAGA" ? new Date() : null,
         })
-        .where(eq(receivableInstallments.id, data.installmentId));
-    }
+        .where(eq(receivables.id, receivableId));
 
-    // 4. Atualizar receivable
-    const newAmountPaid = Number(receivable.amountPaid) + amountToDeduct;
-    const newAmountRemaining = Math.max(
-      0,
-      Number(receivable.amount) - newAmountPaid,
+      return payment;
+    });
+  } catch (error: any) {
+    console.error(
+      `[ERROR] recordReceivablePayment(${receivableId}) -`,
+      error.stack || error,
     );
-
-    let newStatus = receivable.status;
-    if (newAmountRemaining === 0) {
-      newStatus = "PAGA";
-    } else if (newAmountPaid > 0 && newAmountRemaining > 0) {
-      newStatus = "PARCIAL";
-    }
-
-    await tx
-      .update(receivables)
-      .set({
-        amountPaid: newAmountPaid.toString(),
-        amountRemaining: newAmountRemaining.toString(),
-        status: newStatus,
-        paidAt: newStatus === "PAGA" ? new Date() : null,
-      })
-      .where(eq(receivables.id, receivableId));
-
-    return payment;
-  });
+    throw error;
+  }
 }
 
 /**
@@ -874,6 +1282,7 @@ export async function cancelReceivablesByOrderId(
   orderId: number,
   reason: string,
   cancelledBy: string,
+  companyId?: string,
 ) {
   const orderReceivables = await db
     .select()
@@ -882,6 +1291,29 @@ export async function cancelReceivablesByOrderId(
 
   const cancelled = [];
   for (const rec of orderReceivables) {
+    // 0. Buscar pagamentos associados
+    const payments = await db
+      .select()
+      .from(receivablePayments)
+      .where(eq(receivablePayments.receivableId, rec.id));
+
+    // 1. Se houver pagamentos, estorná-los primeiro (total)
+    for (const p of payments) {
+      try {
+        // use reversePayment para manter integridade (atualiza parcelas e receivable)
+        await reversePayment(
+          Number(p.id),
+          companyId || String(rec.companyId || "1"),
+        );
+      } catch (err: any) {
+        console.error(
+          `[Receivables] Falha ao estornar pagamento ${p.id} do receivable ${rec.id}: ${err.message}`,
+        );
+        // continue tentando com os próximos pagamentos
+      }
+    }
+
+    // 2. Agora cancela o receivable se aplicável
     if (rec.status !== "CANCELADA" && rec.status !== "PAGA") {
       const [result] = await db
         .update(receivables)
@@ -1027,7 +1459,7 @@ export async function recreateInstallments(
 
     // 2. Verificar se há pagamentos - se houver, não permitir recriar
     const payments = await tx
-      .select()
+      .select({ id: receivablePayments.id })
       .from(receivablePayments)
       .where(eq(receivablePayments.receivableId, receivableId));
 
@@ -1141,7 +1573,7 @@ export async function deleteInstallment(
 
     // 3. Verificar se a parcela tem pagamentos
     const payments = await tx
-      .select()
+      .select({ id: receivablePayments.id })
       .from(receivablePayments)
       .where(eq(receivablePayments.installmentId, installmentId));
 
@@ -1469,7 +1901,19 @@ export async function reversePayment(
  */
 export async function getPaymentDetails(paymentId: number, companyId: string) {
   const [payment] = await db
-    .select()
+    .select({
+      id: receivablePayments.id,
+      companyId: receivablePayments.companyId,
+      receivableId: receivablePayments.receivableId,
+      installmentId: receivablePayments.installmentId,
+      paymentNumber: receivablePayments.paymentNumber,
+      amount: receivablePayments.amount,
+      paymentMethod: receivablePayments.paymentMethod,
+      paymentDate: receivablePayments.paymentDate,
+      receivedAt: receivablePayments.receivedAt,
+      receivedBy: receivablePayments.receivedBy,
+      notes: receivablePayments.notes,
+    })
     .from(receivablePayments)
     .where(eq(receivablePayments.id, paymentId))
     .limit(1);
