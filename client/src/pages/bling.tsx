@@ -1446,65 +1446,6 @@ export default function BlingPage() {
                     </div>
                   </>
                 )}
-                          <Checkbox
-                            checked={selectedProducts.includes(product.id)}
-                            onCheckedChange={() =>
-                              toggleProductSelection(product.id)
-                            }
-                            data-testid={`checkbox-product-${product.id}`}
-                          />
-                          <div className="flex-1 min-w-0">
-                            <div className="text-sm font-medium truncate">
-                              {product.nome}
-                            </div>
-                            <div className="text-xs text-muted-foreground flex flex-wrap gap-2">
-                              <span>SKU: {product.codigo}</span>
-                              <span>
-                                R$ {product.preco?.toFixed(2) || "0.00"}
-                              </span>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Badge
-                              variant={
-                                product.situacao === "A"
-                                  ? "default"
-                                  : "secondary"
-                              }
-                              className="text-xs"
-                            >
-                              {product.situacao === "A" ? "Ativo" : "Inativo"}
-                            </Badge>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                importSingleProductMutation.mutate(product.id);
-                              }}
-                              disabled={importSingleProductMutation.isPending}
-                              data-testid={`button-import-product-${product.id}`}
-                            >
-                              <Download className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                syncSingleProductMutation.mutate(product.id);
-                              }}
-                              disabled={syncSingleProductMutation.isPending}
-                              data-testid={`button-sync-product-${product.id}`}
-                            >
-                              <RefreshCw className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </label>
-                      ))}
-                    </div>
-                  </ScrollArea>
-                )}
 
                 {blingProducts.length > 0 && (
                   <Button
