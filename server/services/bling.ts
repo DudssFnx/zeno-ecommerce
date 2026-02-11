@@ -122,7 +122,9 @@ export async function saveTokensToDb(
 ): Promise<void> {
   try {
     // Persist expiresAt as integer (UNIX seconds) to match DB integer column and be robust
-    const expiresAtSeconds = Math.floor(Date.now() / 1000 + (tokens.expires_in || 0));
+    const expiresAtSeconds = Math.floor(
+      Date.now() / 1000 + (tokens.expires_in || 0),
+    );
 
     // Delete old tokens for the company (if companyId provided) or delete all
     if (companyId) {
@@ -177,7 +179,7 @@ async function loadTokensFromDb(): Promise<BlingTokensResponse | null> {
     } else {
       // Fallback: try to parse
       const parsed = Number(row.expiresAt);
-      expiresAtMs = isNaN(parsed) ? 0 : (parsed > 1e12 ? parsed : parsed * 1000);
+      expiresAtMs = isNaN(parsed) ? 0 : parsed > 1e12 ? parsed : parsed * 1000;
     }
 
     const expiresIn = Math.floor((expiresAtMs - Date.now()) / 1000);
@@ -1710,8 +1712,9 @@ export async function importBlingProductsByIds(
       const result = await importBlingProductById(id, companyId);
       if (result.created) imported++;
       else if (result.updated) skipped++; // treat update as skipped for UX
-    } catch (error: any) {
-      errors.push(`Product ${id}: ${error?.message || String(error)}`);
+    } catch (error) {
+      const err = error as any;
+      errors.push(`Product ${id}: ${err?.message || String(err)}`);
     }
     // Basic rate limit friendliness
     await new Promise((r) => setTimeout(r, 300));

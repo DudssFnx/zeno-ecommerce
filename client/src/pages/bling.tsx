@@ -21,6 +21,8 @@ import {
   CheckCircle,
   Clock,
   Download,
+  Eye,
+  EyeOff,
   FolderSync,
   Link as LinkIcon,
   Loader2,
@@ -29,8 +31,6 @@ import {
   Search,
   Unlink,
   XCircle,
-  Eye,
-  EyeOff,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -145,7 +145,8 @@ export default function BlingPage() {
     try {
       const payload: any = { clientId, apiEndpoint, redirectUri };
       // include clientSecret only if user typed a value (prevents accidental overwrite with empty)
-      if (clientSecret && clientSecret.length > 0) payload.clientSecret = clientSecret;
+      if (clientSecret && clientSecret.length > 0)
+        payload.clientSecret = clientSecret;
 
       const resp = await apiRequest("POST", "/api/bling/credentials", payload);
       const data = await resp.json();
@@ -714,7 +715,8 @@ export default function BlingPage() {
                               "GET",
                               "/api/bling/credentials/secret",
                             );
-                            if (!r.ok) throw new Error("Failed to fetch secret");
+                            if (!r.ok)
+                              throw new Error("Failed to fetch secret");
                             const d = await r.json();
                             setClientSecret(d.clientSecret || "");
                             setShowSecret(true);

@@ -386,10 +386,11 @@ export async function getReceivableWithDetails(receivableId: number) {
       installments,
       payments,
     };
-  } catch (error: any) {
+  } catch (error) {
+    const err = error as any;
     console.error(
       `[ERROR] getReceivableWithDetails(${receivableId}) -`,
-      error.stack || error,
+      err.stack || err,
     );
 
     // Fallback: some installations may not have recently added columns (e.g. original_amount).

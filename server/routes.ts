@@ -734,11 +734,12 @@ export async function registerRoutes(
       if (!updated)
         return res.status(404).json({ message: "Usuário não encontrado" });
       res.json(updated);
-    } catch (error: any) {
-      if (error.code === "23505") {
+    } catch (error) {
+      const err = error as any;
+      if (err && err.code === "23505") {
         return res.status(409).json({ message: "Conflito: Dado duplicado." });
       }
-      res.status(500).json({ message: error.message });
+      res.status(500).json({ message: err?.message || String(err) });
     }
   });
 
