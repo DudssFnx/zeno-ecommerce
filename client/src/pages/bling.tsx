@@ -221,8 +221,17 @@ export default function BlingPage() {
   const [hasMoreProducts, setHasMoreProducts] = useState(false);
 
   // pagination cache: stores fetched pages by page number
-  const [pagesCache, setPagesCache] = useState<Record<number, BlingProduct[]>>({});
+  const [pagesCache, setPagesCache] = useState<Record<number, BlingProduct[]>>(
+    {},
+  );
   const [currentPreviewPage, setCurrentPreviewPage] = useState(1);
+
+  // product search (local filter + remote search)
+  const [productQuery, setProductQuery] = useState("");
+  const [searchingProducts, setSearchingProducts] = useState(false);
+  const [searchResults, setSearchResults] = useState<BlingProduct[] | null>(
+    null,
+  );
 
   // credentials masking
   const [clientSecretMasked, setClientSecretMasked] = useState("");
@@ -544,7 +553,9 @@ export default function BlingPage() {
     }
   };
 
-  const loadBlingProducts = async (page: number = 1): Promise<BlingProduct[]> => {
+  const loadBlingProducts = async (
+    page: number = 1,
+  ): Promise<BlingProduct[]> => {
     setLoadingProducts(true);
     try {
       const response = await apiRequest(
@@ -577,6 +588,55 @@ export default function BlingPage() {
     } finally {
       setLoadingProducts(false);
     }
+  };
+
+  // Remote search: queries server to scan Bling pages (up to maxPages)
+  const searchBlingProducts = async (maxPages = 20) => {
+    if (!productQuery || productQuery.trim().length === 0) {
+      toast({ title: "Busca vazia", description: "Informe nome ou SKU" });
+      return;
+    }
+
+    setSearchingProducts(true);
+    try {
+      const q = encodeURIComponent(productQuery.trim());
+      const resp = await apiRequest(
+        "GET",
+        `/api/bling/products/search?q=${q}&limit=${pageSize}&maxPages=${maxPages}`,
+      );
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.message || "Erro na busca");
+
+      setSearchResults(data.products || []);
+      setBlingProducts(data.products || []);
+      setSelectedProducts([]);
+      setCurrentPreviewPage(1);
+      setHasMoreProducts(false);
+
+      if ((data.products || []).length === 0) {
+        toast({
+          title: "Nenhum resultado",
+          description: "Nenhum produto encontrado na busca remota",
+          variant: "warning",
+        });
+      }
+    } catch (err: any) {
+      toast({
+        title: "Erro na busca",
+        description: err.message,
+        variant: "destructive",
+      });
+    } finally {
+      setSearchingProducts(false);
+    }
+  };
+
+  const clearProductSearch = () => {
+    setProductQuery("");
+    setSearchResults(null);
+    // restore current cached page if any
+    const cached = pagesCache[currentPreviewPage];
+    if (cached) setBlingProducts(cached);
   };
 
   const importCategoriesMutation = useMutation({
@@ -703,10 +763,10 @@ export default function BlingPage() {
   };
 
   const selectAllProducts = () => {
-    if (selectedProducts.length === blingProducts.length) {
+    if (selectedProducts.length === displayedProducts.length) {
       setSelectedProducts([]);
     } else {
-      setSelectedProducts(blingProducts.map((p) => p.id));
+      setSelectedProducts(displayedProducts.map((p) => p.id));
     }
   };
 
@@ -715,6 +775,9 @@ export default function BlingPage() {
     syncProgress && syncProgress.totalSteps > 0
       ? Math.round((syncProgress.currentStep / syncProgress.totalSteps) * 100)
       : 0;
+
+  // products to display (uses remote search results when present)
+  const displayedProducts = searchResults ?? blingProducts;
 
   if (isLoading) {
     return (
@@ -1366,6 +1429,37 @@ export default function BlingPage() {
                       Carregar Produtos
                     </Button>
 
+                    <Input
+                      placeholder="Buscar por nome ou SKU"
+                      value={productQuery}
+                      onChange={(e) => setProductQuery(e.target.value)}
+                      className="max-w-xs"
+                      data-testid="input-product-search"
+                    />
+
+                    <Button
+                      onClick={() => searchBlingProducts()}
+                      disabled={searchingProducts || !productQuery}
+                      data-testid="button-search-products"
+                    >
+                      {searchingProducts ? (
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      ) : (
+                        <Search className="h-4 w-4 mr-2" />
+                      )}
+                      Buscar
+                    </Button>
+
+                    {searchResults && (
+                      <Button
+                        variant="ghost"
+                        onClick={clearProductSearch}
+                        data-testid="button-clear-search"
+                      >
+                        Limpar
+                      </Button>
+                    )}
+
                     <select
                       value={pageSize}
                       onChange={(e) => {
@@ -1383,24 +1477,26 @@ export default function BlingPage() {
                       <option value={100}>100</option>
                     </select>
 
-                    {blingProducts.length > 0 && hasMoreProducts && (
-                      <Button
-                        variant="outline"
-                        onClick={async () => {
-                          const next = productsPage + 1;
-                          const fetched = await loadBlingProducts(next);
-                          // ensure preview navigates to newly fetched page
-                          setCurrentPreviewPage(next);
-                          setBlingProducts(fetched);
-                        }}
-                        disabled={loadingProducts}
-                        size="sm"
-                      >
-                        Carregar mais
-                      </Button>
-                    )}
+                    {searchResults === null &&
+                      blingProducts.length > 0 &&
+                      hasMoreProducts && (
+                        <Button
+                          variant="outline"
+                          onClick={async () => {
+                            const next = productsPage + 1;
+                            const fetched = await loadBlingProducts(next);
+                            // ensure preview navigates to newly fetched page
+                            setCurrentPreviewPage(next);
+                            setBlingProducts(fetched);
+                          }}
+                          disabled={loadingProducts}
+                          size="sm"
+                        >
+                          Carregar mais
+                        </Button>
+                      )}
                   </div>
-                  {blingProducts.length > 0 && (
+                  {displayedProducts.length > 0 && (
                     <>
                       <Button
                         variant="ghost"
@@ -1408,23 +1504,23 @@ export default function BlingPage() {
                         onClick={selectAllProducts}
                         data-testid="button-select-all-products"
                       >
-                        {selectedProducts.length === blingProducts.length
+                        {selectedProducts.length === displayedProducts.length
                           ? "Desmarcar Tudo"
                           : "Selecionar Tudo"}
                       </Button>
                       <Badge variant="secondary">
-                        {selectedProducts.length} de {blingProducts.length}{" "}
+                        {selectedProducts.length} de {displayedProducts.length}{" "}
                         selecionados
                       </Badge>
                     </>
                   )}
                 </div>
 
-                {blingProducts.length > 0 && (
+                {displayedProducts.length > 0 && (
                   <>
                     <ScrollArea className="h-64 border rounded-md p-3">
                       <div className="space-y-2">
-                        {blingProducts.map((product) => (
+                        {displayedProducts.map((product) => (
                           <label
                             key={product.id}
                             className="flex items-center gap-3 p-2 rounded-md hover-elevate cursor-pointer"
@@ -1432,7 +1528,9 @@ export default function BlingPage() {
                           >
                             <Checkbox
                               checked={selectedProducts.includes(product.id)}
-                              onCheckedChange={() => toggleProductSelection(product.id)}
+                              onCheckedChange={() =>
+                                toggleProductSelection(product.id)
+                              }
                               data-testid={`checkbox-product-${product.id}`}
                             />
                             <div className="flex-1 min-w-0">
@@ -1441,19 +1539,27 @@ export default function BlingPage() {
                               </div>
                               <div className="text-xs text-muted-foreground flex flex-wrap gap-2">
                                 <span>SKU: {product.codigo}</span>
-                                <span>R$ {product.preco?.toFixed(2) || "0.00"}</span>
+                                <span>
+                                  R$ {product.preco?.toFixed(2) || "0.00"}
+                                </span>
                               </div>
                             </div>
                             <div className="flex items-center gap-2">
                               <Badge
-                                variant={product.situacao === "A" ? "secondary" : "destructive"}
+                                variant={
+                                  product.situacao === "A"
+                                    ? "secondary"
+                                    : "destructive"
+                                }
                               >
                                 {product.situacao === "A" ? "Ativo" : "Inativo"}
                               </Badge>
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={() => importSingleProductMutation.mutate(product.id)}
+                                onClick={() =>
+                                  importSingleProductMutation.mutate(product.id)
+                                }
                               >
                                 Importar
                               </Button>
@@ -1465,22 +1571,29 @@ export default function BlingPage() {
 
                     {/* Pagination controls based on fetched pages */}
                     <div className="mt-3 flex items-center justify-center gap-2">
-                      {renderPaginationControls(pagesCache, pageSize, currentPreviewPage, hasMoreProducts, loadBlingProducts, (p:number)=>{
-                        setCurrentPreviewPage(p);
-                        // show cached page if available
-                        const cached = pagesCache[p];
-                        if (cached) {
-                          setBlingProducts(cached);
-                          setSelectedProducts([]);
-                        } else {
-                          loadBlingProducts(p);
-                        }
-                      })}
+                      {renderPaginationControls(
+                        pagesCache,
+                        pageSize,
+                        currentPreviewPage,
+                        hasMoreProducts,
+                        loadBlingProducts,
+                        (p: number) => {
+                          setCurrentPreviewPage(p);
+                          // show cached page if available
+                          const cached = pagesCache[p];
+                          if (cached) {
+                            setBlingProducts(cached);
+                            setSelectedProducts([]);
+                          } else {
+                            loadBlingProducts(p);
+                          }
+                        },
+                      )}
                     </div>
                   </>
                 )}
 
-                {blingProducts.length > 0 && (
+                {displayedProducts.length > 0 && (
                   <Button
                     onClick={() =>
                       importProductsMutation.mutate(selectedProducts)
