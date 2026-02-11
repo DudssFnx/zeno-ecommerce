@@ -149,10 +149,18 @@ app.use((req, res, next) => {
 
     // Ensure products table has Bling linkage columns (for imports/sync)
     try {
-      await pool.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS bling_id integer;`);
-      await pool.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS bling_last_synced_at timestamp;`);
-      await pool.query(`CREATE INDEX IF NOT EXISTS idx_products_bling_id ON products(bling_id);`);
-      console.log("[MIGRATION] Ensured products.bling_id and products.bling_last_synced_at exist");
+      await pool.query(
+        `ALTER TABLE products ADD COLUMN IF NOT EXISTS bling_id integer;`,
+      );
+      await pool.query(
+        `ALTER TABLE products ADD COLUMN IF NOT EXISTS bling_last_synced_at timestamp;`,
+      );
+      await pool.query(
+        `CREATE INDEX IF NOT EXISTS idx_products_bling_id ON products(bling_id);`,
+      );
+      console.log(
+        "[MIGRATION] Ensured products.bling_id and products.bling_last_synced_at exist",
+      );
     } catch (err) {
       console.error(
         "[MIGRATION] Failed to ensure products Bling columns exist:",

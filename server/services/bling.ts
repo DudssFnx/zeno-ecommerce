@@ -1605,7 +1605,8 @@ export async function importBlingProductById(
   companyId?: string,
 ): Promise<{ created: boolean; updated: boolean; message?: string }> {
   const fullProduct = await fetchBlingProductDetails(productId);
-  if (!fullProduct) return { created: false, updated: false, message: "product not found" };
+  if (!fullProduct)
+    return { created: false, updated: false, message: "product not found" };
 
   const sku = fullProduct.codigo || `BLING-${fullProduct.id}`;
 
@@ -1641,9 +1642,13 @@ export async function importBlingProductById(
     sku,
     categoryId,
     brand: fullProduct.marca || null,
-    description: fullProduct.descricaoComplementar || fullProduct.descricaoCurta || null,
+    description:
+      fullProduct.descricaoComplementar || fullProduct.descricaoCurta || null,
     price: String(fullProduct.preco || 0),
-    stock: fullProduct.estoque?.saldoVirtual ?? fullProduct.estoque?.saldoFisico ?? 0,
+    stock:
+      fullProduct.estoque?.saldoVirtual ??
+      fullProduct.estoque?.saldoFisico ??
+      0,
     image: imageUrl,
     blingId: fullProduct.id,
     blingLastSyncedAt: new Date(),

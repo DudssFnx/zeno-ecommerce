@@ -1,6 +1,7 @@
 import {
   blingCredentials,
   blingTokens,
+  blingWebhookEndpoints,
   categories,
   companies,
   orderItems,
@@ -3120,16 +3121,20 @@ export async function registerRoutes(
   });
 
   // Trigger a full products sync (imports/updates all products) - uses SSE progress
-  app.post("/api/bling/sync/products", requireCompany, async (req: any, res) => {
-    try {
-      // Kick off sync in background and immediately return a starting response
-      import("./services/bling").then((m) => m.syncProducts());
-      res.json({ ok: true, message: "Sync started" });
-    } catch (error: any) {
-      console.error("[Bling] Error starting product sync:", error);
-      res.status(500).json({ message: error.message });
-    }
-  });
+  app.post(
+    "/api/bling/sync/products",
+    requireCompany,
+    async (req: any, res) => {
+      try {
+        // Kick off sync in background and immediately return a starting response
+        import("./services/bling").then((m) => m.syncProducts());
+        res.json({ ok: true, message: "Sync started" });
+      } catch (error: any) {
+        console.error("[Bling] Error starting product sync:", error);
+        res.status(500).json({ message: error.message });
+      }
+    },
+  );
 
   // DEBUG: public status endpoint (no auth) - use only in local/dev for debugging
   app.get("/api/bling/status/public", async (req: any, res) => {
@@ -3722,61 +3727,81 @@ export async function registerRoutes(
         // respond immediately
         res.status(200).send("OK");
 
-        // Fan-out to configured endpoints (background)
-        const endpoints = await db
-          .select()
-          .from(blingWebhookEndpoints)
-          .where(
-            and(
-              eq(blingWebhookEndpoints.companyId, matchedCompanyId),
-              eq(blingWebhookEndpoints.active, true),
-            ),
-          );
-        const payloadBody = payloadBuf.toString("utf8");
-        await Promise.allSettled(
-          endpoints.map(async (ep: any) => {
-            try {
-              const r = await fetch(ep.url, {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  "X-Bling-Forwarded-Company": matchedCompanyId,
-                },
-                body: payloadBody,
-              });
-              const b = await r.text();
-              await db
-                .update(blingWebhookEndpoints)
-                .set({
-                  lastStatusCode: r.status,
-                  lastResponseBody: b,
-                  lastCalledAt: new Date(),
-                  updatedAt: new Date(),
-                })
-                .where(eq(blingWebhookEndpoints.id, ep.id));
-            } catch (err: any) {
-              console.error(
-                "[Bling] Failed forwarding webhook to",
-                ep.url,
-                err && err.message ? err.message : err,
+        // Fan-out to configured endpoints (background) — handle errors locally so we don't try to modify response
+        (async () => {
+          try {
+            const endpoints = await db
+              .select()
+              .from(blingWebhookEndpoints)
+              .where(
+                and(
+                  eq(blingWebhookEndpoints.companyId, matchedCompanyId),
+                  eq(blingWebhookEndpoints.active, true),
+                ),
               );
-              await db
-                .update(blingWebhookEndpoints)
-                .set({
-                  lastStatusCode: 0,
-                  lastResponseBody: String(
+            const payloadBody = payloadBuf.toString("utf8");
+            await Promise.allSettled(
+              endpoints.map(async (ep: any) => {
+                try {
+                  const r = await fetch(ep.url, {
+                    method: "POST",
+                    headers: {
+                      "Content-Type": "application/json",
+                      "X-Bling-Forwarded-Company": matchedCompanyId,
+                    },
+                    body: payloadBody,
+                  });
+                  const b = await r.text();
+                  await db
+                    .update(blingWebhookEndpoints)
+                    .set({
+                      lastStatusCode: r.status,
+                      lastResponseBody: b,
+                      lastCalledAt: new Date(),
+                      updatedAt: new Date(),
+                    })
+                    .where(eq(blingWebhookEndpoints.id, ep.id));
+                } catch (err: any) {
+                  console.error(
+                    "[Bling] Failed forwarding webhook to",
+                    ep.url,
                     err && err.message ? err.message : err,
-                  ),
-                  lastCalledAt: new Date(),
-                  updatedAt: new Date(),
-                })
-                .where(eq(blingWebhookEndpoints.id, ep.id));
-            }
-          }),
-        );
+                  );
+                  try {
+                    await db
+                      .update(blingWebhookEndpoints)
+                      .set({
+                        lastStatusCode: 0,
+                        lastResponseBody: String(
+                          err && err.message ? err.message : err,
+                        ),
+                        lastCalledAt: new Date(),
+                        updatedAt: new Date(),
+                      })
+                      .where(eq(blingWebhookEndpoints.id, ep.id));
+                  } catch (dbErr) {
+                    console.error(
+                      "[Bling] Failed updating endpoint status:",
+                      dbErr,
+                    );
+                  }
+                }
+              }),
+            );
+          } catch (fanErr) {
+            console.error("[Bling] Error during webhook fan-out:", fanErr);
+          }
+        })();
       } catch (error: any) {
         console.error("[Bling] Error handling webhook:", error);
-        res.status(500).send("Server error");
+        if (!res.headersSent) {
+          res.status(500).send("Server error");
+        } else {
+          // response already sent; just log
+          console.warn(
+            "[Bling] Error occurred after response was sent; check logs for details.",
+          );
+        }
       }
     },
   );

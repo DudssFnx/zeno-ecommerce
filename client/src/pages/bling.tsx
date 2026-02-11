@@ -472,31 +472,51 @@ export default function BlingPage() {
 
   const importSingleProductMutation = useMutation({
     mutationFn: async (productId: number) => {
-      const response = await apiRequest("POST", `/api/bling/products/${productId}/import`);
+      const response = await apiRequest(
+        "POST",
+        `/api/bling/products/${productId}/import`,
+      );
       return response.json();
     },
     onSuccess: (data: any) => {
-      toast({ title: "Produto importado", description: data.message || "Produto importado" });
+      toast({
+        title: "Produto importado",
+        description: data.message || "Produto importado",
+      });
       queryClient.invalidateQueries({ queryKey: ["/api/products"] });
       loadBlingProducts();
     },
     onError: (error: any) => {
-      toast({ title: "Erro ao importar produto", description: error.message || "Falha ao importar produto", variant: "destructive" });
+      toast({
+        title: "Erro ao importar produto",
+        description: error.message || "Falha ao importar produto",
+        variant: "destructive",
+      });
     },
   });
 
   const syncSingleProductMutation = useMutation({
     mutationFn: async (productId: number) => {
-      const response = await apiRequest("POST", `/api/bling/products/${productId}/sync`);
+      const response = await apiRequest(
+        "POST",
+        `/api/bling/products/${productId}/sync`,
+      );
       return response.json();
     },
     onSuccess: (data: any) => {
-      toast({ title: "Produto atualizado", description: data.message || "Produto atualizado" });
+      toast({
+        title: "Produto atualizado",
+        description: data.message || "Produto atualizado",
+      });
       queryClient.invalidateQueries({ queryKey: ["/api/products"] });
       loadBlingProducts();
     },
     onError: (error: any) => {
-      toast({ title: "Erro ao atualizar produto", description: error.message || "Falha ao atualizar produto", variant: "destructive" });
+      toast({
+        title: "Erro ao atualizar produto",
+        description: error.message || "Falha ao atualizar produto",
+        variant: "destructive",
+      });
     },
   });
 
@@ -1187,7 +1207,9 @@ export default function BlingPage() {
                           <div className="flex items-center gap-2">
                             <Badge
                               variant={
-                                product.situacao === "A" ? "default" : "secondary"
+                                product.situacao === "A"
+                                  ? "default"
+                                  : "secondary"
                               }
                               className="text-xs"
                             >
