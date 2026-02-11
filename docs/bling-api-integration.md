@@ -365,6 +365,43 @@ function verifyWebhookSignature(payload: string, signature: string): boolean {
 | `stock.created`   | Atualiza estoque do produto |
 | `stock.updated`   | Atualiza estoque do produto |
 
+## Checklist de Migração e Deploy ✅
+
+Siga estes passos antes de habilitar a integração Bling em produção (faça tudo primeiro em *staging*):
+
+1. Aplicar migrations no banco
+   - Garanta que `migrations/0006_bling_oauth_sessions.sql` foi executada (mapeia `state -> company_id`).
+   - Exemplo (psql):
+     ```bash
+     PGPASSWORD=$PGPASSWORD psql -h ${PGHOST:-localhost} -p ${PGPORT:-5432} -U ${PGUSER:-postgres} -d ${PGDATABASE:-zeno} -f migrations/0006_bling_oauth_sessions.sql
+     ```
+   - Alternativamente, use `npx drizzle-kit push` se você usar Drizzle migrations.
+
+2. Verificar tabela de tokens
+   - Confirme que a tabela `bling_tokens` existe e tem a coluna `companyId` (tokens são persistidos por empresa e criptografados).
+
+3. Pré-checar duplicatas (apenas se aplicar a sua base)
+   - Se for necessário aplicar a migration que adiciona índice único (`0005_add_unique_receivable_order_id.sql`), rode primeiro: `npm run inspect:receivables` e revise os resultados. Caso sejam encontrados duplicados, corrija com `npm run repair:receivables -- --apply` antes de aplicar a migration de índice.
+
+4. Configurar variáveis/credenciais
+   - Em testes você pode setar `BLING_CLIENT_ID` e `BLING_CLIENT_SECRET` no ambiente para construir a URL de autorização.
+   - Em produção prefira salvar credenciais por empresa via `POST /api/bling/credentials` no painel de administração.
+
+5. Webhook
+   - Configure no Bling a URL: `https://<seu-host>/api/bling/webhook`.
+   - Use o `client_secret` como chave para a verificação HMAC-SHA256 (o servidor valida `X-Bling-Signature-256`).
+   - Assegure que o servidor repassa o corpo bruto (raw body) para verificação da assinatura.
+
+6. Testes pós-migração
+   - Salve credenciais pela interface da empresa e clique em **Testar Conexão**; autorize via Bling e verifique se o callback salva tokens para a `companyId` correta.
+   - Teste `GET /api/bling/products/preview` e `GET /api/bling/categories/preview` (company-scoped).
+   - Inicie `POST /api/bling/sync/products` e monitore via SSE `GET /api/bling/sync/progress` até conclusão.
+
+7. Rollback / remoção de tokens
+   - Para desconectar uma empresa: `POST /api/bling/disconnect` (remove tokens daquela empresa).
+
+---
+
 ## Links Úteis
 
 - [Documentação Oficial](https://developer.bling.com.br/)
