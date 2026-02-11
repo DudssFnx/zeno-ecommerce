@@ -46,6 +46,96 @@ interface SyncResult {
   errors?: string[];
 }
 
+// Helper to render pagination controls based on cached pages
+function renderPaginationControls(
+  pagesCache: Record<number, BlingProduct[]>,
+  pageSize: number,
+  currentPage: number,
+  hasMore: boolean,
+  loadPage: (p: number) => void,
+  onSelect: (p: number) => void,
+) {
+  const fetchedPages = Object.keys(pagesCache)
+    .map((v) => Number(v))
+    .sort((a, b) => a - b);
+  const totalFetched = fetchedPages.reduce(
+    (sum, p) => sum + (pagesCache[p]?.length || 0),
+    0,
+  );
+  const totalPages = Math.max(1, Math.ceil(totalFetched / pageSize));
+
+  const pageButtons: React.ReactNode[] = [];
+
+  // generate pages list with truncation for large number
+  function pushPage(n: number) {
+    pageButtons.push(
+      <Button
+        key={`p-${n}`}
+        size="sm"
+        variant={n === currentPage ? "default" : "ghost"}
+        onClick={() => onSelect(n)}
+      >
+        {n}
+      </Button>,
+    );
+  }
+
+  if (totalPages <= 12) {
+    for (let i = 1; i <= totalPages; i++) pushPage(i);
+  } else {
+    // show first 3, ellipsis, 2 around current, ellipsis, last 3
+    pushPage(1);
+    pushPage(2);
+    pushPage(3);
+    pageButtons.push(
+      <span key="sep1" className="px-2 text-sm text-muted-foreground">
+        ...
+      </span>,
+    );
+
+    const start = Math.max(4, currentPage - 1);
+    const end = Math.min(totalPages - 3, currentPage + 1);
+    for (let i = start; i <= end; i++) pushPage(i);
+
+    pageButtons.push(
+      <span key="sep2" className="px-2 text-sm text-muted-foreground">
+        ...
+      </span>,
+    );
+
+    for (let i = totalPages - 2; i <= totalPages; i++) pushPage(i);
+  }
+
+  return (
+    <div className="flex items-center gap-1">
+      <Button
+        size="sm"
+        variant="outline"
+        disabled={currentPage === 1}
+        onClick={() => onSelect(Math.max(1, currentPage - 1))}
+      >
+        Prev
+      </Button>
+      {pageButtons}
+      <Button
+        size="sm"
+        variant="outline"
+        disabled={!hasMore && currentPage === Math.max(1, totalPages)}
+        onClick={() => {
+          const next = currentPage + 1;
+          // if we haven't fetched next, trigger load
+          if (!pagesCache[next]) {
+            loadPage(next);
+          }
+          onSelect(next);
+        }}
+      >
+        Next
+      </Button>
+    </div>
+  );
+}
+
 interface SyncProgress {
   status: "idle" | "running" | "completed" | "error";
   phase: string;
@@ -96,6 +186,10 @@ export default function BlingPage() {
   const [productsPage, setProductsPage] = useState(1);
   const [pageSize, setPageSize] = useState<number>(100);
   const [hasMoreProducts, setHasMoreProducts] = useState(false);
+
+  // pagination cache: stores fetched pages by page number
+  const [pagesCache, setPagesCache] = useState<Record<number, BlingProduct[]>>({});
+  const [currentPreviewPage, setCurrentPreviewPage] = useState(1);
 
   // credentials masking
   const [clientSecretMasked, setClientSecretMasked] = useState("");
@@ -417,7 +511,7 @@ export default function BlingPage() {
     }
   };
 
-  const loadBlingProducts = async (page: number = 1) => {
+  const loadBlingProducts = async (page: number = 1): Promise<BlingProduct[]> => {
     setLoadingProducts(true);
     try {
       const response = await apiRequest(
@@ -427,21 +521,26 @@ export default function BlingPage() {
       const data = await response.json();
       const products = data.products || [];
 
-      if (page === 1) {
+      // cache fetched page
+      setPagesCache((prev) => ({ ...prev, [page]: products }));
+
+      // If requesting the current preview page or first page, show it
+      if (page === currentPreviewPage || page === 1) {
         setBlingProducts(products);
         setSelectedProducts([]);
-      } else {
-        setBlingProducts((prev) => [...prev, ...products]);
+        setCurrentPreviewPage(page);
       }
 
       setProductsPage(page);
       setHasMoreProducts(products.length === pageSize);
+      return products;
     } catch (error: any) {
       toast({
         title: "Erro ao carregar produtos",
         description: error.message || "Falha ao buscar produtos do Bling",
         variant: "destructive",
       });
+      return [];
     } finally {
       setLoadingProducts(false);
     }
@@ -1240,6 +1339,8 @@ export default function BlingPage() {
                         setPageSize(Number(e.target.value));
                         setProductsPage(1);
                         setBlingProducts([]);
+                        setPagesCache({});
+                        setCurrentPreviewPage(1);
                       }}
                       className="bg-muted rounded-md px-2 py-1 text-sm"
                       aria-label="Tamanho da página"
@@ -1252,7 +1353,13 @@ export default function BlingPage() {
                     {blingProducts.length > 0 && hasMoreProducts && (
                       <Button
                         variant="outline"
-                        onClick={() => loadBlingProducts(productsPage + 1)}
+                        onClick={async () => {
+                          const next = productsPage + 1;
+                          const fetched = await loadBlingProducts(next);
+                          // ensure preview navigates to newly fetched page
+                          setCurrentPreviewPage(next);
+                          setBlingProducts(fetched);
+                        }}
                         disabled={loadingProducts}
                         size="sm"
                       >
@@ -1281,14 +1388,64 @@ export default function BlingPage() {
                 </div>
 
                 {blingProducts.length > 0 && (
-                  <ScrollArea className="h-64 border rounded-md p-3">
-                    <div className="space-y-2">
-                      {blingProducts.map((product) => (
-                        <label
-                          key={product.id}
-                          className="flex items-center gap-3 p-2 rounded-md hover-elevate cursor-pointer"
-                          data-testid={`product-item-${product.id}`}
-                        >
+                  <>
+                    <ScrollArea className="h-64 border rounded-md p-3">
+                      <div className="space-y-2">
+                        {blingProducts.map((product) => (
+                          <label
+                            key={product.id}
+                            className="flex items-center gap-3 p-2 rounded-md hover-elevate cursor-pointer"
+                            data-testid={`product-item-${product.id}`}
+                          >
+                            <Checkbox
+                              checked={selectedProducts.includes(product.id)}
+                              onCheckedChange={() => toggleProductSelection(product.id)}
+                              data-testid={`checkbox-product-${product.id}`}
+                            />
+                            <div className="flex-1 min-w-0">
+                              <div className="text-sm font-medium truncate">
+                                {product.nome}
+                              </div>
+                              <div className="text-xs text-muted-foreground flex flex-wrap gap-2">
+                                <span>SKU: {product.codigo}</span>
+                                <span>R$ {product.preco?.toFixed(2) || "0.00"}</span>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Badge
+                                variant={product.situacao === "A" ? "secondary" : "destructive"}
+                              >
+                                {product.situacao === "A" ? "Ativo" : "Inativo"}
+                              </Badge>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => importSingleProductMutation.mutate(product.id)}
+                              >
+                                Importar
+                              </Button>
+                            </div>
+                          </label>
+                        ))}
+                      </div>
+                    </ScrollArea>
+
+                    {/* Pagination controls based on fetched pages */}
+                    <div className="mt-3 flex items-center justify-center gap-2">
+                      {renderPaginationControls(pagesCache, pageSize, currentPreviewPage, hasMoreProducts, loadBlingProducts, (p:number)=>{
+                        setCurrentPreviewPage(p);
+                        // show cached page if available
+                        const cached = pagesCache[p];
+                        if (cached) {
+                          setBlingProducts(cached);
+                          setSelectedProducts([]);
+                        } else {
+                          loadBlingProducts(p);
+                        }
+                      })}
+                    </div>
+                  </>
+                )}
                           <Checkbox
                             checked={selectedProducts.includes(product.id)}
                             onCheckedChange={() =>
