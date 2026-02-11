@@ -9,7 +9,9 @@
     "start": "cross-env NODE_ENV=production node dist/index.cjs",
     "check": "npx tsc",
     "db:push": "npx drizzle-kit push",
-    "migrate:local": "psql -h ${PGHOST:-localhost} -p ${PGPORT:-5432} -U ${PGUSER:-postgres} -d ${PGDATABASE:-zeno} -f migrations/0003_add_receivable_payments_columns.sql"
+    "migrate:local": "psql -h ${PGHOST:-localhost} -p ${PGPORT:-5432} -U ${PGUSER:-postgres} -d ${PGDATABASE:-zeno} -f migrations/0003_add_receivable_payments_columns.sql",
+    "inspect:receivables": "npx tsx server/scripts/inspectAllReceivables.ts",
+    "repair:receivables": "npx tsx server/scripts/repairAllReceivables.ts --apply"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
