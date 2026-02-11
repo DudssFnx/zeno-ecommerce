@@ -110,7 +110,7 @@ export async function registerRoutes(
         .returning();
       res.status(201).json({ company: newCompany, admin: newAdmin });
     } catch (error) {
-      res.status(500).json({ message: error.message });
+      res.status(500).json({ message: (error as any).message || String(error) });
     }
   });
 
@@ -130,7 +130,7 @@ export async function registerRoutes(
           return res.status(404).json({ message: "Empresa não encontrada" });
         res.json(updated);
       } catch (error) {
-        res.status(500).json({ message: error.message });
+        res.status(500).json({ message: (error as any).message || String(error) });
       }
     },
   );
@@ -149,7 +149,7 @@ export async function registerRoutes(
         .from(users);
       res.json({ totalEmpresas, totalProdutos, totalUsuarios });
     } catch (error) {
-      res.status(500).json({ message: error.message });
+      res.status(500).json({ message: (error as any).message || String(error) });
     }
   });
 
@@ -354,9 +354,9 @@ export async function registerRoutes(
           message: "Login realizado com sucesso",
         });
       });
-    } catch (error: any) {
+    } catch (error) {
       console.log("[LOGIN] Erro inesperado:", error);
-      res.status(500).json({ message: error.message });
+      res.status(500).json({ message: (error as any).message || String(error) });
     }
   });
 
@@ -377,8 +377,8 @@ export async function registerRoutes(
         .where(eq(categories.companyId, companyId))
         .orderBy(categories.name);
       res.json(result);
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
+    } catch (error) {
+      res.status(500).json({ message: (error as any).message || String(error) });
     }
   });
   // 🏢 EMPRESA
@@ -464,8 +464,8 @@ export async function registerRoutes(
           .limit(10);
         return res.json(rows);
       }
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
+    } catch (error) {
+      res.status(500).json({ message: (error as any).message || String(error) });
     }
   });
 
@@ -510,7 +510,7 @@ export async function registerRoutes(
           .returning();
       }
       res.json(updated);
-    } catch (error: any) {
+    } catch (error) {
       res.status(500).json({ message: "Erro: " + error.message });
     }
   });
@@ -645,8 +645,8 @@ export async function registerRoutes(
         )
         .orderBy(users.firstName);
       res.json(result);
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
+    } catch (error) {
+      res.status(500).json({ message: (error as any).message || String(error) });
     }
   });
 
@@ -666,8 +666,8 @@ export async function registerRoutes(
       } else {
         res.json([]);
       }
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
+    } catch (error) {
+      res.status(500).json({ message: (error as any).message || String(error) });
     }
   });
 
@@ -693,13 +693,13 @@ export async function registerRoutes(
         .returning();
 
       res.status(201).json(newUser);
-    } catch (error: any) {
+    } catch (error) {
       if (error.code === "23505") {
         return res
           .status(409)
           .json({ message: "Registro duplicado (Email, CPF ou CNPJ)." });
       }
-      res.status(500).json({ message: error.message });
+      res.status(500).json({ message: (error as any).message || String(error) });
     }
   });
 
@@ -797,8 +797,8 @@ export async function registerRoutes(
         })
         .returning();
       res.status(201).json(supplier);
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
+    } catch (error) {
+      res.status(500).json({ message: (error as any).message || String(error) });
     }
   });
 
@@ -889,13 +889,13 @@ export async function registerRoutes(
         })
         .returning();
       res.status(201).json(newProduct);
-    } catch (error: any) {
+    } catch (error) {
       if (error.code === "23505") {
         return res
           .status(409)
           .json({ message: "Conflito: Produto já existe." });
       }
-      res.status(500).json({ message: error.message });
+      res.status(500).json({ message: (error as any).message || String(error) });
     }
   });
 
@@ -932,8 +932,8 @@ export async function registerRoutes(
       if (!updated)
         return res.status(404).json({ message: "Produto não encontrado" });
       res.json(updated);
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
+    } catch (error) {
+      res.status(500).json({ message: (error as any).message || String(error) });
     }
   });
 
@@ -983,7 +983,7 @@ export async function registerRoutes(
         .groupBy(purchaseOrders.id, suppliers.name)
         .orderBy(desc(purchaseOrders.createdAt));
       res.json(result);
-    } catch (error: any) {
+    } catch (error) {
       res
         .status(500)
         .json({ message: "Erro ao listar pedidos: " + error.message });
@@ -1032,8 +1032,8 @@ export async function registerRoutes(
         .orderBy(desc(stockMovements.createdAt));
 
       res.json({ order, items, supplier, movements });
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
+    } catch (error) {
+      res.status(500).json({ message: (error as any).message || String(error) });
     }
   });
 
@@ -1129,7 +1129,7 @@ export async function registerRoutes(
         return newOrder;
       });
       res.status(201).json(result);
-    } catch (error: any) {
+    } catch (error) {
       res
         .status(500)
         .json({ message: "Erro ao criar pedido: " + error.message });
@@ -1300,7 +1300,7 @@ export async function registerRoutes(
         console.log(
           `[Financial] Payable auto-created for purchase order #${orderId}`,
         );
-      } catch (error: any) {
+      } catch (error) {
         // Se não conseguir criar payable (ex: não é prazo), apenas ignora
         console.log(
           `[Financial] Could not auto-create payable for purchase order #${orderId}:`,
@@ -1309,11 +1309,11 @@ export async function registerRoutes(
       }
 
       res.json({ message: "Estoque lançado com sucesso!", updatedProducts });
-    } catch (error: any) {
+    } catch (error) {
       console.error(
         `[PURCHASE ERROR] Erro ao lançar estoque: ${error.message}`,
       );
-      res.status(500).json({ message: error.message });
+      res.status(500).json({ message: (error as any).message || String(error) });
     }
   });
 
@@ -1389,11 +1389,11 @@ export async function registerRoutes(
       res.json({
         message: "Estoque estornado e pedido voltou para Rascunho.",
       });
-    } catch (error: any) {
+    } catch (error) {
       console.error(
         `[PURCHASE REVERSE ERROR] Erro ao estornar estoque: ${error.message}`,
       );
-      res.status(500).json({ message: error.message });
+      res.status(500).json({ message: (error as any).message || String(error) });
     }
   });
 
@@ -1449,7 +1449,7 @@ export async function registerRoutes(
       });
 
       res.json({ message: "Pedido excluído e estoque ajustado com sucesso." });
-    } catch (error: any) {
+    } catch (error) {
       console.error("Erro Delete:", error);
       res.status(500).json({ message: "Erro ao excluir: " + error.message });
     }
@@ -1504,7 +1504,7 @@ export async function registerRoutes(
         return newOrder;
       });
       res.json(result);
-    } catch (error: any) {
+    } catch (error) {
       res.status(500).json({ message: "Erro: " + error.message });
     }
   });
@@ -1526,8 +1526,8 @@ export async function registerRoutes(
         )
         .orderBy(desc(orders.createdAt));
       res.json(result);
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
+    } catch (error) {
+      res.status(500).json({ message: (error as any).message || String(error) });
     }
   });
 
@@ -1543,8 +1543,8 @@ export async function registerRoutes(
           and(eq(orders.companyId, companyId), eq(orders.isGuestOrder, true)),
         );
       res.json({ guestOrderCount: result[0]?.count || 0 });
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
+    } catch (error) {
+      res.status(500).json({ message: (error as any).message || String(error) });
     }
   });
 
@@ -1571,8 +1571,8 @@ export async function registerRoutes(
         .map((v: any) => (typeof v === "number" ? v : parseInt(String(v))))
         .filter((n: number) => Number.isInteger(n) && !Number.isNaN(n));
       res.json({ raw, rawIds, parsedIds });
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
+    } catch (error) {
+      res.status(500).json({ message: (error as any).message || String(error) });
     }
   });
 
@@ -1652,8 +1652,8 @@ export async function registerRoutes(
       });
 
       res.json({ message: "Pedidos processados.", processed, ignored });
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
+    } catch (error) {
+      res.status(500).json({ message: (error as any).message || String(error) });
     }
   });
 
@@ -1753,8 +1753,8 @@ export async function registerRoutes(
         ignored,
         stockReversed,
       });
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
+    } catch (error) {
+      res.status(500).json({ message: (error as any).message || String(error) });
     }
   });
 
@@ -1826,8 +1826,8 @@ export async function registerRoutes(
         stockPosted: !!stockLog,
         accountsPosted: !!order.accountsPosted,
       });
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
+    } catch (error) {
+      res.status(500).json({ message: (error as any).message || String(error) });
     }
   });
 
@@ -1900,8 +1900,8 @@ export async function registerRoutes(
         }
       });
       res.json({ message: "Movimentação realizada." });
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
+    } catch (error) {
+      res.status(500).json({ message: (error as any).message || String(error) });
     }
   });
 
@@ -1965,8 +1965,8 @@ export async function registerRoutes(
           .where(eq(orders.id, id));
       });
       res.json({ message: "Estoque reservado e pedido gerado." });
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
+    } catch (error) {
+      res.status(500).json({ message: (error as any).message || String(error) });
     }
   });
 
@@ -2022,8 +2022,8 @@ export async function registerRoutes(
       res.json({
         message: "Pedido retornado para Orçamento e estoque liberado.",
       });
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
+    } catch (error) {
+      res.status(500).json({ message: (error as any).message || String(error) });
     }
   });
 
@@ -2157,7 +2157,7 @@ export async function registerRoutes(
             }
           }
         }
-      } catch (error: any) {
+      } catch (error) {
         // Se não conseguir criar receivable (ex: não é prazo), apenas ignora
         console.log(
           `[Financial] Could not auto-create receivable for order #${id}:`,
@@ -2166,8 +2166,8 @@ export async function registerRoutes(
       }
 
       res.json({ message: "Pedido faturado e estoque baixado." });
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
+    } catch (error) {
+      res.status(500).json({ message: (error as any).message || String(error) });
     }
   });
 
@@ -2232,8 +2232,8 @@ export async function registerRoutes(
       res.json({
         message: "Pedido retornado para Pedido Gerado e estoque estornado.",
       });
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
+    } catch (error) {
+      res.status(500).json({ message: (error as any).message || String(error) });
     }
   });
 
@@ -2337,9 +2337,9 @@ export async function registerRoutes(
         message: "Contas a receber lançadas com sucesso",
         receivable,
       });
-    } catch (error: any) {
+    } catch (error) {
       console.error(`[POST-ACCOUNTS] Erro para pedido #${id}:`, error);
-      res.status(500).json({ message: error.message });
+      res.status(500).json({ message: (error as any).message || String(error) });
     }
   });
 
@@ -2389,8 +2389,8 @@ export async function registerRoutes(
         message: "Contas a receber estornadas com sucesso",
         cancelled,
       });
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
+    } catch (error) {
+      res.status(500).json({ message: (error as any).message || String(error) });
     }
   });
 
@@ -2439,8 +2439,8 @@ export async function registerRoutes(
         await tx.delete(orders).where(eq(orders.id, id));
       });
       res.json({ message: "Pedido excluído." });
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
+    } catch (error) {
+      res.status(500).json({ message: (error as any).message || String(error) });
     }
   });
 
@@ -2505,8 +2505,8 @@ export async function registerRoutes(
       });
 
       res.json({ message: "Itens atualizados com sucesso." });
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
+    } catch (error) {
+      res.status(500).json({ message: (error as any).message || String(error) });
     }
   });
 
@@ -2756,9 +2756,9 @@ export async function registerRoutes(
 
       const [updated] = await db.select().from(orders).where(eq(orders.id, id));
       res.json(updated);
-    } catch (error: any) {
+    } catch (error) {
       console.error("[DEBUG] ERRO CRÍTICO NA ROTA:", error);
-      res.status(500).json({ message: error.message });
+      res.status(500).json({ message: (error as any).message || String(error) });
     }
   });
 
@@ -2788,8 +2788,8 @@ export async function registerRoutes(
         phone: company.phone || company.telefone,
         email: company.email,
       });
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
+    } catch (error) {
+      res.status(500).json({ message: (error as any).message || String(error) });
     }
   });
 
@@ -2813,8 +2813,8 @@ export async function registerRoutes(
         .where(eq(categories.companyId, company.id));
 
       res.json(result);
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
+    } catch (error) {
+      res.status(500).json({ message: (error as any).message || String(error) });
     }
   });
 
@@ -2878,8 +2878,8 @@ export async function registerRoutes(
         page: pageNum,
         totalPages,
       });
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
+    } catch (error) {
+      res.status(500).json({ message: (error as any).message || String(error) });
     }
   });
 
@@ -2997,9 +2997,9 @@ export async function registerRoutes(
         orderNumber: orderResult.orderNumber,
         message: "Orçamento criado com sucesso!",
       });
-    } catch (error: any) {
+    } catch (error) {
       console.error("[GUEST ORDER]", error);
-      res.status(500).json({ message: error.message });
+      res.status(500).json({ message: (error as any).message || String(error) });
     }
   });
 
@@ -3015,8 +3015,8 @@ export async function registerRoutes(
         .from(categories)
         .orderBy(categories.name);
       res.json(result);
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
+    } catch (error) {
+      res.status(500).json({ message: (error as any).message || String(error) });
     }
   });
 
@@ -3045,8 +3045,8 @@ export async function registerRoutes(
         .limit(limitNum);
 
       res.json({ products: result, total: result.length });
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
+    } catch (error) {
+      res.status(500).json({ message: (error as any).message || String(error) });
     }
   });
 
@@ -3055,8 +3055,8 @@ export async function registerRoutes(
     try {
       // Retorna configuração padrão - pode ser customizado para ler do banco
       res.json({ enabled: false, minAge: 18 });
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
+    } catch (error) {
+      res.status(500).json({ message: (error as any).message || String(error) });
     }
   });
 
@@ -3086,8 +3086,8 @@ export async function registerRoutes(
         apiEndpoint: row.apiEndpoint || null,
         redirectUri: row.redirectUri || null,
       });
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
+    } catch (error) {
+      res.status(500).json({ message: (error as any).message || String(error) });
     }
   });
 
@@ -3115,9 +3115,9 @@ export async function registerRoutes(
       const authenticated = !!tokenRow;
 
       res.json({ hasCredentials, authenticated });
-    } catch (error: any) {
+    } catch (error) {
       console.error("[Bling] Error in /api/bling/status:", error);
-      res.status(500).json({ message: error.message });
+      res.status(500).json({ message: (error as any).message || String(error) });
     }
   });
 
@@ -3130,9 +3130,9 @@ export async function registerRoutes(
         // Kick off sync in background and immediately return a starting response
         import("./services/bling").then((m) => m.syncProducts());
         res.json({ ok: true, message: "Sync started" });
-      } catch (error: any) {
+      } catch (error) {
         console.error("[Bling] Error starting product sync:", error);
-        res.status(500).json({ message: error.message });
+        res.status(500).json({ message: (error as any).message || String(error) });
       }
     },
   );
@@ -3161,9 +3161,9 @@ export async function registerRoutes(
       const authenticated = !!tokenRow;
 
       res.json({ hasCredentials, authenticated });
-    } catch (error: any) {
+    } catch (error) {
       console.error("[Bling] Error in /api/bling/status/public:", error);
-      res.status(500).json({ message: error.message });
+      res.status(500).json({ message: (error as any).message || String(error) });
     }
   });
 
@@ -3201,12 +3201,12 @@ export async function registerRoutes(
           message: "Failed to reach API endpoint: " + fetchErr.message,
         });
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error(
         "[Bling] Error in /api/bling/test-credentials/public:",
         error,
       );
-      res.status(500).json({ message: error.message });
+      res.status(500).json({ message: (error as any).message || String(error) });
     }
   });
 
@@ -3293,8 +3293,8 @@ export async function registerRoutes(
       }
 
       res.json(responsePayload);
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
+    } catch (error) {
+      res.status(500).json({ message: (error as any).message || String(error) });
     }
   });
 
@@ -3341,8 +3341,8 @@ export async function registerRoutes(
             message: "Failed to reach API endpoint: " + fetchErr.message,
           });
         }
-      } catch (error: any) {
-        res.status(500).json({ message: error.message });
+      } catch (error) {
+        res.status(500).json({ message: (error as any).message || String(error) });
       }
     },
   );
@@ -3400,9 +3400,9 @@ export async function registerRoutes(
         /* ignore */
       }
       res.redirect(authUrl);
-    } catch (error: any) {
+    } catch (error) {
       console.error("[Bling] Error in /api/bling/auth:", error);
-      res.status(500).json({ message: error.message });
+      res.status(500).json({ message: (error as any).message || String(error) });
     }
   });
 
@@ -3479,9 +3479,9 @@ export async function registerRoutes(
 
       // Redirect back to UI with success
       return res.redirect("/bling?success=true");
-    } catch (error: any) {
+    } catch (error) {
       console.error("[Bling] Error in /api/bling/callback:", error);
-      if (!res.headersSent) res.status(500).json({ message: error.message });
+      if (!res.headersSent) res.status(500).json({ message: (error as any).message || String(error) });
     }
   });
 
@@ -3534,8 +3534,8 @@ export async function registerRoutes(
           m.fetchBlingProductsList(page, limit),
         );
         res.json({ products });
-      } catch (error: any) {
-        res.status(500).json({ message: error.message });
+      } catch (error) {
+        res.status(500).json({ message: (error as any).message || String(error) });
       }
     },
   );
@@ -3547,8 +3547,8 @@ export async function registerRoutes(
         m.fetchBlingProductDetails(id),
       );
       res.json({ product });
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
+    } catch (error) {
+      res.status(500).json({ message: (error as any).message || String(error) });
     }
   });
 
@@ -3563,8 +3563,8 @@ export async function registerRoutes(
           m.importBlingProductById(id, companyId),
         );
         res.json(result);
-      } catch (error: any) {
-        res.status(500).json({ message: error.message });
+      } catch (error) {
+        res.status(500).json({ message: (error as any).message || String(error) });
       }
     },
   );
@@ -3584,8 +3584,8 @@ export async function registerRoutes(
           m.importBlingProductsByIds(productIds, companyId),
         );
         res.json(result);
-      } catch (error: any) {
-        res.status(500).json({ message: error.message });
+      } catch (error) {
+        res.status(500).json({ message: (error as any).message || String(error) });
       }
     },
   );
@@ -3602,8 +3602,8 @@ export async function registerRoutes(
           m.importBlingProductById(id, companyId),
         );
         res.json(result);
-      } catch (error: any) {
-        res.status(500).json({ message: error.message });
+      } catch (error) {
+        res.status(500).json({ message: (error as any).message || String(error) });
       }
     },
   );
@@ -3627,8 +3627,8 @@ export async function registerRoutes(
           .where(eq(blingWebhookEndpoints.companyId, companyId))
           .orderBy(desc(blingWebhookEndpoints.id));
         res.json(rows);
-      } catch (error: any) {
-        res.status(500).json({ message: error.message });
+      } catch (error) {
+        res.status(500).json({ message: (error as any).message || String(error) });
       }
     },
   );
@@ -3653,8 +3653,8 @@ export async function registerRoutes(
           })
           .returning();
         res.json({ ok: true, endpoint: inserted });
-      } catch (error: any) {
-        res.status(500).json({ message: error.message });
+      } catch (error) {
+        res.status(500).json({ message: (error as any).message || String(error) });
       }
     },
   );
@@ -3676,8 +3676,8 @@ export async function registerRoutes(
             ),
           );
         res.json({ ok: true });
-      } catch (error: any) {
-        res.status(500).json({ message: error.message });
+      } catch (error) {
+        res.status(500).json({ message: (error as any).message || String(error) });
       }
     },
   );
@@ -3721,8 +3721,8 @@ export async function registerRoutes(
           })
           .where(eq(blingWebhookEndpoints.id, id));
         res.json({ ok: true, status: resp.status, body: body });
-      } catch (error: any) {
-        res.status(500).json({ message: error.message });
+      } catch (error) {
+        res.status(500).json({ message: (error as any).message || String(error) });
       }
     },
   );
@@ -3844,7 +3844,7 @@ export async function registerRoutes(
             console.error("[Bling] Error during webhook fan-out:", fanErr);
           }
         })();
-      } catch (error: any) {
+      } catch (error) {
         console.error("[Bling] Error handling webhook:", error);
         if (!res.headersSent) {
           res.status(500).send("Server error");
@@ -3875,8 +3875,8 @@ export async function registerRoutes(
         .where(eq(paymentTypes.companyId, companyId))
         .orderBy(paymentTypes.sortOrder, paymentTypes.name);
       res.json(result);
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
+    } catch (error) {
+      res.status(500).json({ message: (error as any).message || String(error) });
     }
   });
 
@@ -3932,7 +3932,7 @@ export async function registerRoutes(
         }),
       );
       res.json(ordersWithDetails);
-    } catch (error: any) {
+    } catch (error) {
       res.status(500).json({ message: "Erro: " + error.message });
     }
   });
@@ -3977,8 +3977,8 @@ export async function registerRoutes(
           .status(404)
           .json({ message: "Tipo de pagamento não encontrado" });
       res.json(updated);
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
+    } catch (error) {
+      res.status(500).json({ message: (error as any).message || String(error) });
     }
   });
 
@@ -4001,8 +4001,8 @@ export async function registerRoutes(
           .status(404)
           .json({ message: "Tipo de pagamento não encontrado" });
       res.json({ message: "Tipo de pagamento removido com sucesso" });
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
+    } catch (error) {
+      res.status(500).json({ message: (error as any).message || String(error) });
     }
   });
 
@@ -4018,8 +4018,8 @@ export async function registerRoutes(
         .where(eq(paymentTerms.companyId, companyId))
         .orderBy(paymentTerms.sortOrder);
       res.json(terms);
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
+    } catch (error) {
+      res.status(500).json({ message: (error as any).message || String(error) });
     }
   });
 
@@ -4122,8 +4122,8 @@ export async function registerRoutes(
       res
         .status(201)
         .json({ paymentTypes: created, paymentTerms: createdTerms });
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
+    } catch (error) {
+      res.status(500).json({ message: (error as any).message || String(error) });
     }
   });
 

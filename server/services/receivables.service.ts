@@ -1245,7 +1245,7 @@ export async function recordReceivablePayment(
 
       return payment;
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error(
       `[ERROR] recordReceivablePayment(${receivableId}) -`,
       error.stack || error,

@@ -56,8 +56,8 @@ export function registerFinancialRoutes(app: Express): void {
       const terms = await listPaymentTerms(companyId);
 
       res.json(terms);
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
+    } catch (error) {
+      res.status(500).json({ message: (error as any).message || String(error) });
     }
   });
 
@@ -73,8 +73,8 @@ export function registerFinancialRoutes(app: Express): void {
       const terms = await listActivePaymentTerms(companyId);
 
       res.json(terms);
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
+    } catch (error) {
+      res.status(500).json({ message: (error as any).message || String(error) });
     }
   });
 
@@ -93,8 +93,8 @@ export function registerFinancialRoutes(app: Express): void {
         return res.status(404).json({ message: "Condição não encontrada" });
 
       res.json(term);
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
+    } catch (error) {
+      res.status(500).json({ message: (error as any).message || String(error) });
     }
   });
 
@@ -114,8 +114,8 @@ export function registerFinancialRoutes(app: Express): void {
 
       const term = await createPaymentTerm(data);
       res.status(201).json(term);
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
+    } catch (error) {
+      res.status(500).json({ message: (error as any).message || String(error) });
     }
   });
 
@@ -134,8 +134,8 @@ export function registerFinancialRoutes(app: Express): void {
         return res.status(404).json({ message: "Condição não encontrada" });
 
       res.json(term);
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
+    } catch (error) {
+      res.status(500).json({ message: (error as any).message || String(error) });
     }
   });
 
@@ -154,8 +154,8 @@ export function registerFinancialRoutes(app: Express): void {
         return res.status(404).json({ message: "Condição não encontrada" });
 
       res.json({ message: "Condição deletada com sucesso" });
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
+    } catch (error) {
+      res.status(500).json({ message: (error as any).message || String(error) });
     }
   });
 
@@ -181,8 +181,8 @@ export function registerFinancialRoutes(app: Express): void {
 
       const receivables = await listReceivables(companyId, filters);
       res.json(receivables);
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
+    } catch (error) {
+      res.status(500).json({ message: (error as any).message || String(error) });
     }
   });
 
@@ -198,8 +198,8 @@ export function registerFinancialRoutes(app: Express): void {
       const dashboard = await getReceivableDashboard(companyId);
 
       res.json(dashboard);
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
+    } catch (error) {
+      res.status(500).json({ message: (error as any).message || String(error) });
     }
   });
 
@@ -227,9 +227,9 @@ export function registerFinancialRoutes(app: Express): void {
       const installments = await listInstallments(companyId, filters);
       console.log(`[DEBUG] Installments retornados: ${installments.length}`);
       res.json(installments);
-    } catch (error: any) {
+    } catch (error) {
       console.error(`[DEBUG] Erro em /api/receivables/installments:`, error);
-      res.status(500).json({ message: error.message });
+      res.status(500).json({ message: (error as any).message || String(error) });
     }
   });
 
@@ -244,8 +244,8 @@ export function registerFinancialRoutes(app: Express): void {
       const companyId = req.companyId || req.user.companyId || "1";
       const payments = await listReceivedPayments(companyId);
       res.json(payments);
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
+    } catch (error) {
+      res.status(500).json({ message: (error as any).message || String(error) });
     }
   });
 
@@ -291,8 +291,8 @@ export function registerFinancialRoutes(app: Express): void {
       });
 
       res.status(201).json(receivable);
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
+    } catch (error) {
+      res.status(500).json({ message: (error as any).message || String(error) });
     }
   });
 
@@ -351,7 +351,7 @@ export function registerFinancialRoutes(app: Express): void {
         return res.status(404).json({ message: "Conta não encontrada" });
 
       res.json(receivable);
-    } catch (error: any) {
+    } catch (error) {
       console.error(`[ERROR] GET /api/receivables/:id -`, error.stack || error);
       res.status(500).json({ message: error.message || "Erro interno" });
     }
@@ -381,8 +381,8 @@ export function registerFinancialRoutes(app: Express): void {
           });
 
         res.status(201).json(receivable);
-      } catch (error: any) {
-        res.status(500).json({ message: error.message });
+      } catch (error) {
+        res.status(500).json({ message: (error as any).message || String(error) });
       }
     },
   );
@@ -567,8 +567,8 @@ export function registerFinancialRoutes(app: Express): void {
           .status(500)
           .json({ message: err?.message || "Erro interno" });
       }
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
+    } catch (error) {
+      res.status(500).json({ message: (error as any).message || String(error) });
     }
   });
 
@@ -590,8 +590,8 @@ export function registerFinancialRoutes(app: Express): void {
       );
 
       res.json(cancelled);
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
+    } catch (error) {
+      res.status(500).json({ message: (error as any).message || String(error) });
     }
   });
 
@@ -607,8 +607,8 @@ export function registerFinancialRoutes(app: Express): void {
       const reopened = await reopenReceivable(parseInt(id));
 
       res.json(reopened);
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
+    } catch (error) {
+      res.status(500).json({ message: (error as any).message || String(error) });
     }
   });
 
@@ -639,8 +639,8 @@ export function registerFinancialRoutes(app: Express): void {
         );
 
         res.json(result);
-      } catch (error: any) {
-        res.status(500).json({ message: error.message });
+      } catch (error) {
+        res.status(500).json({ message: (error as any).message || String(error) });
       }
     },
   );
@@ -706,8 +706,8 @@ export function registerFinancialRoutes(app: Express): void {
         }
 
         res.json({ repaired, skipped });
-      } catch (error: any) {
-        res.status(500).json({ message: error.message });
+      } catch (error) {
+        res.status(500).json({ message: (error as any).message || String(error) });
       }
     },
   );
@@ -728,8 +728,8 @@ export function registerFinancialRoutes(app: Express): void {
         const result = await deleteInstallment(parseInt(id), companyId);
 
         res.json(result);
-      } catch (error: any) {
-        res.status(500).json({ message: error.message });
+      } catch (error) {
+        res.status(500).json({ message: (error as any).message || String(error) });
       }
     },
   );
@@ -755,8 +755,8 @@ export function registerFinancialRoutes(app: Express): void {
         });
 
         res.json(result);
-      } catch (error: any) {
-        res.status(500).json({ message: error.message });
+      } catch (error) {
+        res.status(500).json({ message: (error as any).message || String(error) });
       }
     },
   );
@@ -776,8 +776,8 @@ export function registerFinancialRoutes(app: Express): void {
         return res.status(404).json({ message: "Pagamento não encontrado" });
 
       res.json(payment);
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
+    } catch (error) {
+      res.status(500).json({ message: (error as any).message || String(error) });
     }
   });
 
@@ -801,8 +801,8 @@ export function registerFinancialRoutes(app: Express): void {
         );
 
         res.json(result);
-      } catch (error: any) {
-        res.status(500).json({ message: error.message });
+      } catch (error) {
+        res.status(500).json({ message: (error as any).message || String(error) });
       }
     },
   );
@@ -829,8 +829,8 @@ export function registerFinancialRoutes(app: Express): void {
 
       const payables = await listPayables(companyId, filters);
       res.json(payables);
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
+    } catch (error) {
+      res.status(500).json({ message: (error as any).message || String(error) });
     }
   });
 
@@ -846,8 +846,8 @@ export function registerFinancialRoutes(app: Express): void {
       const dashboard = await getPayableDashboard(companyId);
 
       res.json(dashboard);
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
+    } catch (error) {
+      res.status(500).json({ message: (error as any).message || String(error) });
     }
   });
 
@@ -866,8 +866,8 @@ export function registerFinancialRoutes(app: Express): void {
         return res.status(404).json({ message: "Conta não encontrada" });
 
       res.json(payable);
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
+    } catch (error) {
+      res.status(500).json({ message: (error as any).message || String(error) });
     }
   });
 
@@ -895,8 +895,8 @@ export function registerFinancialRoutes(app: Express): void {
           });
 
         res.status(201).json(payable);
-      } catch (error: any) {
-        res.status(500).json({ message: error.message });
+      } catch (error) {
+        res.status(500).json({ message: (error as any).message || String(error) });
       }
     },
   );
@@ -923,8 +923,8 @@ export function registerFinancialRoutes(app: Express): void {
       );
 
       res.status(201).json(payment);
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
+    } catch (error) {
+      res.status(500).json({ message: (error as any).message || String(error) });
     }
   });
 
@@ -946,8 +946,8 @@ export function registerFinancialRoutes(app: Express): void {
       );
 
       res.json(cancelled);
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
+    } catch (error) {
+      res.status(500).json({ message: (error as any).message || String(error) });
     }
   });
 
@@ -963,8 +963,8 @@ export function registerFinancialRoutes(app: Express): void {
       const reopened = await reopenPayable(parseInt(id));
 
       res.json(reopened);
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
+    } catch (error) {
+      res.status(500).json({ message: (error as any).message || String(error) });
     }
   });
 
@@ -991,8 +991,8 @@ export function registerFinancialRoutes(app: Express): void {
       await updateOverduePayables();
 
       res.json({ message: "Status de vencidas atualizado com sucesso" });
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
+    } catch (error) {
+      res.status(500).json({ message: (error as any).message || String(error) });
     }
   });
 }
