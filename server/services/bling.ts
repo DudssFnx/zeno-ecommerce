@@ -121,7 +121,8 @@ export async function saveTokensToDb(
   companyId?: string,
 ): Promise<void> {
   try {
-    const expiresAt = new Date(Date.now() + tokens.expires_in * 1000);
+    // Persist expiresAt as integer (UNIX seconds) to match DB integer column and be robust
+    const expiresAtSeconds = Math.floor(Date.now() / 1000 + (tokens.expires_in || 0));
 
     // Delete old tokens for the company (if companyId provided) or delete all
     if (companyId) {
@@ -134,15 +135,15 @@ export async function saveTokensToDb(
       companyId: companyId || null,
       accessToken: encryptToken(tokens.access_token),
       refreshToken: encryptToken(tokens.refresh_token),
-      expiresAt,
+      expiresAt: expiresAtSeconds,
       tokenType: tokens.token_type || "Bearer",
     });
 
     console.log(
       "[Bling] Tokens saved to database for company:",
       companyId || "global",
-      "Expires at:",
-      expiresAt.toISOString(),
+      "Expires at (unix secs):",
+      expiresAtSeconds,
     );
   } catch (error) {
     console.error("[Bling] Failed to save tokens to database:", error);
@@ -165,7 +166,21 @@ async function loadTokensFromDb(): Promise<BlingTokensResponse | null> {
     const row = rows[0];
     const accessToken = decryptToken(row.accessToken);
     const refreshToken = decryptToken(row.refreshToken);
-    const expiresIn = Math.floor((row.expiresAt.getTime() - Date.now()) / 1000);
+
+    // Row.expiresAt may be an integer (unix seconds) or a Date — handle both
+    let expiresAtMs: number;
+    if (typeof row.expiresAt === "number") {
+      // If suspiciously large, assume milliseconds; otherwise seconds.
+      expiresAtMs = row.expiresAt > 1e12 ? row.expiresAt : row.expiresAt * 1000;
+    } else if (row.expiresAt instanceof Date) {
+      expiresAtMs = row.expiresAt.getTime();
+    } else {
+      // Fallback: try to parse
+      const parsed = Number(row.expiresAt);
+      expiresAtMs = isNaN(parsed) ? 0 : (parsed > 1e12 ? parsed : parsed * 1000);
+    }
+
+    const expiresIn = Math.floor((expiresAtMs - Date.now()) / 1000);
 
     console.log(
       "[Bling] Tokens loaded from database. Expires in:",

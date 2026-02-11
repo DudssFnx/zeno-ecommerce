@@ -3389,6 +3389,7 @@ export async function registerRoutes(
   app.get("/api/bling/callback", async (req: any, res) => {
     try {
       const { code, state } = req.query;
+      console.log("[Bling] /api/bling/callback invoked. code?", !!code, "state?", !!state);
       if (!code || !state) return res.status(400).send("Missing code or state");
       let parsed: any;
       try {
@@ -3396,9 +3397,11 @@ export async function registerRoutes(
           Buffer.from(state as string, "base64").toString("utf8"),
         );
       } catch (e) {
+        console.error("[Bling] Invalid state value:", e);
         return res.status(400).send("Invalid state value");
       }
       const companyId = parsed.companyId;
+      console.log("[Bling] callback state parsed, companyId:", companyId);
 
       // Fetch company credentials
       const rows = await db
@@ -3408,50 +3411,57 @@ export async function registerRoutes(
         .orderBy(desc(blingCredentials.id))
         .limit(1);
       const row = rows?.[0];
-      if (!row)
+      if (!row) {
+        console.error("[Bling] No Bling credentials saved for company:", companyId);
         return res
           .status(400)
           .send("No Bling credentials saved for this company");
+      }
 
       // Exchange code for tokens using company credentials
       const redirectUri =
         row.redirectUri ||
         `${req.protocol}://${req.get("host")}/api/bling/callback`;
-      const tokenResp = await fetch(
-        `https://www.bling.com.br/Api/v3/oauth/token`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/x-www-form-urlencoded",
-            Authorization:
-              "Basic " +
-              Buffer.from(`${row.clientId}:${row.clientSecret}`).toString(
-                "base64",
-              ),
-          },
-          body: new URLSearchParams({
-            grant_type: "authorization_code",
-            code: code as string,
-            redirect_uri: redirectUri,
-          }),
-        },
-      );
+      console.log("[Bling] Using redirectUri for token exchange:", redirectUri);
 
+      const tokenResp = await fetch(`https://www.bling.com.br/Api/v3/oauth/token`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          Authorization: "Basic " + Buffer.from(`${row.clientId}:${row.clientSecret}`).toString("base64"),
+        },
+        body: new URLSearchParams({
+          grant_type: "authorization_code",
+          code: code as string,
+          redirect_uri: redirectUri,
+        }),
+      });
+
+      console.log("[Bling] Token exchange resp status:", tokenResp.status);
+      const respText = await tokenResp.text();
+      let tokens: any = null;
+      try {
+        tokens = JSON.parse(respText);
+      } catch (e) {
+        // not a JSON response
+      }
       if (!tokenResp.ok) {
-        const text = await tokenResp.text();
-        console.error("[Bling] Token exchange failed:", tokenResp.status, text);
-        return res.status(500).send("Token exchange failed: " + text);
+        console.error("[Bling] Token exchange failed:", tokenResp.status, respText);
+        return res.status(500).send("Token exchange failed: " + respText);
       }
 
-      const tokens = await tokenResp.json();
+      // Reset tokens variable properly
+      if (!tokens) tokens = JSON.parse(respText);
+
       // Save tokens for the company
       await saveTokensToDb(tokens as any, companyId);
+      console.log("[Bling] Token exchange and save complete for company:", companyId);
 
       // Redirect back to UI with success
       return res.redirect("/bling?success=true");
     } catch (error: any) {
       console.error("[Bling] Error in /api/bling/callback:", error);
-      res.status(500).json({ message: error.message });
+      if (!res.headersSent) res.status(500).json({ message: error.message });
     }
   });
 
