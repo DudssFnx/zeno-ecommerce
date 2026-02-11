@@ -3239,6 +3239,7 @@ export async function registerRoutes(
               .status(400)
               .json({ message: "clientSecret is required (no existing secret to reuse)" });
           }
+        }
       // Validate and normalize apiEndpoint: it must be a base API URL, not an OAuth/authorize URL or contain query params
       let normalizedApiEndpoint: string | null = apiEndpoint || null;
       let normalized = false;
