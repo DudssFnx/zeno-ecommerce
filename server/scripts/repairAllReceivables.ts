@@ -1,5 +1,5 @@
-import "../scripts/helpers/env";
 import { db } from "../db";
+import "../scripts/helpers/env";
 
 async function main() {
   const apply = process.argv.includes("--apply");
@@ -18,14 +18,23 @@ async function main() {
     const orderId = row.order_id;
     console.log(`Order ${orderId} has ${row.cnt} receivables. Inspecting...`);
 
-    const rs = await db.query(`SELECT id FROM receivables WHERE order_id = $1 ORDER BY id`, [orderId]);
-    const receivableIds = rs.rows.map(r => r.id);
+    const rs = await db.query(
+      `SELECT id FROM receivables WHERE order_id = $1 ORDER BY id`,
+      [orderId],
+    );
+    const receivableIds = rs.rows.map((r) => r.id);
 
     // Decide keeper: prefer receivable with payments, else the earliest id
     let keeper = null;
     for (const id of receivableIds) {
-      const payments = await db.query(`SELECT COUNT(*) as cnt FROM payments WHERE receivable_id = $1`, [id]);
-      if (Number(payments.rows[0].cnt) > 0) { keeper = id; break; }
+      const payments = await db.query(
+        `SELECT COUNT(*) as cnt FROM payments WHERE receivable_id = $1`,
+        [id],
+      );
+      if (Number(payments.rows[0].cnt) > 0) {
+        keeper = id;
+        break;
+      }
     }
     if (!keeper) keeper = receivableIds[0];
 
@@ -35,7 +44,9 @@ async function main() {
 
     if (apply) {
       for (const id of toDelete) {
-        await db.query(`DELETE FROM installments WHERE receivable_id = $1`, [id]);
+        await db.query(`DELETE FROM installments WHERE receivable_id = $1`, [
+          id,
+        ]);
         await db.query(`DELETE FROM payments WHERE receivable_id = $1`, [id]);
         await db.query(`DELETE FROM receivables WHERE id = $1`, [id]);
         console.log(`Deleted receivable ${id}`);
@@ -49,4 +60,7 @@ async function main() {
   process.exit(0);
 }
 
-main().catch(err => { console.error(err); process.exit(1); });
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});
