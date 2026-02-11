@@ -120,7 +120,10 @@ app.use((req, res, next) => {
         );
       }
     } catch (err) {
-      console.error('[MIGRATION] Failed to sanitize bling_credentials.api_endpoint:', err);
+      console.error(
+        "[MIGRATION] Failed to sanitize bling_credentials.api_endpoint:",
+        err,
+      );
     }
 
     // Ensure webhook endpoints table exists
@@ -140,6 +143,19 @@ app.use((req, res, next) => {
     } catch (err) {
       console.error(
         "[MIGRATION] Failed to ensure bling_webhook_endpoints table exists:",
+        err,
+      );
+    }
+
+    // Ensure products table has Bling linkage columns (for imports/sync)
+    try {
+      await pool.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS bling_id integer;`);
+      await pool.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS bling_last_synced_at timestamp;`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_products_bling_id ON products(bling_id);`);
+      console.log("[MIGRATION] Ensured products.bling_id and products.bling_last_synced_at exist");
+    } catch (err) {
+      console.error(
+        "[MIGRATION] Failed to ensure products Bling columns exist:",
         err,
       );
     }
