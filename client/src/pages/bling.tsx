@@ -52,7 +52,7 @@ function renderPaginationControls(
   pageSize: number,
   currentPage: number,
   hasMore: boolean,
-  loadPage: (p: number) => void,
+  loadPage: (p: number) => Promise<BlingProduct[]>,
   onSelect: (p: number) => void,
 ) {
   const fetchedPages = Object.keys(pagesCache)
@@ -66,44 +66,66 @@ function renderPaginationControls(
 
   const pageButtons: React.ReactNode[] = [];
 
-  // generate pages list with truncation for large number
+  // push page button that loads page on demand if needed
   function pushPage(n: number) {
     pageButtons.push(
       <Button
         key={`p-${n}`}
         size="sm"
         variant={n === currentPage ? "default" : "ghost"}
-        onClick={() => onSelect(n)}
+        onClick={async () => {
+          if (!pagesCache[n]) {
+            try {
+              await loadPage(n);
+            } catch (e) {
+              // load failure handled by loadPage toast; nothing extra here
+            }
+          }
+          onSelect(n);
+        }}
       >
         {n}
       </Button>,
     );
   }
 
-  if (totalPages <= 12) {
+  // If small number of pages, just show all
+  if (totalPages <= 9) {
     for (let i = 1; i <= totalPages; i++) pushPage(i);
   } else {
-    // show first 3, ellipsis, 2 around current, ellipsis, last 3
+    // Always show first and last pages to make navigation easier
     pushPage(1);
-    pushPage(2);
-    pushPage(3);
-    pageButtons.push(
-      <span key="sep1" className="px-2 text-sm text-muted-foreground">
-        ...
-      </span>,
-    );
 
-    const start = Math.max(4, currentPage - 1);
-    const end = Math.min(totalPages - 3, currentPage + 1);
-    for (let i = start; i <= end; i++) pushPage(i);
+    const left = Math.max(2, currentPage - 1);
+    const right = Math.min(totalPages - 1, currentPage + 1);
 
-    pageButtons.push(
-      <span key="sep2" className="px-2 text-sm text-muted-foreground">
-        ...
-      </span>,
-    );
+    if (left > 2) {
+      // there's a gap between first and left window
+      pageButtons.push(
+        <span key="sep-left" className="px-2 text-sm text-muted-foreground">
+          ...
+        </span>,
+      );
+    } else {
+      // show the small range directly (2..left-1)
+      for (let i = 2; i < left; i++) pushPage(i);
+    }
 
-    for (let i = totalPages - 2; i <= totalPages; i++) pushPage(i);
+    // show window around current
+    for (let i = left; i <= right; i++) pushPage(i);
+
+    if (right < totalPages - 1) {
+      // gap between right window and last
+      pageButtons.push(
+        <span key="sep-right" className="px-2 text-sm text-muted-foreground">
+          ...
+        </span>,
+      );
+    } else {
+      for (let i = right + 1; i <= totalPages - 1; i++) pushPage(i);
+    }
+
+    pushPage(totalPages);
   }
 
   return (
@@ -112,20 +134,31 @@ function renderPaginationControls(
         size="sm"
         variant="outline"
         disabled={currentPage === 1}
-        onClick={() => onSelect(Math.max(1, currentPage - 1))}
+        onClick={async () => {
+          const prev = Math.max(1, currentPage - 1);
+          if (!pagesCache[prev]) {
+            try {
+              await loadPage(prev);
+            } catch (e) {}
+          }
+          onSelect(prev);
+        }}
       >
         Prev
       </Button>
+
       {pageButtons}
+
       <Button
         size="sm"
         variant="outline"
         disabled={!hasMore && currentPage === Math.max(1, totalPages)}
-        onClick={() => {
+        onClick={async () => {
           const next = currentPage + 1;
-          // if we haven't fetched next, trigger load
           if (!pagesCache[next]) {
-            loadPage(next);
+            try {
+              await loadPage(next);
+            } catch (e) {}
           }
           onSelect(next);
         }}
