@@ -1,34 +1,39 @@
-import { db } from "../db";
-import { products, categories, blingTokens, type InsertProduct, type InsertCategory } from "@shared/schema";
-import { eq, desc } from "drizzle-orm";
+import {
+  blingTokens,
+  categories,
+  products,
+  type InsertProduct,
+} from "@shared/schema";
 import crypto from "crypto";
+import { desc, eq } from "drizzle-orm";
+import { db } from "../db";
 
 const BLING_API_BASE = "https://api.bling.com.br/Api/v3";
 const BLING_OAUTH_URL = "https://www.bling.com.br/Api/v3/oauth";
 
 // Encryption key for tokens (uses SESSION_SECRET as base)
 const ENCRYPTION_KEY = crypto.scryptSync(
-  process.env.SESSION_SECRET || 'bling-token-encryption-key',
-  'salt',
-  32
+  process.env.SESSION_SECRET || "bling-token-encryption-key",
+  "salt",
+  32,
 );
 
 function encryptToken(text: string): string {
   const iv = crypto.randomBytes(16);
-  const cipher = crypto.createCipheriv('aes-256-cbc', ENCRYPTION_KEY, iv);
-  let encrypted = cipher.update(text, 'utf8', 'hex');
-  encrypted += cipher.final('hex');
-  return iv.toString('hex') + ':' + encrypted;
+  const cipher = crypto.createCipheriv("aes-256-cbc", ENCRYPTION_KEY, iv);
+  let encrypted = cipher.update(text, "utf8", "hex");
+  encrypted += cipher.final("hex");
+  return iv.toString("hex") + ":" + encrypted;
 }
 
 function decryptToken(encryptedText: string): string {
   try {
-    const [ivHex, encrypted] = encryptedText.split(':');
+    const [ivHex, encrypted] = encryptedText.split(":");
     if (!ivHex || !encrypted) return encryptedText; // Return as-is if not encrypted
-    const iv = Buffer.from(ivHex, 'hex');
-    const decipher = crypto.createDecipheriv('aes-256-cbc', ENCRYPTION_KEY, iv);
-    let decrypted = decipher.update(encrypted, 'hex', 'utf8');
-    decrypted += decipher.final('utf8');
+    const iv = Buffer.from(ivHex, "hex");
+    const decipher = crypto.createDecipheriv("aes-256-cbc", ENCRYPTION_KEY, iv);
+    let decrypted = decipher.update(encrypted, "hex", "utf8");
+    decrypted += decipher.final("utf8");
     return decrypted;
   } catch {
     return encryptedText; // Return as-is if decryption fails
@@ -111,20 +116,34 @@ let refreshPromise: Promise<BlingTokensResponse> | null = null;
 
 // ========== TOKEN PERSISTENCE ==========
 
-async function saveTokensToDb(tokens: BlingTokensResponse): Promise<void> {
+export async function saveTokensToDb(
+  tokens: BlingTokensResponse,
+  companyId?: string,
+): Promise<void> {
   try {
-    const expiresAt = new Date(Date.now() + (tokens.expires_in * 1000));
-    
-    // Delete old tokens and insert new one
-    await db.delete(blingTokens);
+    const expiresAt = new Date(Date.now() + tokens.expires_in * 1000);
+
+    // Delete old tokens for the company (if companyId provided) or delete all
+    if (companyId) {
+      await db.delete(blingTokens).where(eq(blingTokens.companyId, companyId));
+    } else {
+      await db.delete(blingTokens);
+    }
+
     await db.insert(blingTokens).values({
+      companyId: companyId || null,
       accessToken: encryptToken(tokens.access_token),
       refreshToken: encryptToken(tokens.refresh_token),
       expiresAt,
-      tokenType: tokens.token_type || 'Bearer',
+      tokenType: tokens.token_type || "Bearer",
     });
-    
-    console.log("[Bling] Tokens saved to database. Expires at:", expiresAt.toISOString());
+
+    console.log(
+      "[Bling] Tokens saved to database for company:",
+      companyId || "global",
+      "Expires at:",
+      expiresAt.toISOString(),
+    );
   } catch (error) {
     console.error("[Bling] Failed to save tokens to database:", error);
   }
@@ -132,20 +151,28 @@ async function saveTokensToDb(tokens: BlingTokensResponse): Promise<void> {
 
 async function loadTokensFromDb(): Promise<BlingTokensResponse | null> {
   try {
-    const rows = await db.select().from(blingTokens).orderBy(desc(blingTokens.id)).limit(1);
-    
+    const rows = await db
+      .select()
+      .from(blingTokens)
+      .orderBy(desc(blingTokens.id))
+      .limit(1);
+
     if (rows.length === 0) {
       console.log("[Bling] No tokens found in database");
       return null;
     }
-    
+
     const row = rows[0];
     const accessToken = decryptToken(row.accessToken);
     const refreshToken = decryptToken(row.refreshToken);
     const expiresIn = Math.floor((row.expiresAt.getTime() - Date.now()) / 1000);
-    
-    console.log("[Bling] Tokens loaded from database. Expires in:", expiresIn, "seconds");
-    
+
+    console.log(
+      "[Bling] Tokens loaded from database. Expires in:",
+      expiresIn,
+      "seconds",
+    );
+
     return {
       access_token: accessToken,
       refresh_token: refreshToken,
@@ -160,24 +187,25 @@ async function loadTokensFromDb(): Promise<BlingTokensResponse | null> {
 
 export async function initializeBlingTokens(): Promise<boolean> {
   console.log("[Bling] Initializing tokens from database...");
-  
+
   const tokens = await loadTokensFromDb();
-  
+
   if (!tokens) {
     console.log("[Bling] No stored tokens found. Authorization required.");
     return false;
   }
-  
+
   // Set in memory
   cachedTokens = tokens;
-  tokenExpiresAt = Date.now() + (tokens.expires_in * 1000) - 120000;
-  
+  tokenExpiresAt = Date.now() + tokens.expires_in * 1000 - 120000;
+
   // Also set in environment for compatibility
   process.env.BLING_ACCESS_TOKEN = tokens.access_token;
   process.env.BLING_REFRESH_TOKEN = tokens.refresh_token;
-  
+
   // If token is expired or about to expire, refresh it
-  if (tokens.expires_in < 300) { // Less than 5 minutes
+  if (tokens.expires_in < 300) {
+    // Less than 5 minutes
     console.log("[Bling] Token expired or expiring soon, refreshing...");
     try {
       await refreshAccessToken();
@@ -187,7 +215,7 @@ export async function initializeBlingTokens(): Promise<boolean> {
       return false;
     }
   }
-  
+
   console.log("[Bling] Tokens initialized successfully");
   return true;
 }
@@ -207,7 +235,7 @@ export async function clearBlingTokens(): Promise<void> {
 
 // ========== SYNC PROGRESS MANAGEMENT ==========
 export interface SyncProgress {
-  status: 'idle' | 'running' | 'completed' | 'error';
+  status: "idle" | "running" | "completed" | "error";
   phase: string;
   currentStep: number;
   totalSteps: number;
@@ -220,11 +248,11 @@ export interface SyncProgress {
 }
 
 let syncProgress: SyncProgress = {
-  status: 'idle',
-  phase: '',
+  status: "idle",
+  phase: "",
   currentStep: 0,
   totalSteps: 0,
-  message: '',
+  message: "",
   created: 0,
   updated: 0,
   errors: 0,
@@ -238,7 +266,9 @@ export function getSyncProgress(): SyncProgress {
   return { ...syncProgress };
 }
 
-export function subscribeSyncProgress(callback: (progress: SyncProgress) => void): () => void {
+export function subscribeSyncProgress(
+  callback: (progress: SyncProgress) => void,
+): () => void {
   progressListeners.add(callback);
   callback(syncProgress);
   return () => progressListeners.delete(callback);
@@ -246,12 +276,17 @@ export function subscribeSyncProgress(callback: (progress: SyncProgress) => void
 
 function updateProgress(updates: Partial<SyncProgress>) {
   syncProgress = { ...syncProgress, ...updates };
-  
-  if (syncProgress.startTime && syncProgress.currentStep > 0 && syncProgress.totalSteps > 0) {
+
+  if (
+    syncProgress.startTime &&
+    syncProgress.currentStep > 0 &&
+    syncProgress.totalSteps > 0
+  ) {
     const elapsed = Date.now() - syncProgress.startTime;
     const avgTimePerStep = elapsed / syncProgress.currentStep;
-    const remaining = avgTimePerStep * (syncProgress.totalSteps - syncProgress.currentStep);
-    
+    const remaining =
+      avgTimePerStep * (syncProgress.totalSteps - syncProgress.currentStep);
+
     if (remaining > 60000) {
       syncProgress.estimatedRemaining = `${Math.ceil(remaining / 60000)} min`;
     } else if (remaining > 0) {
@@ -260,25 +295,25 @@ function updateProgress(updates: Partial<SyncProgress>) {
       syncProgress.estimatedRemaining = null;
     }
   }
-  
+
   const snapshot = { ...syncProgress };
-  progressListeners.forEach(cb => cb(snapshot));
+  progressListeners.forEach((cb) => cb(snapshot));
 }
 
 function resetProgress() {
   syncProgress = {
-    status: 'idle',
-    phase: '',
+    status: "idle",
+    phase: "",
     currentStep: 0,
     totalSteps: 0,
-    message: '',
+    message: "",
     created: 0,
     updated: 0,
     errors: 0,
     startTime: null,
     estimatedRemaining: null,
   };
-  progressListeners.forEach(cb => cb(syncProgress));
+  progressListeners.forEach((cb) => cb(syncProgress));
 }
 
 function getBasicAuthHeader(): string {
@@ -299,12 +334,15 @@ export function getAuthorizationUrl(redirectUri: string): string {
   return `${BLING_OAUTH_URL}/authorize?response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}`;
 }
 
-export async function exchangeCodeForTokens(code: string, redirectUri: string): Promise<BlingTokensResponse> {
+export async function exchangeCodeForTokens(
+  code: string,
+  redirectUri: string,
+): Promise<BlingTokensResponse> {
   const response = await fetch(`${BLING_OAUTH_URL}/token`, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
-      "Authorization": `Basic ${getBasicAuthHeader()}`,
+      Authorization: `Basic ${getBasicAuthHeader()}`,
     },
     body: new URLSearchParams({
       grant_type: "authorization_code",
@@ -321,14 +359,14 @@ export async function exchangeCodeForTokens(code: string, redirectUri: string): 
 
   const tokens: BlingTokensResponse = await response.json();
   cachedTokens = tokens;
-  tokenExpiresAt = Date.now() + (tokens.expires_in * 1000) - 60000;
-  
+  tokenExpiresAt = Date.now() + tokens.expires_in * 1000 - 60000;
+
   process.env.BLING_ACCESS_TOKEN = tokens.access_token;
   process.env.BLING_REFRESH_TOKEN = tokens.refresh_token;
-  
+
   // Save tokens to database for persistence
   await saveTokensToDb(tokens);
-  
+
   return tokens;
 }
 
@@ -338,14 +376,14 @@ export async function refreshAccessToken(): Promise<BlingTokensResponse> {
     console.log("[Bling] Waiting for ongoing token refresh...");
     return refreshPromise;
   }
-  
+
   const refreshToken = process.env.BLING_REFRESH_TOKEN;
   if (!refreshToken) {
     throw new Error("No refresh token available. Please re-authorize.");
   }
 
   isRefreshing = true;
-  
+
   refreshPromise = (async () => {
     try {
       console.log("[Bling] Refreshing access token...");
@@ -353,7 +391,7 @@ export async function refreshAccessToken(): Promise<BlingTokensResponse> {
         method: "POST",
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
-          "Authorization": `Basic ${getBasicAuthHeader()}`,
+          Authorization: `Basic ${getBasicAuthHeader()}`,
         },
         body: new URLSearchParams({
           grant_type: "refresh_token",
@@ -373,57 +411,63 @@ export async function refreshAccessToken(): Promise<BlingTokensResponse> {
       const tokens: BlingTokensResponse = await response.json();
       cachedTokens = tokens;
       // Set expiration with 2-minute buffer for safety
-      tokenExpiresAt = Date.now() + (tokens.expires_in * 1000) - 120000;
-      
+      tokenExpiresAt = Date.now() + tokens.expires_in * 1000 - 120000;
+
       process.env.BLING_ACCESS_TOKEN = tokens.access_token;
       process.env.BLING_REFRESH_TOKEN = tokens.refresh_token;
-      
+
       // Save refreshed tokens to database
       await saveTokensToDb(tokens);
-      
-      console.log("[Bling] Token refreshed and saved. Expires at:", new Date(tokenExpiresAt).toISOString());
+
+      console.log(
+        "[Bling] Token refreshed and saved. Expires at:",
+        new Date(tokenExpiresAt).toISOString(),
+      );
       return tokens;
     } finally {
       isRefreshing = false;
       refreshPromise = null;
     }
   })();
-  
+
   return refreshPromise;
 }
 
 async function getValidAccessToken(): Promise<string> {
   const accessToken = process.env.BLING_ACCESS_TOKEN;
-  
+
   if (!accessToken) {
     throw new Error("Not authenticated with Bling. Please authorize first.");
   }
-  
+
   // Proactive refresh: if token is close to expiring (within 5 minutes), refresh it now
   const now = Date.now();
   const fiveMinutes = 5 * 60 * 1000;
-  
-  if (tokenExpiresAt > 0 && (tokenExpiresAt - now) < fiveMinutes) {
+
+  if (tokenExpiresAt > 0 && tokenExpiresAt - now < fiveMinutes) {
     console.log("[Bling] Token expiring soon, proactively refreshing...");
     try {
       const tokens = await refreshAccessToken();
       return tokens.access_token;
     } catch (error) {
-      console.error("[Bling] Proactive refresh failed, using existing token:", error);
+      console.error(
+        "[Bling] Proactive refresh failed, using existing token:",
+        error,
+      );
       // Fall through to use existing token - it might still work
     }
   }
-  
+
   return accessToken;
 }
 
 async function blingApiRequest<T>(endpoint: string): Promise<T> {
   const accessToken = await getValidAccessToken();
-  
+
   const response = await fetch(`${BLING_API_BASE}${endpoint}`, {
     headers: {
-      "Authorization": `Bearer ${accessToken}`,
-      "Accept": "application/json",
+      Authorization: `Bearer ${accessToken}`,
+      Accept: "application/json",
     },
   });
 
@@ -447,12 +491,12 @@ async function blingApiRequest<T>(endpoint: string): Promise<T> {
 
 async function blingApiPost<T>(endpoint: string, body: unknown): Promise<T> {
   const accessToken = await getValidAccessToken();
-  
+
   const response = await fetch(`${BLING_API_BASE}${endpoint}`, {
     method: "POST",
     headers: {
-      "Authorization": `Bearer ${accessToken}`,
-      "Accept": "application/json",
+      Authorization: `Bearer ${accessToken}`,
+      Accept: "application/json",
       "Content-Type": "application/json",
     },
     body: JSON.stringify(body),
@@ -476,16 +520,24 @@ async function blingApiPost<T>(endpoint: string, body: unknown): Promise<T> {
   return response.json();
 }
 
-export async function fetchBlingProductsList(page: number = 1, limit: number = 100): Promise<BlingProductBasic[]> {
+export async function fetchBlingProductsList(
+  page: number = 1,
+  limit: number = 100,
+): Promise<BlingProductBasic[]> {
   const response = await blingApiRequest<{ data: BlingProductBasic[] }>(
-    `/produtos?pagina=${page}&limite=${limit}&tipo=P&criterio=1`
+    `/produtos?pagina=${page}&limite=${limit}&tipo=P&criterio=1`,
   );
   return response.data || [];
 }
 
-export async function fetchBlingProductDetails(productId: number, throwOn429: boolean = false): Promise<BlingProductFull | null> {
+export async function fetchBlingProductDetails(
+  productId: number,
+  throwOn429: boolean = false,
+): Promise<BlingProductFull | null> {
   try {
-    const response = await blingApiRequest<{ data: BlingProductFull }>(`/produtos/${productId}`);
+    const response = await blingApiRequest<{ data: BlingProductFull }>(
+      `/produtos/${productId}`,
+    );
     return response.data || null;
   } catch (error) {
     const message = String(error);
@@ -498,7 +550,9 @@ export async function fetchBlingProductDetails(productId: number, throwOn429: bo
 }
 
 export async function fetchBlingCategories(): Promise<BlingCategory[]> {
-  const response = await blingApiRequest<{ data: BlingCategory[] }>("/categorias/produtos");
+  const response = await blingApiRequest<{ data: BlingCategory[] }>(
+    "/categorias/produtos",
+  );
   return response.data || [];
 }
 
@@ -528,69 +582,81 @@ interface BlingStockListItem {
   saldoVirtual?: number;
 }
 
-export async function fetchBlingStock(productIds: number[]): Promise<Map<number, number>> {
+export async function fetchBlingStock(
+  productIds: number[],
+): Promise<Map<number, number>> {
   const stockMap = new Map<number, number>();
-  
-  console.log(`[fetchBlingStock] Starting stock fetch using /estoques endpoint`);
-  
+
+  console.log(
+    `[fetchBlingStock] Starting stock fetch using /estoques endpoint`,
+  );
+
   // Fetch all stock data with pagination
   let page = 1;
   const limit = 100;
   let totalFetched = 0;
-  
+
   while (true) {
     try {
       const response = await blingApiRequest<{ data: BlingStockListItem[] }>(
-        `/estoques?pagina=${page}&limite=${limit}`
+        `/estoques?pagina=${page}&limite=${limit}`,
       );
-      
+
       if (!response.data || response.data.length === 0) {
         console.log(`[fetchBlingStock] No more stock data at page ${page}`);
         break;
       }
-      
+
       for (const item of response.data) {
         const productId = item.produto?.id;
         if (!productId) continue;
-        
+
         const stock = item.saldoVirtual ?? item.saldoFisico ?? 0;
-        
+
         // Sum stock across all deposits for same product
         const currentStock = stockMap.get(productId) || 0;
         stockMap.set(productId, currentStock + Math.floor(stock));
       }
-      
+
       totalFetched += response.data.length;
-      console.log(`[fetchBlingStock] Page ${page}: fetched ${response.data.length} stock entries, total: ${totalFetched}`);
-      
+      console.log(
+        `[fetchBlingStock] Page ${page}: fetched ${response.data.length} stock entries, total: ${totalFetched}`,
+      );
+
       if (response.data.length < limit) {
         break;
       }
-      
+
       page++;
-      
+
       // Rate limiting
-      await new Promise(resolve => setTimeout(resolve, 300));
-      
+      await new Promise((resolve) => setTimeout(resolve, 300));
     } catch (error) {
       const errorStr = String(error);
       if (errorStr.includes("429")) {
         console.log("[fetchBlingStock] Rate limit hit, waiting 30 seconds...");
-        await new Promise(resolve => setTimeout(resolve, 30000));
+        await new Promise((resolve) => setTimeout(resolve, 30000));
         continue;
       } else if (errorStr.includes("404")) {
-        console.log("[fetchBlingStock] Stock endpoint returned 404 - module may not be enabled");
+        console.log(
+          "[fetchBlingStock] Stock endpoint returned 404 - module may not be enabled",
+        );
         break;
       } else {
-        console.error(`[fetchBlingStock] Error fetching stock page ${page}:`, error);
+        console.error(
+          `[fetchBlingStock] Error fetching stock page ${page}:`,
+          error,
+        );
         break;
       }
     }
   }
-  
-  const withStock = Array.from(stockMap.values()).filter(v => v > 0).length;
-  console.log(`[fetchBlingStock] Finished. Products with stock data: ${stockMap.size}, with stock > 0: ${withStock}`);
-  
+
+  const withStock = Array.from(stockMap.values()).filter((v) => v > 0).length;
+  console.log(
+    `[fetchBlingStock] Finished. Products with stock data: ${stockMap.size}, with stock > 0: ${withStock}`,
+  );
+
   // Log first 5 products with stock for debugging
   let logged = 0;
   const entries = Array.from(stockMap.entries());
@@ -600,74 +666,94 @@ export async function fetchBlingStock(productIds: number[]): Promise<Map<number,
       logged++;
     }
   }
-  
+
   return stockMap;
 }
 
-export async function syncCategories(): Promise<{ created: number; updated: number }> {
+export async function syncCategories(): Promise<{
+  created: number;
+  updated: number;
+}> {
   const blingCategories = await fetchBlingCategories();
   let created = 0;
   let updated = 0;
 
   const blingIdToLocalId: Record<number, number> = {};
   const blingCatMap = new Map<number, BlingCategory>();
-  blingCategories.forEach(c => blingCatMap.set(c.id, c));
+  blingCategories.forEach((c) => blingCatMap.set(c.id, c));
 
   function topologicalSort(cats: BlingCategory[]): BlingCategory[] {
     const sorted: BlingCategory[] = [];
     const visited = new Set<number>();
-    
+
     function visit(cat: BlingCategory) {
       if (visited.has(cat.id)) return;
       visited.add(cat.id);
-      
+
       const parentBlingId = cat.categoriaPai?.id;
       if (parentBlingId && blingCatMap.has(parentBlingId)) {
         visit(blingCatMap.get(parentBlingId)!);
       }
-      
+
       sorted.push(cat);
     }
-    
-    cats.forEach(c => visit(c));
+
+    cats.forEach((c) => visit(c));
     return sorted;
   }
 
   const sortedCategories = topologicalSort(blingCategories);
 
   for (const cat of sortedCategories) {
-    const slug = cat.descricao
-      .toLowerCase()
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/(^-|-$)/g, "") || `cat-${cat.id}`;
+    const slug =
+      cat.descricao
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/(^-|-$)/g, "") || `cat-${cat.id}`;
 
     const parentBlingId = cat.categoriaPai?.id;
-    const parentLocalId = parentBlingId ? blingIdToLocalId[parentBlingId] || null : null;
+    const parentLocalId = parentBlingId
+      ? blingIdToLocalId[parentBlingId] || null
+      : null;
 
-    let existing = await db.select().from(categories).where(eq(categories.blingId, cat.id)).limit(1);
-    
+    let existing = await db
+      .select()
+      .from(categories)
+      .where(eq(categories.blingId, cat.id))
+      .limit(1);
+
     if (existing.length === 0) {
-      existing = await db.select().from(categories).where(eq(categories.slug, slug)).limit(1);
+      existing = await db
+        .select()
+        .from(categories)
+        .where(eq(categories.slug, slug))
+        .limit(1);
     }
 
     if (existing.length === 0) {
-      const [newCat] = await db.insert(categories).values({
-        name: cat.descricao,
-        slug,
-        parentId: parentLocalId,
-        blingId: cat.id,
-      }).returning();
+      const [newCat] = await db
+        .insert(categories)
+        .values({
+          name: cat.descricao,
+          slug,
+          parentId: parentLocalId,
+          blingId: cat.id,
+        })
+        .returning();
       blingIdToLocalId[cat.id] = newCat.id;
       created++;
     } else {
-      await db.update(categories).set({ 
-        name: cat.descricao,
-        slug,
-        parentId: parentLocalId,
-        blingId: cat.id,
-      }).where(eq(categories.id, existing[0].id));
+      await db
+        .update(categories)
+        .set({
+          name: cat.descricao,
+          slug,
+          parentId: parentLocalId,
+          blingId: cat.id,
+        })
+        .where(eq(categories.id, existing[0].id));
       blingIdToLocalId[cat.id] = existing[0].id;
       updated++;
     }
@@ -680,7 +766,7 @@ async function runWithConcurrency<T, R>(
   items: T[],
   fn: (item: T) => Promise<R>,
   concurrency: number,
-  onProgress?: (completed: number, total: number) => void
+  onProgress?: (completed: number, total: number) => void,
 ): Promise<R[]> {
   const results: R[] = new Array(items.length);
   let index = 0;
@@ -701,11 +787,17 @@ async function runWithConcurrency<T, R>(
     }
   }
 
-  await Promise.all(Array(Math.min(concurrency, items.length)).fill(0).map(() => worker()));
+  await Promise.all(
+    Array(Math.min(concurrency, items.length))
+      .fill(0)
+      .map(() => worker()),
+  );
   return results;
 }
 
-async function fetchProductDetailsWithRetry(productId: number): Promise<BlingProductFull | null> {
+async function fetchProductDetailsWithRetry(
+  productId: number,
+): Promise<BlingProductFull | null> {
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
       const result = await fetchBlingProductDetails(productId, true);
@@ -714,8 +806,10 @@ async function fetchProductDetailsWithRetry(productId: number): Promise<BlingPro
       const message = String(error);
       if (message.includes("429")) {
         const waitTime = Math.pow(2, attempt) * 5000 + Math.random() * 1000;
-        console.log(`Rate limit on product ${productId}, attempt ${attempt + 1}/3, waiting ${(waitTime/1000).toFixed(1)}s...`);
-        await new Promise(resolve => setTimeout(resolve, waitTime));
+        console.log(
+          `Rate limit on product ${productId}, attempt ${attempt + 1}/3, waiting ${(waitTime / 1000).toFixed(1)}s...`,
+        );
+        await new Promise((resolve) => setTimeout(resolve, waitTime));
       } else {
         console.error(`Error fetching product ${productId}:`, message);
         return null;
@@ -726,7 +820,10 @@ async function fetchProductDetailsWithRetry(productId: number): Promise<BlingPro
   return null;
 }
 
-async function fetchProductListWithRetry(page: number, limit: number): Promise<BlingProductBasic[]> {
+async function fetchProductListWithRetry(
+  page: number,
+  limit: number,
+): Promise<BlingProductBasic[]> {
   for (let attempt = 0; attempt < 5; attempt++) {
     try {
       return await fetchBlingProductsList(page, limit);
@@ -734,8 +831,10 @@ async function fetchProductListWithRetry(page: number, limit: number): Promise<B
       const message = String(error);
       if (message.includes("429")) {
         const waitTime = Math.pow(2, attempt) * 3000 + Math.random() * 2000;
-        console.log(`Rate limit on product list page ${page}, attempt ${attempt + 1}/5, waiting ${(waitTime/1000).toFixed(1)}s...`);
-        await new Promise(resolve => setTimeout(resolve, waitTime));
+        console.log(
+          `Rate limit on product list page ${page}, attempt ${attempt + 1}/5, waiting ${(waitTime / 1000).toFixed(1)}s...`,
+        );
+        await new Promise((resolve) => setTimeout(resolve, waitTime));
       } else {
         throw error;
       }
@@ -752,8 +851,10 @@ async function fetchCategoriesWithRetry(): Promise<BlingCategory[]> {
       const message = String(error);
       if (message.includes("429")) {
         const waitTime = Math.pow(2, attempt) * 3000 + Math.random() * 2000;
-        console.log(`Rate limit on categories, attempt ${attempt + 1}/5, waiting ${(waitTime/1000).toFixed(1)}s...`);
-        await new Promise(resolve => setTimeout(resolve, waitTime));
+        console.log(
+          `Rate limit on categories, attempt ${attempt + 1}/5, waiting ${(waitTime / 1000).toFixed(1)}s...`,
+        );
+        await new Promise((resolve) => setTimeout(resolve, waitTime));
       } else {
         throw error;
       }
@@ -769,53 +870,63 @@ async function syncCategoriesClean(): Promise<{ created: number }> {
 
   const blingIdToLocalId: Record<number, number> = {};
   const blingCatMap = new Map<number, BlingCategory>();
-  blingCategories.forEach(c => blingCatMap.set(c.id, c));
+  blingCategories.forEach((c) => blingCatMap.set(c.id, c));
 
   // Topological sort to process parents before children (subcategories)
   function topologicalSort(cats: BlingCategory[]): BlingCategory[] {
     const sorted: BlingCategory[] = [];
     const visited = new Set<number>();
-    
+
     function visit(cat: BlingCategory) {
       if (visited.has(cat.id)) return;
       visited.add(cat.id);
-      
+
       const parentBlingId = cat.categoriaPai?.id;
       if (parentBlingId && blingCatMap.has(parentBlingId)) {
         visit(blingCatMap.get(parentBlingId)!);
       }
-      
+
       sorted.push(cat);
     }
-    
-    cats.forEach(c => visit(c));
+
+    cats.forEach((c) => visit(c));
     return sorted;
   }
 
   const sortedCategories = topologicalSort(blingCategories);
-  console.log(`Importing ${sortedCategories.length} categories (including subcategories)...`);
+  console.log(
+    `Importing ${sortedCategories.length} categories (including subcategories)...`,
+  );
 
   for (const cat of sortedCategories) {
-    const slug = cat.descricao
-      .toLowerCase()
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/(^-|-$)/g, "") || `cat-${cat.id}`;
+    const slug =
+      cat.descricao
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/(^-|-$)/g, "") || `cat-${cat.id}`;
 
     const parentBlingId = cat.categoriaPai?.id;
-    const parentLocalId = parentBlingId ? blingIdToLocalId[parentBlingId] || null : null;
+    const parentLocalId = parentBlingId
+      ? blingIdToLocalId[parentBlingId] || null
+      : null;
 
     const isSubcategory = !!parentBlingId;
-    console.log(`Creating category: ${cat.descricao} (blingId: ${cat.id})${isSubcategory ? ` - Subcategory of blingId: ${parentBlingId}` : ''}`);
+    console.log(
+      `Creating category: ${cat.descricao} (blingId: ${cat.id})${isSubcategory ? ` - Subcategory of blingId: ${parentBlingId}` : ""}`,
+    );
 
-    const [newCat] = await db.insert(categories).values({
-      name: cat.descricao,
-      slug,
-      parentId: parentLocalId,
-      blingId: cat.id,
-    }).returning();
-    
+    const [newCat] = await db
+      .insert(categories)
+      .values({
+        name: cat.descricao,
+        slug,
+        parentId: parentLocalId,
+        blingId: cat.id,
+      })
+      .returning();
+
     blingIdToLocalId[cat.id] = newCat.id;
     created++;
   }
@@ -824,61 +935,73 @@ async function syncCategoriesClean(): Promise<{ created: number }> {
   return { created };
 }
 
-export async function syncProducts(): Promise<{ created: number; updated: number; errors: string[] }> {
-  if (syncProgress.status === 'running') {
-    throw new Error('Sincronização já em andamento');
+export async function syncProducts(): Promise<{
+  created: number;
+  updated: number;
+  errors: string[];
+}> {
+  if (syncProgress.status === "running") {
+    throw new Error("Sincronização já em andamento");
   }
-  
+
   const startTime = Date.now();
   let basicProducts: BlingProductBasic[] = [];
   let page = 1;
   const limit = 100;
-  
+
   try {
     updateProgress({
-      status: 'running',
-      phase: 'Sincronizando categorias',
+      status: "running",
+      phase: "Sincronizando categorias",
       currentStep: 0,
       totalSteps: 100,
-      message: 'Sincronizando categorias do Bling...',
+      message: "Sincronizando categorias do Bling...",
       created: 0,
       updated: 0,
       errors: 0,
       startTime,
     });
-    
+
     console.log("Syncing categories from Bling...");
     const catResult = await syncCategories();
-    console.log(`Categories synced: ${catResult.created} created, ${catResult.updated} updated`);
-    
+    console.log(
+      `Categories synced: ${catResult.created} created, ${catResult.updated} updated`,
+    );
+
     updateProgress({
-      phase: 'Buscando lista de produtos',
+      phase: "Buscando lista de produtos",
       message: `Categorias sincronizadas. Buscando produtos...`,
     });
-    
-    console.log("Fetching product list from Bling (with rate limit handling)...");
+
+    console.log(
+      "Fetching product list from Bling (with rate limit handling)...",
+    );
     while (true) {
-      await new Promise(resolve => setTimeout(resolve, 600));
+      await new Promise((resolve) => setTimeout(resolve, 600));
       const pageProducts = await fetchProductListWithRetry(page, limit);
       if (pageProducts.length === 0) break;
-      
+
       // Import ALL products (active and inactive, with and without stock)
       for (const p of pageProducts) {
         basicProducts.push(p);
       }
-      updateProgress({ message: `Página ${page}: ${basicProducts.length} produtos encontrados` });
-      console.log(`Page ${page}: ${pageProducts.length} products (${basicProducts.length} total)`);
-      
+      updateProgress({
+        message: `Página ${page}: ${basicProducts.length} produtos encontrados`,
+      });
+      console.log(
+        `Page ${page}: ${pageProducts.length} products (${basicProducts.length} total)`,
+      );
+
       if (pageProducts.length < limit) break;
       page++;
     }
-    
+
     console.log(`Found ${basicProducts.length} products (all).`);
     const totalProducts = basicProducts.length;
     const totalSteps = totalProducts * 2;
-    
+
     updateProgress({
-      phase: 'Carregando categorias locais',
+      phase: "Carregando categorias locais",
       totalSteps,
       message: `${totalProducts} produtos encontrados. Carregando categorias...`,
     });
@@ -886,27 +1009,31 @@ export async function syncProducts(): Promise<{ created: number; updated: number
     const existingCategories = await db.select().from(categories);
     const categoryMap: Record<string, number> = {};
     const blingIdToCategoryId: Record<number, number> = {};
-    existingCategories.forEach(c => {
+    existingCategories.forEach((c) => {
       categoryMap[c.name.toLowerCase()] = c.id;
       if (c.blingId) {
         blingIdToCategoryId[c.blingId] = c.id;
       }
     });
-    console.log(`Loaded ${Object.keys(categoryMap).length} local categories with ${Object.keys(blingIdToCategoryId).length} Bling IDs mapped`);
+    console.log(
+      `Loaded ${Object.keys(categoryMap).length} local categories with ${Object.keys(blingIdToCategoryId).length} Bling IDs mapped`,
+    );
 
     updateProgress({
-      phase: 'Buscando detalhes dos produtos',
+      phase: "Buscando detalhes dos produtos",
       message: `Buscando detalhes de ${totalProducts} produtos...`,
     });
-    
-    console.log(`Fetching product details sequentially (1 req per 600ms = ~1.6 req/s)...`);
-    const productIds = basicProducts.map(p => p.id);
+
+    console.log(
+      `Fetching product details sequentially (1 req per 600ms = ~1.6 req/s)...`,
+    );
+    const productIds = basicProducts.map((p) => p.id);
     let detailsFetched = 0;
-    
+
     const blingProducts = await runWithConcurrency(
       productIds,
       async (id) => {
-        await new Promise(resolve => setTimeout(resolve, 600));
+        await new Promise((resolve) => setTimeout(resolve, 600));
         const result = await fetchProductDetailsWithRetry(id);
         detailsFetched++;
         if (detailsFetched % 10 === 0 || detailsFetched === totalProducts) {
@@ -918,32 +1045,42 @@ export async function syncProducts(): Promise<{ created: number; updated: number
         return result;
       },
       1,
-      (done, total) => { if (done % 50 === 0) console.log(`Fetched ${done}/${total} product details...`); }
+      (done, total) => {
+        if (done % 50 === 0)
+          console.log(`Fetched ${done}/${total} product details...`);
+      },
     );
     console.log(`Fetched all product details.`);
 
     // Build stock map from basic product listing first (as fallback)
     const stockFromListing = new Map<number, number>();
     for (const bp of basicProducts) {
-      const stock = bp.estoque?.saldoVirtualTotal ?? bp.estoque?.saldoFisicoTotal ?? 0;
+      const stock =
+        bp.estoque?.saldoVirtualTotal ?? bp.estoque?.saldoFisicoTotal ?? 0;
       if (stock > 0) {
         stockFromListing.set(bp.id, stock);
       }
     }
-    console.log(`[import] Stock from listing: ${stockFromListing.size} products with stock > 0`);
-    
+    console.log(
+      `[import] Stock from listing: ${stockFromListing.size} products with stock > 0`,
+    );
+
     // Try to fetch from dedicated stock endpoint (may fail if module not enabled)
     updateProgress({
-      phase: 'Buscando estoque',
+      phase: "Buscando estoque",
       currentStep: totalProducts,
-      message: 'Buscando estoque dos produtos...',
+      message: "Buscando estoque dos produtos...",
     });
-    
+
     console.log(`[import] Fetching stock for ${productIds.length} products...`);
     const stockFromEndpoint = await fetchBlingStock(productIds);
-    const nonZeroFromEndpoint = Array.from(stockFromEndpoint.values()).filter(v => v > 0).length;
-    console.log(`[import] Got stock for ${stockFromEndpoint.size} products. Non-zero: ${nonZeroFromEndpoint}`);
-    
+    const nonZeroFromEndpoint = Array.from(stockFromEndpoint.values()).filter(
+      (v) => v > 0,
+    ).length;
+    console.log(
+      `[import] Got stock for ${stockFromEndpoint.size} products. Non-zero: ${nonZeroFromEndpoint}`,
+    );
+
     // Merge: prefer endpoint stock, fallback to listing stock
     const stockMap = new Map<number, number>();
     for (const id of productIds) {
@@ -951,12 +1088,16 @@ export async function syncProducts(): Promise<{ created: number; updated: number
       const fromListing = stockFromListing.get(id);
       stockMap.set(id, fromEndpoint ?? fromListing ?? 0);
     }
-    const finalNonZero = Array.from(stockMap.values()).filter(v => v > 0).length;
-    console.log(`[import] Final stock map: ${finalNonZero} products with stock > 0`);
+    const finalNonZero = Array.from(stockMap.values()).filter(
+      (v) => v > 0,
+    ).length;
+    console.log(
+      `[import] Final stock map: ${finalNonZero} products with stock > 0`,
+    );
 
     updateProgress({
-      phase: 'Salvando produtos',
-      message: 'Salvando produtos no banco de dados...',
+      phase: "Salvando produtos",
+      message: "Salvando produtos no banco de dados...",
     });
 
     let created = 0;
@@ -966,7 +1107,7 @@ export async function syncProducts(): Promise<{ created: number; updated: number
     for (let i = 0; i < productIds.length; i++) {
       const productId = productIds[i];
       const blingProduct = blingProducts[i];
-      
+
       if (!blingProduct) {
         errors.push(`Product ${productId}: Failed to fetch details`);
         updateProgress({ errors: errors.length });
@@ -982,14 +1123,19 @@ export async function syncProducts(): Promise<{ created: number; updated: number
             categoryId = categoryMap[blingCat.descricao.toLowerCase()] || null;
           }
           if (!categoryId) {
-            console.log(`Category not found for product ${blingProduct.codigo}: Bling category ID ${blingCat.id}, desc: ${blingCat.descricao}`);
+            console.log(
+              `Category not found for product ${blingProduct.codigo}: Bling category ID ${blingCat.id}, desc: ${blingCat.descricao}`,
+            );
           }
         }
 
         let imageUrl: string | null = null;
         if (blingProduct.imagens && blingProduct.imagens.length > 0) {
-          const sortedImages = [...blingProduct.imagens].sort((a, b) => (a.ordem || 0) - (b.ordem || 0));
-          imageUrl = sortedImages[0]?.linkExterno || sortedImages[0]?.link || null;
+          const sortedImages = [...blingProduct.imagens].sort(
+            (a, b) => (a.ordem || 0) - (b.ordem || 0),
+          );
+          imageUrl =
+            sortedImages[0]?.linkExterno || sortedImages[0]?.link || null;
         }
         if (!imageUrl && blingProduct.midia?.imagens?.externas?.[0]?.link) {
           imageUrl = blingProduct.midia.imagens.externas[0].link;
@@ -998,12 +1144,21 @@ export async function syncProducts(): Promise<{ created: number; updated: number
           imageUrl = blingProduct.midia.imagens.internas[0].link;
         }
 
-        const description = blingProduct.descricaoComplementar || blingProduct.descricaoCurta || null;
+        const description =
+          blingProduct.descricaoComplementar ||
+          blingProduct.descricaoCurta ||
+          null;
         // Get stock from dedicated stock endpoint (stockMap) - more reliable
-        const stock = stockMap.get(productId) ?? blingProduct.estoque?.saldoVirtual ?? blingProduct.estoque?.saldoFisico ?? 0;
-        
+        const stock =
+          stockMap.get(productId) ??
+          blingProduct.estoque?.saldoVirtual ??
+          blingProduct.estoque?.saldoFisico ??
+          0;
+
         if (i < 5) {
-          console.log(`Product ${blingProduct.codigo}: image=${imageUrl ? 'YES' : 'NO'}, stock=${stock} (from stockMap: ${stockMap.has(productId)}), category=${categoryId}`);
+          console.log(
+            `Product ${blingProduct.codigo}: image=${imageUrl ? "YES" : "NO"}, stock=${stock} (from stockMap: ${stockMap.has(productId)}), category=${categoryId}`,
+          );
         }
 
         const productData: InsertProduct = {
@@ -1017,13 +1172,18 @@ export async function syncProducts(): Promise<{ created: number; updated: number
           image: imageUrl,
         };
 
-        const existing = await db.select().from(products).where(eq(products.sku, productData.sku)).limit(1);
+        const existing = await db
+          .select()
+          .from(products)
+          .where(eq(products.sku, productData.sku))
+          .limit(1);
 
         if (existing.length === 0) {
           await db.insert(products).values(productData);
           created++;
         } else {
-          await db.update(products)
+          await db
+            .update(products)
             .set({
               name: productData.name,
               categoryId: productData.categoryId,
@@ -1036,7 +1196,7 @@ export async function syncProducts(): Promise<{ created: number; updated: number
             .where(eq(products.sku, productData.sku));
           updated++;
         }
-        
+
         if ((i + 1) % 10 === 0 || i === productIds.length - 1) {
           updateProgress({
             currentStep: totalProducts + i + 1,
@@ -1046,18 +1206,21 @@ export async function syncProducts(): Promise<{ created: number; updated: number
           });
         }
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Unknown error";
+        const message =
+          error instanceof Error ? error.message : "Unknown error";
         errors.push(`Product ${productId}: ${message}`);
         updateProgress({ errors: errors.length });
       }
     }
-    
+
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-    console.log(`Sync complete in ${elapsed}s: ${created} created, ${updated} updated, ${errors.length} errors`);
+    console.log(
+      `Sync complete in ${elapsed}s: ${created} created, ${updated} updated, ${errors.length} errors`,
+    );
 
     updateProgress({
-      status: 'completed',
-      phase: 'Concluído',
+      status: "completed",
+      phase: "Concluído",
       currentStep: totalSteps,
       message: `Sincronização concluída em ${elapsed}s`,
       created,
@@ -1070,10 +1233,11 @@ export async function syncProducts(): Promise<{ created: number; updated: number
 
     return { created, updated, errors };
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Erro desconhecido';
+    const message =
+      error instanceof Error ? error.message : "Erro desconhecido";
     updateProgress({
-      status: 'error',
-      phase: 'Erro',
+      status: "error",
+      phase: "Erro",
       message: `Erro: ${message}`,
     });
     setTimeout(() => resetProgress(), 10000);
@@ -1085,10 +1249,15 @@ export function isAuthenticated(): boolean {
   return !!process.env.BLING_ACCESS_TOKEN;
 }
 
-export function getStatus(): { authenticated: boolean; hasCredentials: boolean } {
+export function getStatus(): {
+  authenticated: boolean;
+  hasCredentials: boolean;
+} {
   return {
     authenticated: isAuthenticated(),
-    hasCredentials: !!(process.env.BLING_CLIENT_ID && process.env.BLING_CLIENT_SECRET),
+    hasCredentials: !!(
+      process.env.BLING_CLIENT_ID && process.env.BLING_CLIENT_SECRET
+    ),
   };
 }
 
@@ -1127,31 +1296,50 @@ interface WebhookStockData {
   saldoVirtualTotal: number;
 }
 
-export function verifyWebhookSignature(payload: string, signature: string): boolean {
-  const clientSecret = process.env.BLING_CLIENT_SECRET;
-  if (!clientSecret) {
-    console.error("BLING_CLIENT_SECRET not configured for webhook verification");
+export function verifyWebhookSignature(
+  payload: string | Buffer,
+  signature: string,
+  clientSecret?: string,
+): boolean {
+  const secret = clientSecret || process.env.BLING_CLIENT_SECRET;
+  if (!secret) {
+    console.error(
+      "BLING_CLIENT_SECRET not configured for webhook verification",
+    );
     return false;
   }
 
+  const payloadBuf =
+    typeof payload === "string"
+      ? Buffer.from(payload, "utf8")
+      : (payload as Buffer);
   const expectedSignature = crypto
-    .createHmac("sha256", clientSecret)
-    .update(payload, "utf8")
+    .createHmac("sha256", secret)
+    .update(payloadBuf)
     .digest("hex");
 
   // Handle both formats: "sha256=HASH" or just "HASH"
+  const normalized = (signature || "").replace(/^sha256=|^SHA256=/i, "");
+  try {
+    const expectedBuf = Buffer.from(expectedSignature, "hex");
+    const receivedBuf = Buffer.from(normalized || "", "hex");
+    if (expectedBuf.length !== receivedBuf.length) return false;
+    return crypto.timingSafeEqual(expectedBuf, receivedBuf);
+  } catch (e) {
+    return false;
+  }
   const providedHash = signature.replace(/^sha256=/i, "");
-  
+
   // Ensure both signatures have same length before comparing
   if (expectedSignature.length !== providedHash.length) {
     console.error("Signature length mismatch");
     return false;
   }
-  
+
   try {
     return crypto.timingSafeEqual(
       Buffer.from(expectedSignature, "hex"),
-      Buffer.from(providedHash, "hex")
+      Buffer.from(providedHash, "hex"),
     );
   } catch (error) {
     console.error("Signature comparison error:", error);
@@ -1159,7 +1347,9 @@ export function verifyWebhookSignature(payload: string, signature: string): bool
   }
 }
 
-export async function handleWebhook(payload: BlingWebhookPayload): Promise<{ success: boolean; message: string }> {
+export async function handleWebhook(
+  payload: BlingWebhookPayload,
+): Promise<{ success: boolean; message: string }> {
   const { event, data, eventId } = payload;
   console.log(`Processing Bling webhook: ${event} (${eventId})`);
 
@@ -1175,7 +1365,10 @@ export async function handleWebhook(payload: BlingWebhookPayload): Promise<{ suc
         return await handleStockEvent(data as WebhookStockData);
       default:
         console.log(`Unhandled webhook event: ${event}`);
-        return { success: true, message: `Event ${event} acknowledged but not processed` };
+        return {
+          success: true,
+          message: `Event ${event} acknowledged but not processed`,
+        };
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
@@ -1184,11 +1377,17 @@ export async function handleWebhook(payload: BlingWebhookPayload): Promise<{ suc
   }
 }
 
-async function handleProductEvent(data: WebhookProductData): Promise<{ success: boolean; message: string }> {
+async function handleProductEvent(
+  data: WebhookProductData,
+): Promise<{ success: boolean; message: string }> {
   const sku = data.codigo || `BLING-${data.id}`;
-  
+
   if (data.situacao !== "A") {
-    const existing = await db.select().from(products).where(eq(products.sku, sku)).limit(1);
+    const existing = await db
+      .select()
+      .from(products)
+      .where(eq(products.sku, sku))
+      .limit(1);
     if (existing.length > 0) {
       await db.delete(products).where(eq(products.sku, sku));
       return { success: true, message: `Product ${sku} deleted (inactive)` };
@@ -1199,24 +1398,30 @@ async function handleProductEvent(data: WebhookProductData): Promise<{ success: 
   // Fetch full product details from Bling API to get image and category
   console.log(`Fetching full details for product ${data.id}...`);
   const fullProduct = await fetchBlingProductDetails(data.id);
-  
+
   if (!fullProduct) {
     // Fallback to basic webhook data if API call fails
     console.log(`Using fallback webhook data for product ${data.id}`);
-    
+
     // Try to get category from webhook data
     let categoryId: number | null = null;
     if (data.categoria?.id) {
       const existingCategories = await db.select().from(categories);
-      const matchingCategory = existingCategories.find(c => c.blingId === data.categoria?.id);
+      const matchingCategory = existingCategories.find(
+        (c) => c.blingId === data.categoria?.id,
+      );
       if (matchingCategory) {
         categoryId = matchingCategory.id;
-        console.log(`Found category ${matchingCategory.name} (blingId: ${data.categoria.id}) for product ${sku}`);
+        console.log(
+          `Found category ${matchingCategory.name} (blingId: ${data.categoria.id}) for product ${sku}`,
+        );
       } else {
-        console.log(`No matching category found for blingId ${data.categoria.id}`);
+        console.log(
+          `No matching category found for blingId ${data.categoria.id}`,
+        );
       }
     }
-    
+
     const productData: Partial<InsertProduct> = {
       name: data.nome,
       sku,
@@ -1225,13 +1430,23 @@ async function handleProductEvent(data: WebhookProductData): Promise<{ success: 
       price: String(data.preco || 0),
     };
 
-    const existing = await db.select().from(products).where(eq(products.sku, sku)).limit(1);
+    const existing = await db
+      .select()
+      .from(products)
+      .where(eq(products.sku, sku))
+      .limit(1);
     if (existing.length === 0) {
       await db.insert(products).values(productData as InsertProduct);
-      return { success: true, message: `Product ${sku} created (webhook data, categoryId: ${categoryId})` };
+      return {
+        success: true,
+        message: `Product ${sku} created (webhook data, categoryId: ${categoryId})`,
+      };
     } else {
       await db.update(products).set(productData).where(eq(products.sku, sku));
-      return { success: true, message: `Product ${sku} updated (webhook data, categoryId: ${categoryId})` };
+      return {
+        success: true,
+        message: `Product ${sku} updated (webhook data, categoryId: ${categoryId})`,
+      };
     }
   }
 
@@ -1245,7 +1460,9 @@ async function handleProductEvent(data: WebhookProductData): Promise<{ success: 
   // Extract image URL
   let imageUrl: string | null = null;
   if (fullProduct.imagens && fullProduct.imagens.length > 0) {
-    const sortedImages = [...fullProduct.imagens].sort((a, b) => (a.ordem || 0) - (b.ordem || 0));
+    const sortedImages = [...fullProduct.imagens].sort(
+      (a, b) => (a.ordem || 0) - (b.ordem || 0),
+    );
     imageUrl = sortedImages[0]?.linkExterno || sortedImages[0]?.link || null;
   }
   if (!imageUrl && fullProduct.midia?.imagens?.externas?.[0]?.link) {
@@ -1254,14 +1471,16 @@ async function handleProductEvent(data: WebhookProductData): Promise<{ success: 
   if (!imageUrl && fullProduct.midia?.imagens?.internas?.[0]?.link) {
     imageUrl = fullProduct.midia.imagens.internas[0].link;
   }
-  
+
   console.log(`Product ${sku} extracted imageUrl:`, imageUrl);
 
   // Find category by blingId
   let categoryId: number | null = null;
   if (fullProduct.categoria?.id) {
     const existingCategories = await db.select().from(categories);
-    const matchingCategory = existingCategories.find(c => c.blingId === fullProduct.categoria?.id);
+    const matchingCategory = existingCategories.find(
+      (c) => c.blingId === fullProduct.categoria?.id,
+    );
     if (matchingCategory) {
       categoryId = matchingCategory.id;
     }
@@ -1272,56 +1491,94 @@ async function handleProductEvent(data: WebhookProductData): Promise<{ success: 
     sku,
     categoryId,
     brand: fullProduct.marca || null,
-    description: fullProduct.descricaoComplementar || fullProduct.descricaoCurta || null,
+    description:
+      fullProduct.descricaoComplementar || fullProduct.descricaoCurta || null,
     price: String(fullProduct.preco || 0),
-    stock: fullProduct.estoque?.saldoVirtual ?? fullProduct.estoque?.saldoFisico ?? 0,
+    stock:
+      fullProduct.estoque?.saldoVirtual ??
+      fullProduct.estoque?.saldoFisico ??
+      0,
     image: imageUrl,
   };
 
-  const existing = await db.select().from(products).where(eq(products.sku, sku)).limit(1);
+  const existing = await db
+    .select()
+    .from(products)
+    .where(eq(products.sku, sku))
+    .limit(1);
 
   if (existing.length === 0) {
     await db.insert(products).values(productData);
-    return { success: true, message: `Product ${sku} created with full details` };
+    return {
+      success: true,
+      message: `Product ${sku} created with full details`,
+    };
   } else {
-    await db.update(products).set({
-      name: productData.name,
-      categoryId: productData.categoryId,
-      brand: productData.brand,
-      description: productData.description,
-      price: productData.price,
-      stock: productData.stock,
-      image: productData.image,
-    }).where(eq(products.sku, sku));
-    return { success: true, message: `Product ${sku} updated with full details` };
+    await db
+      .update(products)
+      .set({
+        name: productData.name,
+        categoryId: productData.categoryId,
+        brand: productData.brand,
+        description: productData.description,
+        price: productData.price,
+        stock: productData.stock,
+        image: productData.image,
+      })
+      .where(eq(products.sku, sku));
+    return {
+      success: true,
+      message: `Product ${sku} updated with full details`,
+    };
   }
 }
 
-async function handleProductDeleted(blingId: number): Promise<{ success: boolean; message: string }> {
+async function handleProductDeleted(
+  blingId: number,
+): Promise<{ success: boolean; message: string }> {
   const sku = `BLING-${blingId}`;
-  const existing = await db.select().from(products).where(eq(products.sku, sku)).limit(1);
-  
+  const existing = await db
+    .select()
+    .from(products)
+    .where(eq(products.sku, sku))
+    .limit(1);
+
   if (existing.length > 0) {
     await db.delete(products).where(eq(products.sku, sku));
     return { success: true, message: `Product ${sku} deleted` };
   }
-  
+
   return { success: true, message: `Product ${blingId} not found locally` };
 }
 
-async function handleStockEvent(data: WebhookStockData): Promise<{ success: boolean; message: string }> {
+async function handleStockEvent(
+  data: WebhookStockData,
+): Promise<{ success: boolean; message: string }> {
   const blingProductId = data.produto.id;
   const newStock = data.saldoVirtualTotal;
 
   const allProducts = await db.select().from(products);
-  const product = allProducts.find(p => p.sku === `BLING-${blingProductId}` || p.sku.includes(String(blingProductId)));
+  const product = allProducts.find(
+    (p) =>
+      p.sku === `BLING-${blingProductId}` ||
+      p.sku.includes(String(blingProductId)),
+  );
 
   if (product) {
-    await db.update(products).set({ stock: Math.floor(newStock) }).where(eq(products.id, product.id));
-    return { success: true, message: `Stock updated for product ${product.sku}: ${newStock}` };
+    await db
+      .update(products)
+      .set({ stock: Math.floor(newStock) })
+      .where(eq(products.id, product.id));
+    return {
+      success: true,
+      message: `Stock updated for product ${product.sku}: ${newStock}`,
+    };
   }
 
-  return { success: true, message: `Product ${blingProductId} not found for stock update` };
+  return {
+    success: true,
+    message: `Product ${blingProductId} not found for stock update`,
+  };
 }
 
 // ========== ORDER CREATION ==========
@@ -1350,7 +1607,9 @@ interface BlingOrderResponse {
   };
 }
 
-export async function createBlingOrder(orderData: BlingOrderData): Promise<{ success: boolean; blingId?: number; error?: string }> {
+export async function createBlingOrder(
+  orderData: BlingOrderData,
+): Promise<{ success: boolean; blingId?: number; error?: string }> {
   try {
     const accessToken = process.env.BLING_ACCESS_TOKEN;
     if (!accessToken) {
@@ -1358,14 +1617,15 @@ export async function createBlingOrder(orderData: BlingOrderData): Promise<{ suc
       return { success: false, error: "Bling not configured" };
     }
 
-    const today = new Date().toISOString().split('T')[0];
+    const today = new Date().toISOString().split("T")[0];
 
     const blingPayload: any = {
       data: today,
       dataPrevista: today,
       numeroLoja: orderData.orderNumber,
-      observacoes: orderData.observacoes || `Pedido #${orderData.orderNumber} do site`,
-      itens: orderData.items.map(item => ({
+      observacoes:
+        orderData.observacoes || `Pedido #${orderData.orderNumber} do site`,
+      itens: orderData.items.map((item) => ({
         codigo: item.codigo,
         descricao: item.descricao,
         quantidade: item.quantidade,
@@ -1374,7 +1634,7 @@ export async function createBlingOrder(orderData: BlingOrderData): Promise<{ suc
     };
 
     if (orderData.customerCpfCnpj) {
-      const cleanDoc = orderData.customerCpfCnpj.replace(/\D/g, '');
+      const cleanDoc = orderData.customerCpfCnpj.replace(/\D/g, "");
       blingPayload.contato = {
         tipoPessoa: cleanDoc.length > 11 ? "J" : "F",
         cpfCnpj: cleanDoc,
@@ -1395,10 +1655,16 @@ export async function createBlingOrder(orderData: BlingOrderData): Promise<{ suc
       };
     }
 
-    console.log("Sending order to Bling:", JSON.stringify(blingPayload, null, 2));
+    console.log(
+      "Sending order to Bling:",
+      JSON.stringify(blingPayload, null, 2),
+    );
 
-    const response = await blingApiPost<BlingOrderResponse>("/pedidos/vendas", blingPayload);
-    
+    const response = await blingApiPost<BlingOrderResponse>(
+      "/pedidos/vendas",
+      blingPayload,
+    );
+
     console.log("Bling order created successfully:", response.data.id);
     return { success: true, blingId: response.data.id };
   } catch (error) {

@@ -199,16 +199,16 @@ A integração é multi-tenant: cada empresa pode salvar credenciais próprias e
 Principais endpoints (company-scoped quando autenticado):
 
 - POST /api/bling/credentials
-  - Salva `clientId` / `clientSecret` opcionalmente por empresa (guarda em `bling_credentials`).
-  - Uso: { clientId, clientSecret, redirectUri? }
-  - Resposta: { success: true }
+  - Salva `clientId` / `clientSecret` e `apiEndpoint` por empresa (guarda em `bling_credentials`).
+  - Uso: { clientId, clientSecret, apiEndpoint?, redirectUri? }
+  - Resposta: { ok: true, credentials }
 
 - GET /api/bling/credentials
-  - Retorna se a empresa tem credenciais salvas (clientId parcialmente mascarado) e `redirectUri` quando disponível.
+  - Retorna se a empresa tem credenciais salvas (clientId parcialmente mascarado) e `apiEndpoint` / `redirectUri` quando disponível.
 
 - POST /api/bling/test-credentials
-  - Recebe `clientId`/`clientSecret` temporariamente (ou usa credenciais salvas) e retorna a URL de autorização para iniciar o OAuth:
-    - Resposta: { ok: true, authUrl }
+  - Recebe `clientId`/`clientSecret` temporariamente (ou usa credenciais salvas) e testa conectividade com o `apiEndpoint` (retorna se o endpoint é alcançável).
+    - Resposta: { ok: true, message }
 
 - GET /api/bling/auth
   - Redireciona o usuário para o endpoint de autorização do Bling. Internamente cria uma sessão (`state`) mapeada para `companyId` para resolver o callback.
@@ -306,6 +306,8 @@ Os webhooks do Bling permitem receber notificações em tempo real quando produt
 https://seu-dominio.replit.dev/api/bling/webhook
 ```
 
+Observação: o Zeno aceita múltiplos endpoints por empresa (você pode adicionar endpoints de produção e desenvolvimento no painel Bling → Integração → Bling). Os webhooks do Bling devem apontar para o endpoint público do Zeno (`https://<seu-domínio>/api/bling/webhook`). O Zeno identifica a qual empresa pertence cada webhook usando a assinatura HMAC (header `X-Bling-Signature-256`) que é verificada contra o _client secret_ salvo para cada empresa — portanto não é necessário incluir `companyId` na URL.
+
 ### Verificação de Assinatura
 
 O Bling envia uma assinatura HMAC-SHA256 no header `X-Bling-Signature-256` para validar a autenticidade da requisição.
@@ -367,7 +369,7 @@ function verifyWebhookSignature(payload: string, signature: string): boolean {
 
 ## Checklist de Migração e Deploy ✅
 
-Siga estes passos antes de habilitar a integração Bling em produção (faça tudo primeiro em *staging*):
+Siga estes passos antes de habilitar a integração Bling em produção (faça tudo primeiro em _staging_):
 
 1. Aplicar migrations no banco
    - Garanta que `migrations/0006_bling_oauth_sessions.sql` foi executada (mapeia `state -> company_id`).

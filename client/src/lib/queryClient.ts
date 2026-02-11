@@ -14,8 +14,27 @@ function getCompanyHeaders(): Record<string, string> {
 
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
-    const text = (await res.text()) || res.statusText;
-    throw new Error(`${res.status}: ${text}`);
+    const contentType = res.headers.get("content-type") || "";
+    // If JSON, prefer the parsed message
+    if (contentType.includes("application/json")) {
+      try {
+        const json = await res.json();
+        const msg = json?.message || json?.error || JSON.stringify(json);
+        throw new Error(`${res.status}: ${msg}`);
+      } catch (e) {
+        // fallback to text
+      }
+    }
+
+    // Otherwise get text but truncate and strip HTML tags for readability
+    const raw = (await res.text()) || res.statusText;
+    // Strip basic HTML tags for a cleaner message
+    const stripped = raw.replace(/<[^>]*>/g, "").trim();
+    const short =
+      stripped.length > 300 ? stripped.slice(0, 300) + "..." : stripped;
+    throw new Error(
+      `${res.status}: ${res.statusText}${short ? ` - ${short}` : ""}`,
+    );
   }
 }
 

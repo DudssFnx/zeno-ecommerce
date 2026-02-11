@@ -390,8 +390,9 @@ export const blingCredentials = pgTable("bling_credentials", {
   clientSecret: text("client_secret"),
   code: text("code"),
   redirectUri: text("redirect_uri"),
-  createdAt: timestamp("created_at"),
-  updatedAt: timestamp("updated_at"),
+  apiEndpoint: text("api_endpoint"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
 });
 
 export const blingTokens = pgTable("bling_tokens", {
@@ -403,6 +404,18 @@ export const blingTokens = pgTable("bling_tokens", {
   tokenType: text("token_type"),
   createdAt: timestamp("created_at"),
   updatedAt: timestamp("updated_at"),
+});
+
+export const blingWebhookEndpoints = pgTable("bling_webhook_endpoints", {
+  id: serial("id").primaryKey(),
+  companyId: varchar("company_id"),
+  url: text("url").notNull(),
+  active: boolean("active").default(true),
+  lastStatusCode: integer("last_status_code"),
+  lastResponseBody: text("last_response_body"),
+  lastCalledAt: timestamp("last_called_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
 });
 
 export const modules = pgTable("modules", {

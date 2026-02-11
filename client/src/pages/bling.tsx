@@ -1,16 +1,37 @@
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { apiRequest, queryClient } from "@/lib/queryClient";
-import { useToast } from "@/hooks/use-toast";
-import { useLocation } from "wouter";
-import { useEffect, useState, useRef } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Loader2, CheckCircle, XCircle, RefreshCw, Link as LinkIcon, FolderSync, Package, Unlink, Clock, AlertCircle, Download, Search } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import {
+  AlertCircle,
+  CheckCircle,
+  Clock,
+  Download,
+  FolderSync,
+  Link as LinkIcon,
+  Loader2,
+  Package,
+  RefreshCw,
+  Search,
+  Unlink,
+  XCircle,
+} from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { useLocation } from "wouter";
 
 interface BlingStatus {
   authenticated: boolean;
@@ -24,7 +45,7 @@ interface SyncResult {
 }
 
 interface SyncProgress {
-  status: 'idle' | 'running' | 'completed' | 'error';
+  status: "idle" | "running" | "completed" | "error";
   phase: string;
   currentStep: number;
   totalSteps: number;
@@ -73,6 +94,162 @@ export default function BlingPage() {
     queryKey: ["/api/bling/status"],
   });
 
+  // --- Credentials stored per company ---
+  const { data: credentials, refetch: refetchCredentials } = useQuery({
+    queryKey: ["/api/bling/credentials"],
+    queryFn: async () => {
+      const r = await apiRequest("GET", "/api/bling/credentials");
+      return r.json();
+    },
+  });
+
+  const [clientId, setClientId] = useState("");
+  const [clientSecret, setClientSecret] = useState("");
+  const [apiEndpoint, setApiEndpoint] = useState<string | null>(null);
+  const [savingCreds, setSavingCreds] = useState(false);
+  const [testingCreds, setTestingCreds] = useState(false);
+
+  useEffect(() => {
+    if (credentials?.hasCredentials) {
+      setClientId(credentials.clientId || "");
+      setClientSecret(""); // do not populate secret
+      setApiEndpoint(
+        credentials.apiEndpoint || "https://api.bling.com.br/Api/v3",
+      );
+    }
+  }, [credentials]);
+
+  const saveCredentials = async () => {
+    setSavingCreds(true);
+    try {
+      const resp = await apiRequest("POST", "/api/bling/credentials", {
+        clientId,
+        clientSecret,
+        apiEndpoint,
+      });
+      const data = await resp.json();
+      if (!resp.ok)
+        throw new Error(data.message || "Failed to save credentials");
+      toast({
+        title: "Credenciais salvas",
+        description: "Credenciais Bling atualizadas para a empresa.",
+      });
+      refetchCredentials();
+    } catch (err: any) {
+      toast({
+        title: "Erro",
+        description: err.message || "Falha ao salvar credenciais",
+        variant: "destructive",
+      });
+    } finally {
+      setSavingCreds(false);
+    }
+  };
+
+  const testCredentials = async () => {
+    setTestingCreds(true);
+    try {
+      const resp = await apiRequest("POST", "/api/bling/test-credentials", {
+        clientId,
+        clientSecret,
+        apiEndpoint,
+      });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.message || "Falha ao testar");
+      toast({ title: "Teste OK", description: data.message || "Endpoint OK" });
+    } catch (err: any) {
+      toast({
+        title: "Erro no Teste",
+        description: err.message || "Falha ao testar conexão",
+        variant: "destructive",
+      });
+    } finally {
+      setTestingCreds(false);
+    }
+  };
+
+  // --- Webhook endpoints (per company) ---
+  const { data: webhookEndpoints, refetch: refetchWebhookEndpoints } = useQuery(
+    {
+      queryKey: ["/api/bling/webhook-endpoints"],
+      queryFn: async () => {
+        const r = await apiRequest("GET", "/api/bling/webhook-endpoints");
+        if (!r.ok) throw new Error("Failed to load webhook endpoints");
+        return r.json();
+      },
+      enabled: !!status?.authenticated,
+    },
+  );
+
+  const addWebhookMutation = useMutation({
+    mutationFn: async (url: string) => {
+      const resp = await apiRequest("POST", "/api/bling/webhook-endpoints", {
+        url,
+      });
+      return resp.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Endpoint salvo",
+        description: "Endpoint de webhook salvo com sucesso",
+      });
+      refetchWebhookEndpoints();
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Erro",
+        description: err.message || "Falha ao salvar endpoint",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const deleteWebhookMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const resp = await apiRequest(
+        "DELETE",
+        `/api/bling/webhook-endpoints/${id}`,
+      );
+      return resp.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Removido", description: "Endpoint removido" });
+      refetchWebhookEndpoints();
+    },
+  });
+
+  const testWebhookMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const resp = await apiRequest(
+        "POST",
+        `/api/bling/webhook-endpoints/${id}/test`,
+      );
+      return resp.json();
+    },
+    onSuccess: (data: any) => {
+      toast({ title: "Teste executado", description: `Status ${data.status}` });
+      refetchWebhookEndpoints();
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Erro no Teste",
+        description: err.message || "Falha ao testar endpoint",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const [newEndpointUrl, setNewEndpointUrl] = useState("");
+  const handleAddEndpoint = () => {
+    if (!newEndpointUrl.trim())
+      return toast({
+        title: "URL necessária",
+        description: "Informe a URL do endpoint",
+        variant: "destructive",
+      });
+    addWebhookMutation.mutate(newEndpointUrl.trim());
+  };
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get("success") === "true") {
@@ -94,19 +271,21 @@ export default function BlingPage() {
 
   useEffect(() => {
     if (status?.authenticated) {
-      const eventSource = new EventSource("/api/bling/sync/progress", { withCredentials: true });
+      const eventSource = new EventSource("/api/bling/sync/progress", {
+        withCredentials: true,
+      });
       eventSourceRef.current = eventSource;
 
       eventSource.onmessage = (event) => {
         try {
           const progress: SyncProgress = JSON.parse(event.data);
           setSyncProgress(progress);
-          
-          if (progress.status === 'completed') {
+
+          if (progress.status === "completed") {
             queryClient.invalidateQueries({ queryKey: ["/api/products"] });
             toast({
               title: "Sincronização Concluída",
-              description: `${progress.created} criados, ${progress.updated} atualizados${progress.errors > 0 ? `, ${progress.errors} erros` : ''}`,
+              description: `${progress.created} criados, ${progress.updated} atualizados${progress.errors > 0 ? `, ${progress.errors} erros` : ""}`,
             });
           }
         } catch (e) {
@@ -222,7 +401,11 @@ export default function BlingPage() {
 
   const importCategoriesMutation = useMutation({
     mutationFn: async (categoryIds: number[]) => {
-      const response = await apiRequest("POST", "/api/bling/categories/import", { categoryIds });
+      const response = await apiRequest(
+        "POST",
+        "/api/bling/categories/import",
+        { categoryIds },
+      );
       return response.json();
     },
     onSuccess: (data: ImportResult) => {
@@ -237,7 +420,8 @@ export default function BlingPage() {
     onError: (error: any) => {
       toast({
         title: "Erro ao importar categorias",
-        description: error.message || "Falha ao importar categorias selecionadas",
+        description:
+          error.message || "Falha ao importar categorias selecionadas",
         variant: "destructive",
       });
     },
@@ -245,7 +429,9 @@ export default function BlingPage() {
 
   const importProductsMutation = useMutation({
     mutationFn: async (productIds: number[]) => {
-      const response = await apiRequest("POST", "/api/bling/products/import", { productIds });
+      const response = await apiRequest("POST", "/api/bling/products/import", {
+        productIds,
+      });
       return response.json();
     },
     onSuccess: (data: ImportResult) => {
@@ -267,14 +453,14 @@ export default function BlingPage() {
   });
 
   const toggleCategorySelection = (id: number) => {
-    setSelectedCategories(prev => 
-      prev.includes(id) ? prev.filter(c => c !== id) : [...prev, id]
+    setSelectedCategories((prev) =>
+      prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id],
     );
   };
 
   const toggleProductSelection = (id: number) => {
-    setSelectedProducts(prev => 
-      prev.includes(id) ? prev.filter(p => p !== id) : [...prev, id]
+    setSelectedProducts((prev) =>
+      prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id],
     );
   };
 
@@ -282,7 +468,7 @@ export default function BlingPage() {
     if (selectedCategories.length === blingCategories.length) {
       setSelectedCategories([]);
     } else {
-      setSelectedCategories(blingCategories.map(c => c.id));
+      setSelectedCategories(blingCategories.map((c) => c.id));
     }
   };
 
@@ -290,14 +476,15 @@ export default function BlingPage() {
     if (selectedProducts.length === blingProducts.length) {
       setSelectedProducts([]);
     } else {
-      setSelectedProducts(blingProducts.map(p => p.id));
+      setSelectedProducts(blingProducts.map((p) => p.id));
     }
   };
 
-  const isSyncing = syncProgress?.status === 'running';
-  const progressPercent = syncProgress && syncProgress.totalSteps > 0 
-    ? Math.round((syncProgress.currentStep / syncProgress.totalSteps) * 100) 
-    : 0;
+  const isSyncing = syncProgress?.status === "running";
+  const progressPercent =
+    syncProgress && syncProgress.totalSteps > 0
+      ? Math.round((syncProgress.currentStep / syncProgress.totalSteps) * 100)
+      : 0;
 
   if (isLoading) {
     return (
@@ -310,7 +497,9 @@ export default function BlingPage() {
   return (
     <div className="p-6 max-w-4xl mx-auto space-y-6">
       <div>
-        <h1 className="text-2xl font-bold" data-testid="text-bling-title">Integração Bling</h1>
+        <h1 className="text-2xl font-bold" data-testid="text-bling-title">
+          Integração Bling
+        </h1>
         <p className="text-muted-foreground">
           Conecte sua conta Bling para sincronizar produtos e categorias.
         </p>
@@ -330,13 +519,16 @@ export default function BlingPage() {
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
               <span className="text-sm font-medium">Credenciais:</span>
-              {status?.hasCredentials ? (
+              {status?.hasCredentials || credentials?.hasCredentials ? (
                 <Badge variant="default" className="flex items-center gap-1">
                   <CheckCircle className="h-3 w-3" />
                   Configuradas
                 </Badge>
               ) : (
-                <Badge variant="destructive" className="flex items-center gap-1">
+                <Badge
+                  variant="destructive"
+                  className="flex items-center gap-1"
+                >
                   <XCircle className="h-3 w-3" />
                   Ausentes
                 </Badge>
@@ -359,37 +551,195 @@ export default function BlingPage() {
           </div>
 
           <div className="flex flex-wrap gap-2">
-            {status?.hasCredentials && !status?.authenticated && (
-              <Button onClick={handleConnect} data-testid="button-bling-connect">
-                <LinkIcon className="h-4 w-4 mr-2" />
-                Conectar ao Bling
-              </Button>
-            )}
+            <div className="flex items-center gap-2">
+              {!status?.authenticated && (
+                <Button
+                  onClick={handleConnect}
+                  data-testid="button-bling-connect"
+                >
+                  <LinkIcon className="h-4 w-4 mr-2" />
+                  Conectar ao Bling
+                </Button>
+              )}
 
-            {status?.authenticated && (
-              <Button 
-                variant="destructive" 
-                onClick={() => disconnectMutation.mutate()}
-                disabled={disconnectMutation.isPending}
-                data-testid="button-bling-disconnect"
-              >
-                {disconnectMutation.isPending ? (
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                ) : (
-                  <Unlink className="h-4 w-4 mr-2" />
-                )}
-                Desconectar
-              </Button>
-            )}
+              {status?.authenticated && (
+                <Button
+                  variant="destructive"
+                  onClick={() => disconnectMutation.mutate()}
+                  disabled={disconnectMutation.isPending}
+                  data-testid="button-bling-disconnect"
+                >
+                  {disconnectMutation.isPending ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Unlink className="h-4 w-4 mr-2" />
+                  )}
+                  Desconectar
+                </Button>
+              )}
+            </div>
+
+            {/* Bling credentials form - centralizar configuração aqui */}
+            <div className="w-full mt-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <Label htmlFor="client-id">Client ID</Label>
+                  <Input
+                    id="client-id"
+                    value={clientId}
+                    onChange={(e) => setClientId(e.target.value)}
+                    placeholder="Client ID"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="client-secret">Client Secret</Label>
+                  <Input
+                    id="client-secret"
+                    value={clientSecret}
+                    onChange={(e) => setClientSecret(e.target.value)}
+                    placeholder="Client Secret"
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <Label htmlFor="api-endpoint">API Endpoint</Label>
+                  <Input
+                    id="api-endpoint"
+                    value={apiEndpoint || ""}
+                    onChange={(e) => setApiEndpoint(e.target.value)}
+                    placeholder="https://api.bling.com.br/Api/v3"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-2 mt-3">
+                <Button
+                  onClick={saveCredentials}
+                  disabled={savingCreds}
+                  data-testid="button-save-bling-credentials"
+                >
+                  {savingCreds ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <CheckCircle className="h-4 w-4 mr-2" />
+                  )}
+                  Salvar Credenciais
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={testCredentials}
+                  disabled={testingCreds}
+                  data-testid="button-test-bling-credentials"
+                >
+                  {testingCreds ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                  )}
+                  Testar Conexão
+                </Button>
+                <Button
+                  variant="ghost"
+                  onClick={() => (window.location.href = "/api/bling/auth")}
+                >
+                  <LinkIcon className="h-4 w-4 mr-2" />
+                  Autorizar (OAuth)
+                </Button>
+              </div>
+            </div>
           </div>
-
-          {!status?.hasCredentials && (
-            <p className="text-sm text-muted-foreground">
-              Por favor, configure BLING_CLIENT_ID e BLING_CLIENT_SECRET no seu ambiente.
-            </p>
-          )}
         </CardContent>
       </Card>
+
+      {/* Webhook endpoints management */}
+      {status?.authenticated && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <LinkIcon className="h-5 w-5" />
+              Webhook Endpoints
+            </CardTitle>
+            <CardDescription>
+              Configure URLs que receberão webhooks do Bling (por empresa)
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
+              <div className="sm:col-span-2">
+                <Label htmlFor="new-endpoint">Add endpoint</Label>
+                <Input
+                  id="new-endpoint"
+                  placeholder="https://example.com/webhook"
+                  value={newEndpointUrl}
+                  onChange={(e) => setNewEndpointUrl(e.target.value)}
+                />
+              </div>
+              <div>
+                <Button
+                  onClick={handleAddEndpoint}
+                  disabled={addWebhookMutation.isPending}
+                  className="w-full"
+                >
+                  {addWebhookMutation.isPending ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <LinkIcon className="h-4 w-4 mr-2" />
+                  )}
+                  Salvar
+                </Button>
+              </div>
+            </div>
+
+            <div className="mt-4">
+              {webhookEndpoints && webhookEndpoints.length === 0 && (
+                <p className="text-sm text-muted-foreground">
+                  Nenhum endpoint configurado.
+                </p>
+              )}
+
+              {webhookEndpoints && webhookEndpoints.length > 0 && (
+                <div className="space-y-2">
+                  {webhookEndpoints.map((ep: any) => (
+                    <div
+                      key={ep.id}
+                      className="flex items-center justify-between p-2 border rounded-md"
+                    >
+                      <div className="flex-1">
+                        <div className="text-sm font-medium truncate">
+                          {ep.url}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          Último status: {ep.lastStatusCode ?? "N/A"}{" "}
+                          {ep.lastCalledAt
+                            ? `- ${new Date(ep.lastCalledAt).toLocaleString()}`
+                            : ""}
+                        </div>
+                      </div>
+                      <div className="flex gap-2 ml-4">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => testWebhookMutation.mutate(ep.id)}
+                          disabled={testWebhookMutation.isPending}
+                        >
+                          Testar
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => deleteWebhookMutation.mutate(ep.id)}
+                          disabled={deleteWebhookMutation.isPending}
+                        >
+                          Remover
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {status?.authenticated && (
         <Card>
@@ -423,7 +773,7 @@ export default function BlingPage() {
                 disabled={syncProductsMutation.isPending || isSyncing}
                 data-testid="button-sync-products"
               >
-                {(syncProductsMutation.isPending || isSyncing) ? (
+                {syncProductsMutation.isPending || isSyncing ? (
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                 ) : (
                   <Package className="h-4 w-4 mr-2" />
@@ -433,11 +783,16 @@ export default function BlingPage() {
             </div>
 
             {isSyncing && syncProgress && (
-              <div className="space-y-3 p-4 bg-muted/50 rounded-md" data-testid="sync-progress-container">
+              <div
+                className="space-y-3 p-4 bg-muted/50 rounded-md"
+                data-testid="sync-progress-container"
+              >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                    <span className="font-medium text-sm">{syncProgress.phase}</span>
+                    <span className="font-medium text-sm">
+                      {syncProgress.phase}
+                    </span>
                   </div>
                   {syncProgress.estimatedRemaining && (
                     <div className="flex items-center gap-1 text-sm text-muted-foreground">
@@ -446,14 +801,20 @@ export default function BlingPage() {
                     </div>
                   )}
                 </div>
-                
-                <Progress value={progressPercent} className="h-2" data-testid="sync-progress-bar" />
-                
+
+                <Progress
+                  value={progressPercent}
+                  className="h-2"
+                  data-testid="sync-progress-bar"
+                />
+
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">{syncProgress.message}</span>
+                  <span className="text-muted-foreground">
+                    {syncProgress.message}
+                  </span>
                   <span className="font-medium">{progressPercent}%</span>
                 </div>
-                
+
                 <div className="flex gap-4 text-sm">
                   <div className="flex items-center gap-1">
                     <CheckCircle className="h-3 w-3 text-green-500" />
@@ -473,21 +834,28 @@ export default function BlingPage() {
               </div>
             )}
 
-            {syncProgress?.status === 'completed' && (
-              <div className="p-4 bg-green-500/10 border border-green-500/20 rounded-md" data-testid="sync-completed">
+            {syncProgress?.status === "completed" && (
+              <div
+                className="p-4 bg-green-500/10 border border-green-500/20 rounded-md"
+                data-testid="sync-completed"
+              >
                 <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
                   <CheckCircle className="h-5 w-5" />
                   <span className="font-medium">{syncProgress.message}</span>
                 </div>
                 <div className="mt-2 text-sm text-muted-foreground">
-                  {syncProgress.created} produtos criados, {syncProgress.updated} atualizados
+                  {syncProgress.created} produtos criados,{" "}
+                  {syncProgress.updated} atualizados
                   {syncProgress.errors > 0 && `, ${syncProgress.errors} erros`}
                 </div>
               </div>
             )}
 
-            {syncProgress?.status === 'error' && (
-              <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-md" data-testid="sync-error">
+            {syncProgress?.status === "error" && (
+              <div
+                className="p-4 bg-destructive/10 border border-destructive/20 rounded-md"
+                data-testid="sync-error"
+              >
                 <div className="flex items-center gap-2 text-destructive">
                   <AlertCircle className="h-5 w-5" />
                   <span className="font-medium">{syncProgress.message}</span>
@@ -496,7 +864,8 @@ export default function BlingPage() {
             )}
 
             <p className="text-sm text-muted-foreground">
-              A sincronização irá importar ou atualizar categorias e produtos da sua conta Bling.
+              A sincronização irá importar ou atualizar categorias e produtos da
+              sua conta Bling.
             </p>
           </CardContent>
         </Card>
@@ -549,10 +918,13 @@ export default function BlingPage() {
                         onClick={selectAllCategories}
                         data-testid="button-select-all-categories"
                       >
-                        {selectedCategories.length === blingCategories.length ? "Desmarcar Tudo" : "Selecionar Tudo"}
+                        {selectedCategories.length === blingCategories.length
+                          ? "Desmarcar Tudo"
+                          : "Selecionar Tudo"}
                       </Button>
                       <Badge variant="secondary">
-                        {selectedCategories.length} de {blingCategories.length} selecionadas
+                        {selectedCategories.length} de {blingCategories.length}{" "}
+                        selecionadas
                       </Badge>
                     </>
                   )}
@@ -563,10 +935,10 @@ export default function BlingPage() {
                     <div className="space-y-1">
                       {/* Show parent categories first, then their subcategories */}
                       {blingCategories
-                        .filter(cat => !cat.categoriaPai)
+                        .filter((cat) => !cat.categoriaPai)
                         .map((parentCat) => {
                           const subcategories = blingCategories.filter(
-                            sub => sub.categoriaPai?.id === parentCat.id
+                            (sub) => sub.categoriaPai?.id === parentCat.id,
                           );
                           return (
                             <div key={parentCat.id} className="space-y-1">
@@ -575,12 +947,18 @@ export default function BlingPage() {
                                 data-testid={`category-item-${parentCat.id}`}
                               >
                                 <Checkbox
-                                  checked={selectedCategories.includes(parentCat.id)}
-                                  onCheckedChange={() => toggleCategorySelection(parentCat.id)}
+                                  checked={selectedCategories.includes(
+                                    parentCat.id,
+                                  )}
+                                  onCheckedChange={() =>
+                                    toggleCategorySelection(parentCat.id)
+                                  }
                                   data-testid={`checkbox-category-${parentCat.id}`}
                                 />
                                 <div className="flex-1">
-                                  <span className="text-sm font-semibold">{parentCat.descricao}</span>
+                                  <span className="text-sm font-semibold">
+                                    {parentCat.descricao}
+                                  </span>
                                   <span className="text-xs text-muted-foreground ml-2">
                                     (Categoria)
                                   </span>
@@ -596,12 +974,18 @@ export default function BlingPage() {
                                   data-testid={`category-item-${subCat.id}`}
                                 >
                                   <Checkbox
-                                    checked={selectedCategories.includes(subCat.id)}
-                                    onCheckedChange={() => toggleCategorySelection(subCat.id)}
+                                    checked={selectedCategories.includes(
+                                      subCat.id,
+                                    )}
+                                    onCheckedChange={() =>
+                                      toggleCategorySelection(subCat.id)
+                                    }
                                     data-testid={`checkbox-category-${subCat.id}`}
                                   />
                                   <div className="flex-1">
-                                    <span className="text-sm">{subCat.descricao}</span>
+                                    <span className="text-sm">
+                                      {subCat.descricao}
+                                    </span>
                                     <span className="text-xs text-muted-foreground ml-2">
                                       (Subcategoria)
                                     </span>
@@ -616,7 +1000,13 @@ export default function BlingPage() {
                         })}
                       {/* Show orphan subcategories (parent not in list) */}
                       {blingCategories
-                        .filter(cat => cat.categoriaPai && !blingCategories.find(p => p.id === cat.categoriaPai?.id))
+                        .filter(
+                          (cat) =>
+                            cat.categoriaPai &&
+                            !blingCategories.find(
+                              (p) => p.id === cat.categoriaPai?.id,
+                            ),
+                        )
                         .map((orphanCat) => (
                           <label
                             key={orphanCat.id}
@@ -624,12 +1014,18 @@ export default function BlingPage() {
                             data-testid={`category-item-${orphanCat.id}`}
                           >
                             <Checkbox
-                              checked={selectedCategories.includes(orphanCat.id)}
-                              onCheckedChange={() => toggleCategorySelection(orphanCat.id)}
+                              checked={selectedCategories.includes(
+                                orphanCat.id,
+                              )}
+                              onCheckedChange={() =>
+                                toggleCategorySelection(orphanCat.id)
+                              }
                               data-testid={`checkbox-category-${orphanCat.id}`}
                             />
                             <div className="flex-1">
-                              <span className="text-sm">{orphanCat.descricao}</span>
+                              <span className="text-sm">
+                                {orphanCat.descricao}
+                              </span>
                               <span className="text-xs text-muted-foreground ml-2">
                                 (Subcategoria órfã)
                               </span>
@@ -645,8 +1041,13 @@ export default function BlingPage() {
 
                 {blingCategories.length > 0 && (
                   <Button
-                    onClick={() => importCategoriesMutation.mutate(selectedCategories)}
-                    disabled={selectedCategories.length === 0 || importCategoriesMutation.isPending}
+                    onClick={() =>
+                      importCategoriesMutation.mutate(selectedCategories)
+                    }
+                    disabled={
+                      selectedCategories.length === 0 ||
+                      importCategoriesMutation.isPending
+                    }
                     data-testid="button-import-categories"
                   >
                     {importCategoriesMutation.isPending ? (
@@ -654,7 +1055,8 @@ export default function BlingPage() {
                     ) : (
                       <Download className="h-4 w-4 mr-2" />
                     )}
-                    Importar {selectedCategories.length} Categoria{selectedCategories.length !== 1 ? 's' : ''}
+                    Importar {selectedCategories.length} Categoria
+                    {selectedCategories.length !== 1 ? "s" : ""}
                   </Button>
                 )}
               </TabsContent>
@@ -682,10 +1084,13 @@ export default function BlingPage() {
                         onClick={selectAllProducts}
                         data-testid="button-select-all-products"
                       >
-                        {selectedProducts.length === blingProducts.length ? "Desmarcar Tudo" : "Selecionar Tudo"}
+                        {selectedProducts.length === blingProducts.length
+                          ? "Desmarcar Tudo"
+                          : "Selecionar Tudo"}
                       </Button>
                       <Badge variant="secondary">
-                        {selectedProducts.length} de {blingProducts.length} selecionados
+                        {selectedProducts.length} de {blingProducts.length}{" "}
+                        selecionados
                       </Badge>
                     </>
                   )}
@@ -702,18 +1107,29 @@ export default function BlingPage() {
                         >
                           <Checkbox
                             checked={selectedProducts.includes(product.id)}
-                            onCheckedChange={() => toggleProductSelection(product.id)}
+                            onCheckedChange={() =>
+                              toggleProductSelection(product.id)
+                            }
                             data-testid={`checkbox-product-${product.id}`}
                           />
                           <div className="flex-1 min-w-0">
-                            <div className="text-sm font-medium truncate">{product.nome}</div>
+                            <div className="text-sm font-medium truncate">
+                              {product.nome}
+                            </div>
                             <div className="text-xs text-muted-foreground flex flex-wrap gap-2">
                               <span>SKU: {product.codigo}</span>
-                              <span>R$ {product.preco?.toFixed(2) || '0.00'}</span>
+                              <span>
+                                R$ {product.preco?.toFixed(2) || "0.00"}
+                              </span>
                             </div>
                           </div>
-                          <Badge variant={product.situacao === 'A' ? 'default' : 'secondary'} className="text-xs">
-                            {product.situacao === 'A' ? 'Ativo' : 'Inativo'}
+                          <Badge
+                            variant={
+                              product.situacao === "A" ? "default" : "secondary"
+                            }
+                            className="text-xs"
+                          >
+                            {product.situacao === "A" ? "Ativo" : "Inativo"}
                           </Badge>
                         </label>
                       ))}
@@ -723,8 +1139,13 @@ export default function BlingPage() {
 
                 {blingProducts.length > 0 && (
                   <Button
-                    onClick={() => importProductsMutation.mutate(selectedProducts)}
-                    disabled={selectedProducts.length === 0 || importProductsMutation.isPending}
+                    onClick={() =>
+                      importProductsMutation.mutate(selectedProducts)
+                    }
+                    disabled={
+                      selectedProducts.length === 0 ||
+                      importProductsMutation.isPending
+                    }
                     data-testid="button-import-products"
                   >
                     {importProductsMutation.isPending ? (
@@ -732,7 +1153,8 @@ export default function BlingPage() {
                     ) : (
                       <Download className="h-4 w-4 mr-2" />
                     )}
-                    Importar {selectedProducts.length} Produto{selectedProducts.length !== 1 ? 's' : ''}
+                    Importar {selectedProducts.length} Produto
+                    {selectedProducts.length !== 1 ? "s" : ""}
                   </Button>
                 )}
               </TabsContent>

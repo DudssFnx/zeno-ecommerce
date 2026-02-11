@@ -96,6 +96,42 @@ app.use((req, res, next) => {
   // 1. Registrar rotas da API
   await registerRoutes(httpServer, app);
 
+  // --- Ensure DB has expected columns for Bling integration (add if missing) ---
+  try {
+    await pool.query(
+      `ALTER TABLE bling_credentials ADD COLUMN IF NOT EXISTS api_endpoint text;`,
+    );
+    console.log(
+      "[MIGRATION] Ensured column api_endpoint exists on bling_credentials",
+    );
+
+    // Ensure webhook endpoints table exists
+    try {
+      await pool.query(`CREATE TABLE IF NOT EXISTS bling_webhook_endpoints (
+        id serial PRIMARY KEY,
+        company_id varchar,
+        url text NOT NULL,
+        active boolean DEFAULT true,
+        last_status_code integer,
+        last_response_body text,
+        last_called_at timestamp,
+        created_at timestamp DEFAULT now(),
+        updated_at timestamp DEFAULT now()
+      );`);
+      console.log("[MIGRATION] Ensured table bling_webhook_endpoints exists");
+    } catch (err) {
+      console.error(
+        "[MIGRATION] Failed to ensure bling_webhook_endpoints table exists:",
+        err,
+      );
+    }
+  } catch (err) {
+    console.error(
+      "[MIGRATION] Failed to ensure api_endpoint column exists:",
+      err,
+    );
+  }
+
   // 2. Seed SUPER_ADMIN
   try {
     await seedSuperAdmin();

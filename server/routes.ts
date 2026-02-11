@@ -1,4 +1,6 @@
 import {
+  blingCredentials,
+  blingTokens,
   categories,
   companies,
   orderItems,
@@ -14,10 +16,12 @@ import {
 } from "@shared/schema";
 import bcrypt from "bcryptjs";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
-import { type Express } from "express";
+import express, { type Express } from "express";
 import { type Server } from "http";
 import { db } from "./db";
 import { registerFinancialRoutes } from "./financialRoutes";
+import { requireCompany } from "./middleware/company";
+import { saveTokensToDb, verifyWebhookSignature } from "./services/bling";
 import { createPayableFromPurchaseOrder } from "./services/payables.service";
 import {
   cancelReceivablesByOrderId,
@@ -3053,6 +3057,562 @@ export async function registerRoutes(
       res.status(500).json({ message: error.message });
     }
   });
+
+  // ------------------------------------------
+  // Bling credentials management (per company)
+  // ------------------------------------------
+  app.get("/api/bling/credentials", requireCompany, async (req: any, res) => {
+    try {
+      const companyId = String(req.companyId || req.user.companyId);
+      const rows = await db
+        .select()
+        .from(blingCredentials)
+        .where(eq(blingCredentials.companyId, companyId))
+        .orderBy(desc(blingCredentials.id))
+        .limit(1);
+      if (!rows || rows.length === 0) {
+        return res.json({ hasCredentials: false });
+      }
+      const row = rows[0];
+      const masked = row.clientSecret
+        ? row.clientSecret.replace(/.(?=.{4})/g, "*")
+        : null;
+      res.json({
+        hasCredentials: true,
+        clientId: row.clientId || null,
+        clientSecretMasked: masked,
+        apiEndpoint: row.apiEndpoint || null,
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // GET: Bling connection status for current company
+  app.get("/api/bling/status", requireCompany, async (req: any, res) => {
+    try {
+      const companyId = String(req.companyId || req.user.companyId);
+      console.log("[Bling] status requested for company:", companyId);
+
+      const [cred] = await db
+        .select()
+        .from(blingCredentials)
+        .where(eq(blingCredentials.companyId, companyId))
+        .orderBy(desc(blingCredentials.id))
+        .limit(1);
+
+      const [tokenRow] = await db
+        .select()
+        .from(blingTokens)
+        .where(eq(blingTokens.companyId, companyId))
+        .orderBy(desc(blingTokens.id))
+        .limit(1);
+
+      const hasCredentials = !!cred;
+      const authenticated = !!tokenRow;
+
+      res.json({ hasCredentials, authenticated });
+    } catch (error: any) {
+      console.error("[Bling] Error in /api/bling/status:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // DEBUG: public status endpoint (no auth) - use only in local/dev for debugging
+  app.get("/api/bling/status/public", async (req: any, res) => {
+    try {
+      const companyId = String(req.query.companyId || "1");
+      console.log("[Bling] public status requested for company:", companyId);
+
+      const [cred] = await db
+        .select()
+        .from(blingCredentials)
+        .where(eq(blingCredentials.companyId, companyId))
+        .orderBy(desc(blingCredentials.id))
+        .limit(1);
+
+      const [tokenRow] = await db
+        .select()
+        .from(blingTokens)
+        .where(eq(blingTokens.companyId, companyId))
+        .orderBy(desc(blingTokens.id))
+        .limit(1);
+
+      const hasCredentials = !!cred;
+      const authenticated = !!tokenRow;
+
+      res.json({ hasCredentials, authenticated });
+    } catch (error: any) {
+      console.error("[Bling] Error in /api/bling/status/public:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // DEBUG: public test-credentials (no auth) - use only in local/dev for debugging
+  app.post("/api/bling/test-credentials/public", async (req: any, res) => {
+    try {
+      const { clientId, clientSecret, apiEndpoint } = req.body;
+      console.log(
+        "[Bling] public test-credentials called:",
+        !!clientId,
+        apiEndpoint,
+      );
+      if (!clientId || !clientSecret)
+        return res.status(400).json({
+          ok: false,
+          message: "clientId and clientSecret are required",
+        });
+
+      const testEndpoint = apiEndpoint || "https://api.bling.com.br/Api/v3";
+      try {
+        const resp = await fetch(testEndpoint, { method: "GET" });
+        if (resp.ok || resp.status === 401) {
+          return res.json({
+            ok: true,
+            message:
+              "Endpoint reachable. Note: OAuth authorization still required.",
+          });
+        }
+        return res
+          .status(400)
+          .json({ ok: false, message: `Unexpected status ${resp.status}` });
+      } catch (fetchErr: any) {
+        return res.status(500).json({
+          ok: false,
+          message: "Failed to reach API endpoint: " + fetchErr.message,
+        });
+      }
+    } catch (error: any) {
+      console.error(
+        "[Bling] Error in /api/bling/test-credentials/public:",
+        error,
+      );
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/bling/credentials", requireCompany, async (req: any, res) => {
+    try {
+      const { clientId, clientSecret, apiEndpoint, redirectUri } = req.body;
+      const companyId = String(req.companyId || req.user.companyId);
+      if (!clientId || !clientSecret) {
+        return res
+          .status(400)
+          .json({ message: "clientId and clientSecret are required" });
+      }
+
+      // Remove credenciais antigas da empresa e insere as novas
+      await db
+        .delete(blingCredentials)
+        .where(eq(blingCredentials.companyId, companyId));
+      const [inserted] = await db
+        .insert(blingCredentials)
+        .values({
+          companyId,
+          clientId,
+          clientSecret,
+          apiEndpoint,
+          redirectUri,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .returning();
+      res.json({
+        ok: true,
+        credentials: {
+          id: inserted.id,
+          clientId: inserted.clientId,
+          apiEndpoint: inserted.apiEndpoint,
+        },
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post(
+    "/api/bling/test-credentials",
+    requireCompany,
+    async (req: any, res) => {
+      try {
+        const { clientId, clientSecret, apiEndpoint } = req.body;
+        console.log(
+          "[Bling] test-credentials called for company:",
+          req.companyId,
+          "body clientId:",
+          !!clientId,
+          "apiEndpoint:",
+          apiEndpoint,
+        );
+        if (!clientId || !clientSecret)
+          return res.status(400).json({
+            ok: false,
+            message: "clientId and clientSecret are required",
+          });
+
+        const testEndpoint = apiEndpoint || "https://api.bling.com.br/Api/v3";
+
+        // Try a simple GET to the base endpoint (we expect 200 or 401; network errors will be caught)
+        try {
+          const resp = await fetch(testEndpoint, { method: "GET" });
+          // If we get a response, consider it reachable. Bling API will often require auth and return 401,
+          // which is still a sign that the endpoint is reachable.
+          if (resp.ok || resp.status === 401) {
+            return res.json({
+              ok: true,
+              message:
+                "Endpoint reachable. Note: OAuth authorization still required.",
+            });
+          }
+          return res
+            .status(400)
+            .json({ ok: false, message: `Unexpected status ${resp.status}` });
+        } catch (fetchErr: any) {
+          return res.status(500).json({
+            ok: false,
+            message: "Failed to reach API endpoint: " + fetchErr.message,
+          });
+        }
+      } catch (error: any) {
+        res.status(500).json({ message: error.message });
+      }
+    },
+  );
+
+  // START: OAuth flow endpoints
+  app.get("/api/bling/auth", requireCompany, async (req: any, res) => {
+    try {
+      const companyId = String(req.companyId || req.user.companyId);
+      // Prefer credentials stored in DB
+      const rows = await db
+        .select()
+        .from(blingCredentials)
+        .where(eq(blingCredentials.companyId, companyId))
+        .orderBy(desc(blingCredentials.id))
+        .limit(1);
+      const row = rows?.[0];
+      const clientId = row?.clientId || process.env.BLING_CLIENT_ID;
+      const clientSecret = row?.clientSecret || process.env.BLING_CLIENT_SECRET;
+      if (!clientId || !clientSecret) {
+        return res.status(400).json({
+          message:
+            "Bling clientId and clientSecret are required. Please set them in the Bling panel.",
+        });
+      }
+
+      const redirectUri = `${req.protocol}://${req.get("host")}/api/bling/callback`;
+      const state = Buffer.from(
+        JSON.stringify({
+          companyId,
+          nonce: Math.random().toString(36).slice(2),
+        }),
+      ).toString("base64");
+      const authUrl = `https://www.bling.com.br/Api/v3/oauth/authorize?response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}`;
+      console.log("[Bling] Redirecting to auth URL for company:", companyId);
+      res.redirect(authUrl);
+    } catch (error: any) {
+      console.error("[Bling] Error in /api/bling/auth:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/bling/callback", async (req: any, res) => {
+    try {
+      const { code, state } = req.query;
+      if (!code || !state) return res.status(400).send("Missing code or state");
+      let parsed: any;
+      try {
+        parsed = JSON.parse(
+          Buffer.from(state as string, "base64").toString("utf8"),
+        );
+      } catch (e) {
+        return res.status(400).send("Invalid state value");
+      }
+      const companyId = parsed.companyId;
+
+      // Fetch company credentials
+      const rows = await db
+        .select()
+        .from(blingCredentials)
+        .where(eq(blingCredentials.companyId, companyId))
+        .orderBy(desc(blingCredentials.id))
+        .limit(1);
+      const row = rows?.[0];
+      if (!row)
+        return res
+          .status(400)
+          .send("No Bling credentials saved for this company");
+
+      // Exchange code for tokens using company credentials
+      const tokenResp = await fetch(
+        `https://www.bling.com.br/Api/v3/oauth/token`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+            Authorization:
+              "Basic " +
+              Buffer.from(`${row.clientId}:${row.clientSecret}`).toString(
+                "base64",
+              ),
+          },
+          body: new URLSearchParams({
+            grant_type: "authorization_code",
+            code: code as string,
+            redirect_uri: `${req.protocol}://${req.get("host")}/api/bling/callback`,
+          }),
+        },
+      );
+
+      if (!tokenResp.ok) {
+        const text = await tokenResp.text();
+        console.error("[Bling] Token exchange failed:", tokenResp.status, text);
+        return res.status(500).send("Token exchange failed: " + text);
+      }
+
+      const tokens = await tokenResp.json();
+      // Save tokens for the company
+      await saveTokensToDb(tokens as any, companyId);
+
+      // Redirect back to UI with success
+      return res.redirect("/bling?success=true");
+    } catch (error: any) {
+      console.error("[Bling] Error in /api/bling/callback:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // END: OAuth flow endpoints
+
+  // =========================
+  // Webhook endpoints management
+  // =========================
+
+  // List webhook endpoints for the authenticated company
+  app.get(
+    "/api/bling/webhook-endpoints",
+    requireCompany,
+    async (req: any, res) => {
+      try {
+        const companyId = String(req.companyId || req.user.companyId);
+        const rows = await db
+          .select()
+          .from(blingWebhookEndpoints)
+          .where(eq(blingWebhookEndpoints.companyId, companyId))
+          .orderBy(desc(blingWebhookEndpoints.id));
+        res.json(rows);
+      } catch (error: any) {
+        res.status(500).json({ message: error.message });
+      }
+    },
+  );
+
+  // Create a new endpoint
+  app.post(
+    "/api/bling/webhook-endpoints",
+    requireCompany,
+    async (req: any, res) => {
+      try {
+        const { url, active } = req.body;
+        const companyId = String(req.companyId || req.user.companyId);
+        if (!url) return res.status(400).json({ message: "url is required" });
+        const [inserted] = await db
+          .insert(blingWebhookEndpoints)
+          .values({
+            companyId,
+            url,
+            active: active === undefined ? true : !!active,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .returning();
+        res.json({ ok: true, endpoint: inserted });
+      } catch (error: any) {
+        res.status(500).json({ message: error.message });
+      }
+    },
+  );
+
+  // Delete an endpoint
+  app.delete(
+    "/api/bling/webhook-endpoints/:id",
+    requireCompany,
+    async (req: any, res) => {
+      try {
+        const companyId = String(req.companyId || req.user.companyId);
+        const id = parseInt(req.params.id);
+        await db
+          .delete(blingWebhookEndpoints)
+          .where(
+            and(
+              eq(blingWebhookEndpoints.id, id),
+              eq(blingWebhookEndpoints.companyId, companyId),
+            ),
+          );
+        res.json({ ok: true });
+      } catch (error: any) {
+        res.status(500).json({ message: error.message });
+      }
+    },
+  );
+
+  // Test an endpoint (sends a test payload and records last status)
+  app.post(
+    "/api/bling/webhook-endpoints/:id/test",
+    requireCompany,
+    async (req: any, res) => {
+      try {
+        const companyId = String(req.companyId || req.user.companyId);
+        const id = parseInt(req.params.id);
+        const [endpoint] = await db
+          .select()
+          .from(blingWebhookEndpoints)
+          .where(
+            and(
+              eq(blingWebhookEndpoints.id, id),
+              eq(blingWebhookEndpoints.companyId, companyId),
+            ),
+          )
+          .limit(1);
+        if (!endpoint) return res.status(404).json({ message: "not found" });
+        const testPayload = {
+          event: "test.ping",
+          timestamp: new Date().toISOString(),
+        };
+        const resp = await fetch(endpoint.url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(testPayload),
+        });
+        const body = await resp.text();
+        await db
+          .update(blingWebhookEndpoints)
+          .set({
+            lastStatusCode: resp.status,
+            lastResponseBody: body,
+            lastCalledAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .where(eq(blingWebhookEndpoints.id, id));
+        res.json({ ok: true, status: resp.status, body: body });
+      } catch (error: any) {
+        res.status(500).json({ message: error.message });
+      }
+    },
+  );
+
+  // Webhook receiver - validate signature and fan-out to company endpoints
+  app.post(
+    "/api/bling/webhook",
+    express.raw({ type: "*/*" }),
+    async (req: any, res) => {
+      try {
+        const signature = (req.headers["x-bling-signature-256"] ||
+          req.headers["x-blingsignature"] ||
+          "") as string;
+        const payloadBuf =
+          (req.rawBody as Buffer | undefined) || Buffer.from("");
+        console.log(
+          "[Bling] webhook incoming. signature len:",
+          (signature || "").length,
+          "payload len:",
+          payloadBuf.length,
+        );
+
+        // Find company by validating signature against stored client secrets
+        const creds = await db.select().from(blingCredentials);
+        let matchedCompanyId: string | null = null;
+        for (const c of creds) {
+          const secret = c.clientSecret;
+          if (!secret || !signature) continue;
+          try {
+            if (verifyWebhookSignature(payloadBuf, signature, secret)) {
+              matchedCompanyId = c.companyId;
+              console.log(
+                "[Bling] signature matched for company:",
+                matchedCompanyId,
+              );
+              break;
+            }
+          } catch (sigErr) {
+            console.warn(
+              "[Bling] signature check error for company",
+              c.companyId,
+              (sigErr as any).message,
+            );
+          }
+        }
+
+        if (!matchedCompanyId) {
+          console.warn(
+            "[Bling] Webhook received but no matching company by signature",
+          );
+          return res.status(403).send("Invalid signature");
+        }
+
+        // respond immediately
+        res.status(200).send("OK");
+
+        // Fan-out to configured endpoints (background)
+        const endpoints = await db
+          .select()
+          .from(blingWebhookEndpoints)
+          .where(
+            and(
+              eq(blingWebhookEndpoints.companyId, matchedCompanyId),
+              eq(blingWebhookEndpoints.active, true),
+            ),
+          );
+        const payloadBody = payloadBuf.toString("utf8");
+        await Promise.allSettled(
+          endpoints.map(async (ep: any) => {
+            try {
+              const r = await fetch(ep.url, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "X-Bling-Forwarded-Company": matchedCompanyId,
+                },
+                body: payloadBody,
+              });
+              const b = await r.text();
+              await db
+                .update(blingWebhookEndpoints)
+                .set({
+                  lastStatusCode: r.status,
+                  lastResponseBody: b,
+                  lastCalledAt: new Date(),
+                  updatedAt: new Date(),
+                })
+                .where(eq(blingWebhookEndpoints.id, ep.id));
+            } catch (err: any) {
+              console.error(
+                "[Bling] Failed forwarding webhook to",
+                ep.url,
+                err && err.message ? err.message : err,
+              );
+              await db
+                .update(blingWebhookEndpoints)
+                .set({
+                  lastStatusCode: 0,
+                  lastResponseBody: String(
+                    err && err.message ? err.message : err,
+                  ),
+                  lastCalledAt: new Date(),
+                  updatedAt: new Date(),
+                })
+                .where(eq(blingWebhookEndpoints.id, ep.id));
+            }
+          }),
+        );
+      } catch (error: any) {
+        console.error("[Bling] Error handling webhook:", error);
+        res.status(500).send("Server error");
+      }
+    },
+  );
+
+  // ==========================================
 
   // ==========================================
   // 💳 TIPOS DE PAGAMENTO (PaymentTypes)
