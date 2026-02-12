@@ -672,21 +672,43 @@ export default function BlingPage() {
       const response = await apiRequest("POST", "/api/bling/products/import", {
         productIds,
       });
-      return response.json();
+      const body = await response.json().catch(() => null);
+      return { status: response.status, body };
     },
-    onSuccess: (data: ImportResult) => {
-      if ((data.imported || 0) === 0 && (data.skipped || 0) === 0 && (data.errors || []).length > 0) {
+    onSuccess: (data: { status: number; body: any }) => {
+      if (data.status === 202) {
         toast({
-          title: "Erro ao importar",
-          description: `Nenhum produto importado. Erros: ${data.errors.slice(0,3).join('; ')}`,
+          title: "Importação iniciada",
+          description:
+            "A importação foi iniciada em background. Você receberá atualizações no painel de importação.",
+        });
+      } else if (data.status === 409) {
+        toast({
+          title: "Importação já em andamento",
+          description:
+            "Já existe uma importação em progresso. Aguarde até finalizar antes de iniciar outra.",
           variant: "destructive",
         });
       } else {
-        toast({
-          title: "Produtos importados",
-          description: `${data.imported} importados, ${data.skipped} já existentes`,
-        });
+        const body = data.body as ImportResult;
+        if (
+          (body.imported || 0) === 0 &&
+          (body.skipped || 0) === 0 &&
+          (body.errors || []).length > 0
+        ) {
+          toast({
+            title: "Erro ao importar",
+            description: `Nenhum produto importado. Erros: ${body.errors.slice(0, 3).join("; ")}`,
+            variant: "destructive",
+          });
+        } else {
+          toast({
+            title: "Produtos importados",
+            description: `${body.imported} importados, ${body.skipped} já existentes`,
+          });
+        }
       }
+
       queryClient.invalidateQueries({ queryKey: ["/api/products"] });
       setSelectedProducts([]);
       loadBlingProducts();
@@ -1608,17 +1630,25 @@ export default function BlingPage() {
                     }
                     disabled={
                       selectedProducts.length === 0 ||
-                      importProductsMutation.isPending
+                      importProductsMutation.isPending ||
+                      status?.importInProgress
                     }
                     data-testid="button-import-products"
                   >
-                    {importProductsMutation.isPending ? (
+                    {importProductsMutation.isPending ||
+                    status?.importInProgress ? (
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                     ) : (
                       <Download className="h-4 w-4 mr-2" />
                     )}
-                    Importar {selectedProducts.length} Produto
-                    {selectedProducts.length !== 1 ? "s" : ""}
+                    {status?.importInProgress ? (
+                      <>Importação em andamento</>
+                    ) : (
+                      <>
+                        Importar {selectedProducts.length} Produto
+                        {selectedProducts.length !== 1 ? "s" : ""}
+                      </>
+                    )}
                   </Button>
                 )}
               </TabsContent>

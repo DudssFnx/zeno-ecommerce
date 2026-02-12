@@ -114,6 +114,9 @@ let tokenExpiresAt: number = 0;
 let isRefreshing: boolean = false;
 let refreshPromise: Promise<BlingTokensResponse> | null = null;
 
+// Flag to indicate if an import by specific product IDs is running (avoid concurrent imports)
+export let importProductsInProgress: boolean = false;
+
 // ========== TOKEN PERSISTENCE ==========
 
 export async function saveTokensToDb(
@@ -478,63 +481,100 @@ async function getValidAccessToken(): Promise<string> {
   return accessToken;
 }
 
-async function blingApiRequest<T>(endpoint: string): Promise<T> {
+async function blingApiRequest<T>(
+  endpoint: string,
+  timeoutMs: number = 10000,
+): Promise<T> {
   const accessToken = await getValidAccessToken();
 
-  const response = await fetch(`${BLING_API_BASE}${endpoint}`, {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      Accept: "application/json",
-    },
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
-  if (response.status === 401) {
-    try {
-      await refreshAccessToken();
-      return blingApiRequest<T>(endpoint);
-    } catch {
-      throw new Error("Authentication failed. Please re-authorize with Bling.");
+  try {
+    const response = await fetch(`${BLING_API_BASE}${endpoint}`, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        Accept: "application/json",
+      },
+      signal: controller.signal,
+    });
+
+    if (response.status === 401) {
+      try {
+        await refreshAccessToken();
+        return blingApiRequest<T>(endpoint, timeoutMs);
+      } catch {
+        throw new Error(
+          "Authentication failed. Please re-authorize with Bling.",
+        );
+      }
     }
-  }
 
-  if (!response.ok) {
-    const error = await response.text();
-    console.error(`Bling API error for ${endpoint}:`, error);
-    throw new Error(`Bling API error: ${response.status}`);
-  }
+    if (!response.ok) {
+      const error = await response.text();
+      console.error(`Bling API error for ${endpoint}:`, error);
+      throw new Error(`Bling API error: ${response.status}`);
+    }
 
-  return response.json();
+    return response.json();
+  } catch (err: any) {
+    if (err.name === "AbortError") {
+      throw new Error("Bling API request timed out");
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
-async function blingApiPost<T>(endpoint: string, body: unknown): Promise<T> {
+async function blingApiPost<T>(
+  endpoint: string,
+  body: unknown,
+  timeoutMs: number = 10000,
+): Promise<T> {
   const accessToken = await getValidAccessToken();
 
-  const response = await fetch(`${BLING_API_BASE}${endpoint}`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      Accept: "application/json",
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(body),
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
-  if (response.status === 401) {
-    try {
-      await refreshAccessToken();
-      return blingApiPost<T>(endpoint, body);
-    } catch {
-      throw new Error("Authentication failed. Please re-authorize with Bling.");
+  try {
+    const response = await fetch(`${BLING_API_BASE}${endpoint}`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+
+    if (response.status === 401) {
+      try {
+        await refreshAccessToken();
+        return blingApiPost<T>(endpoint, body, timeoutMs);
+      } catch {
+        throw new Error(
+          "Authentication failed. Please re-authorize with Bling.",
+        );
+      }
     }
-  }
 
-  if (!response.ok) {
-    const error = await response.text();
-    console.error(`Bling API POST error for ${endpoint}:`, error);
-    throw new Error(`Bling API error: ${response.status} - ${error}`);
-  }
+    if (!response.ok) {
+      const error = await response.text();
+      console.error(`Bling API POST error for ${endpoint}:`, error);
+      throw new Error(`Bling API error: ${response.status} - ${error}`);
+    }
 
-  return response.json();
+    return response.json();
+  } catch (err: any) {
+    if (err.name === "AbortError") {
+      throw new Error("Bling API request timed out");
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 export async function fetchBlingProductsList(
@@ -1703,28 +1743,38 @@ export async function importBlingProductsByIds(
   productIds: number[],
   companyId?: string,
 ): Promise<{ imported: number; skipped: number; errors: string[] }> {
+  if (importProductsInProgress) {
+    throw new Error("Another product import is already in progress");
+  }
+
+  importProductsInProgress = true;
   let imported = 0;
   let skipped = 0;
   const errors: string[] = [];
 
-  for (const id of productIds) {
-    try {
-      const result = await importBlingProductById(id, companyId);
-      if (result.created) imported++;
-      else if (result.updated) skipped++; // treat update as skipped for UX
-      else {
-        // No creation or update — treat as an error (e.g., product not found)
-        errors.push(`Product ${id}: ${result.message || "not imported"}`);
+  try {
+    for (const id of productIds) {
+      try {
+        const result = await importBlingProductById(id, companyId);
+        if (result.created) imported++;
+        else if (result.updated)
+          skipped++; // treat update as skipped for UX
+        else {
+          // No creation or update — treat as an error (e.g., product not found)
+          errors.push(`Product ${id}: ${result.message || "not imported"}`);
+        }
+      } catch (error) {
+        const err = error as any;
+        errors.push(`Product ${id}: ${err?.message || String(err)}`);
       }
-    } catch (error) {
-      const err = error as any;
-      errors.push(`Product ${id}: ${err?.message || String(err)}`);
+      // Basic rate limit friendliness
+      await new Promise((r) => setTimeout(r, 300));
     }
-    // Basic rate limit friendliness
-    await new Promise((r) => setTimeout(r, 300));
-  }
 
-  return { imported, skipped, errors };
+    return { imported, skipped, errors };
+  } finally {
+    importProductsInProgress = false;
+  }
 }
 
 // ========== ORDER CREATION ==========

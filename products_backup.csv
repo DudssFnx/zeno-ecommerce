@@ -1,0 +1,9 @@
+id,name,sku,category_id,supplier_id,brand,description,price,cost,stock,reserved_stock,image,images,featured,weight,width,height,depth,gtin,gtin_tributario,origem,ncm,cest,tipo_item,percentual_tributos,icms_cst,icms_aliquota,ipi_cst,ipi_aliquota,pis_cst,pis_aliquota,cofins_cst,cofins_aliquota,valor_base_icms_st_retencao,valor_icms_st_retencao,valor_icms_proprio_substituto,codigo_excecao_tipi,valor_pis_fixo,valor_cofins_fixo,created_at,company_id,unit,min_stock,max_stock,status,format,variations_config,gross_weight,tax_origin,updated_at,bling_id,bling_last_synced_at
+344,CAMISA,sku-200,,,,,45.90,15.00,20,0,,,f,,,,,,,,,,,,,,,,,,,,,,,,,,2026-01-28 23:23:00.348,UUID-nova-empresa,UN,,,ATIVO,simple,,,,2026-02-03 02:06:33.967389,,
+350,MOCHILA,sku-100,,,"","",90.00,30.00,600,0,,,f,0.000,0.00,0.00,0.00,,,,"","",,,,,,,,,,,,,,,,,2026-02-03 02:38:39.169,UUID-nova-empresa,UN,500,1500,ATIVO,simple,,,"",2026-02-05 17:03:45.817,,
+343,SAPATO,sku-900,,,,,100.00,45.00,10,0,,,f,,,,,,,,,,,,,,,,,,,,,,,,,,2026-01-28 23:22:25.135,UUID-nova-empresa,UN,,,ATIVO,simple,,,,2026-02-06 01:24:25.472,,
+356,Produto 1,SKU1,,,,,10.00,,100,0,,,f,,,,,,,,,,,,,,,,,,,,,,,,,,2026-02-10 00:35:17.1071,<ID_EMPRESA_1>,UN,,,ATIVO,simple,,,,2026-02-10 00:35:17.1071,,
+357,Produto 2,SKU2,,,,,20.00,,50,0,,,f,,,,,,,,,,,,,,,,,,,,,,,,,,2026-02-10 00:35:17.360044,<ID_EMPRESA_2>,UN,,,ATIVO,simple,,,,2026-02-10 00:35:17.360044,,
+354,Produto Teste 1,SKU001,,,,,10.00,,100,0,,,f,,,,,,,,,,,,,,,,,,,,,,,,,,2026-02-10 00:30:27.572908,1,UN,,,ATIVO,simple,,,,2026-02-10 00:30:27.572908,,
+355,Produto Teste 2,SKU002,,,,,20.00,,50,0,,,f,,,,,,,,,,,,,,,,,,,,,,,,,,2026-02-10 00:30:27.572908,1,UN,,,ATIVO,simple,,,,2026-02-10 00:30:27.572908,,
+361,Sapato Madrugadao,sku-222,,,"","",120.00,40.00,10,0,,,f,0.000,0.00,0.00,0.00,,,,"","",,,,,,,,,,,,,,,,,2026-02-11 01:41:47.296,22d418e8-6a70-4b37-834e-83e1a3921734,UN,0,0,ATIVO,simple,,,"",2026-02-11 03:39:30.729,,

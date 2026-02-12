@@ -3192,7 +3192,10 @@ export async function registerRoutes(
       const hasCredentials = !!cred;
       const authenticated = !!tokenRow;
 
-      res.json({ hasCredentials, authenticated });
+      const m = await import("./services/bling");
+      const importInProgress = !!m.importProductsInProgress;
+
+      res.json({ hasCredentials, authenticated, importInProgress });
     } catch (error) {
       console.error("[Bling] Error in /api/bling/status:", error);
       res
@@ -3702,9 +3705,9 @@ export async function registerRoutes(
             if (products.length < limit) break;
           } catch (err: any) {
             console.error(`[bling search] error fetching page ${page}:`, err);
-            return res
-              .status(500)
-              .json({ message: `Error fetching page ${page}: ${err?.message || String(err)}` });
+            return res.status(500).json({
+              message: `Error fetching page ${page}: ${err?.message || String(err)}`,
+            });
           }
         }
 
@@ -3761,10 +3764,28 @@ export async function registerRoutes(
             .status(400)
             .json({ message: "productIds must be a non-empty array" });
         const companyId = String(req.companyId || req.user.companyId);
-        const result = await import("./services/bling").then((m) =>
-          m.importBlingProductsByIds(productIds, companyId),
+
+        // Start import in background so the HTTP request returns quickly
+        // (prevents Railway / other platforms from timing out on long imports)
+        const m = await import("./services/bling");
+        if (m.importProductsInProgress) {
+          return res
+            .status(409)
+            .json({ ok: false, message: "An import is already in progress" });
+        }
+
+        console.log(
+          `[Bling] Starting background import for ${productIds.length} products for company ${companyId}`,
         );
-        res.json(result);
+        m.importBlingProductsByIds(productIds, companyId)
+          .then((result) =>
+            console.log("[Bling] Background import finished:", result),
+          )
+          .catch((err) =>
+            console.error("[Bling] Background import failed:", err),
+          );
+
+        res.status(202).json({ ok: true, message: "Import started" });
       } catch (error) {
         res
           .status(500)
