@@ -3190,7 +3190,26 @@ export async function registerRoutes(
         .limit(1);
 
       const hasCredentials = !!cred;
-      const authenticated = !!tokenRow;
+      // Consider token valid only if present and not yet expired in DB
+      let authenticated = false;
+      if (tokenRow) {
+        try {
+          const expiresAt = tokenRow.expiresAt;
+          const expiresAtMs =
+            typeof expiresAt === "number"
+              ? expiresAt > 1e12
+                ? expiresAt
+                : expiresAt * 1000
+              : expiresAt instanceof Date
+              ? expiresAt.getTime()
+              : Number(expiresAt) > 1e12
+              ? Number(expiresAt)
+              : Number(expiresAt) * 1000;
+          authenticated = !isNaN(expiresAtMs) && expiresAtMs > Date.now();
+        } catch (e) {
+          authenticated = true; // fallback: token exists
+        }
+      }
 
       const m = await import("./services/bling");
       const importInProgress = !!m.importProductsInProgress;
@@ -3647,6 +3666,16 @@ export async function registerRoutes(
         "[Bling] Token exchange and save complete for company:",
         companyId,
       );
+
+      // Ensure in-memory cache/environment are updated immediately so the running
+      // process uses the newly saved tokens (avoids "still unauthenticated" errors)
+      try {
+        const m = await import("./services/bling");
+        await m.initializeBlingTokens();
+        console.log("[Bling] In-memory tokens reloaded after callback for company:", companyId);
+      } catch (e) {
+        console.error("[Bling] Failed to reload in-memory tokens after callback:", e);
+      }
 
       // Redirect back to UI with success
       return res.redirect("/bling?success=true");
