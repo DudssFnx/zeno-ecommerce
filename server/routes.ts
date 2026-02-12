@@ -3201,10 +3201,10 @@ export async function registerRoutes(
                 ? expiresAt
                 : expiresAt * 1000
               : expiresAt instanceof Date
-              ? expiresAt.getTime()
-              : Number(expiresAt) > 1e12
-              ? Number(expiresAt)
-              : Number(expiresAt) * 1000;
+                ? expiresAt.getTime()
+                : Number(expiresAt) > 1e12
+                  ? Number(expiresAt)
+                  : Number(expiresAt) * 1000;
           authenticated = !isNaN(expiresAtMs) && expiresAtMs > Date.now();
         } catch (e) {
           authenticated = true; // fallback: token exists
@@ -3672,9 +3672,15 @@ export async function registerRoutes(
       try {
         const m = await import("./services/bling");
         await m.initializeBlingTokens();
-        console.log("[Bling] In-memory tokens reloaded after callback for company:", companyId);
+        console.log(
+          "[Bling] In-memory tokens reloaded after callback for company:",
+          companyId,
+        );
       } catch (e) {
-        console.error("[Bling] Failed to reload in-memory tokens after callback:", e);
+        console.error(
+          "[Bling] Failed to reload in-memory tokens after callback:",
+          e,
+        );
       }
 
       // Redirect back to UI with success
@@ -3697,6 +3703,104 @@ export async function registerRoutes(
     async (req: any, res) => {
       try {
         res.json({ lastAuthUrl: lastBlingAuthUrl });
+      } catch (err: any) {
+        res.status(500).json({ message: err.message });
+      }
+    },
+  );
+
+  // ---- Admin-only Bling debug & control endpoints ----
+  // Use these to inspect in-memory/persisted tokens and to force reload/refresh in the running process.
+  // Protected with requireSuperAdmin because they reveal or change authentication state.
+
+  // GET: show masked token state from DB for debugging (superadmin only)
+  app.get(
+    "/api/bling/debug/tokens",
+    requireSuperAdmin,
+    async (req: any, res) => {
+      try {
+        const [row] = await db
+          .select()
+          .from(blingTokens)
+          .orderBy(desc(blingTokens.id))
+          .limit(1);
+
+        if (!row) return res.json({ found: false });
+
+        const mask = (t: string | null | undefined) => {
+          if (!t) return null;
+          if (t.length <= 10) return t[0] + "***" + t.slice(-1);
+          return `${t.slice(0, 6)}...${t.slice(-4)}`;
+        };
+
+        // compute expires info
+        const expiresAtRaw = row.expiresAt;
+        const expiresAtMs =
+          typeof expiresAtRaw === "number"
+            ? expiresAtRaw > 1e12
+              ? expiresAtRaw
+              : expiresAtRaw * 1000
+            : expiresAtRaw instanceof Date
+            ? expiresAtRaw.getTime()
+            : Number(expiresAtRaw) > 1e12
+            ? Number(expiresAtRaw)
+            : Number(expiresAtRaw) * 1000;
+        const expiresInSec = Math.max(0, Math.floor((expiresAtMs - Date.now()) / 1000));
+
+        res.json({
+          found: true,
+          companyId: row.companyId || null,
+          // show masked in-memory tokens (if initialized) and DB metadata — do NOT expose raw encrypted DB values
+          accessToken: mask(process.env.BLING_ACCESS_TOKEN || null),
+          refreshToken: mask(process.env.BLING_REFRESH_TOKEN || null),
+          expiresAt: new Date(expiresAtMs).toISOString(),
+          expiresInSec,
+          tokenType: row.tokenType || null,
+        });
+      } catch (err: any) {
+        res.status(500).json({ message: err.message });
+      }
+    },
+  );
+
+  // POST: reload in-memory tokens from DB (superadmin only)
+  app.post(
+    "/api/bling/force-reload",
+    requireSuperAdmin,
+    async (req: any, res) => {
+      try {
+        const m = await import("./services/bling");
+        const reloaded = await m.initializeBlingTokens();
+
+        const [row] = await db
+          .select()
+          .from(blingTokens)
+          .orderBy(desc(blingTokens.id))
+          .limit(1);
+
+        res.json({ reloaded, tokenRow: row || null });
+      } catch (err: any) {
+        res.status(500).json({ message: err.message });
+      }
+    },
+  );
+
+  // POST: force-refresh access token now (superadmin only)
+  app.post(
+    "/api/bling/force-refresh",
+    requireSuperAdmin,
+    async (req: any, res) => {
+      try {
+        const m = await import("./services/bling");
+        const tokens = await m.refreshAccessToken();
+
+        const [row] = await db
+          .select()
+          .from(blingTokens)
+          .orderBy(desc(blingTokens.id))
+          .limit(1);
+
+        res.json({ refreshed: true, tokens: { access_token: "<masked>", expires_in: tokens.expires_in }, tokenRow: row || null });
       } catch (err: any) {
         res.status(500).json({ message: err.message });
       }
