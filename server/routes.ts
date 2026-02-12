@@ -3222,6 +3222,58 @@ export async function registerRoutes(
     },
   );
 
+  // SSE endpoint for sync progress (EventSource)
+  app.get("/api/bling/sync/progress", requireCompany, async (req: any, res) => {
+    try {
+      const m = await import("./services/bling");
+      // Set headers for SSE
+      res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Connection", "keep-alive");
+      res.flushHeaders && res.flushHeaders();
+
+      const send = (payload: any) => {
+        try {
+          res.write(`data: ${JSON.stringify(payload)}\n\n`);
+        } catch (e) {
+          /* ignore write errors */
+        }
+      };
+
+      // Send initial snapshot
+      send(m.getSyncProgress());
+
+      const unsubscribe = m.subscribeSyncProgress((p) => send(p));
+
+      req.on("close", () => {
+        try {
+          unsubscribe();
+        } catch (e) {}
+        try {
+          res.end();
+        } catch (e) {}
+      });
+    } catch (error) {
+      console.error("[Bling] SSE /sync/progress error:", error);
+      if (!res.headersSent)
+        res
+          .status(500)
+          .json({ message: "Failed to establish progress stream" });
+    }
+  });
+
+  // Disconnect Bling for current company (clear persisted tokens)
+  app.post("/api/bling/disconnect", requireCompany, async (req: any, res) => {
+    try {
+      const m = await import("./services/bling");
+      await m.clearBlingTokens();
+      res.json({ ok: true, message: "Disconnected" });
+    } catch (error) {
+      console.error("[Bling] Failed to disconnect:", error);
+      res.status(500).json({ message: "Failed to disconnect Bling" });
+    }
+  });
+
   // DEBUG: public status endpoint (no auth) - use only in local/dev for debugging
   app.get("/api/bling/status/public", async (req: any, res) => {
     try {

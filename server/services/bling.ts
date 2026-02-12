@@ -422,7 +422,15 @@ export async function refreshAccessToken(): Promise<BlingTokensResponse> {
       if (!response.ok) {
         const error = await response.text();
         console.error("[Bling] Token refresh error:", error);
-        // Clear cached data on refresh failure
+        // Clear cached data and persisted tokens on refresh failure so UI shows unauthenticated
+        try {
+          await clearBlingTokens();
+        } catch (e) {
+          console.error(
+            "[Bling] Failed to clear tokens after refresh failure:",
+            e,
+          );
+        }
         cachedTokens = null;
         tokenExpiresAt = 0;
         throw new Error(`Failed to refresh token: ${response.status}`);

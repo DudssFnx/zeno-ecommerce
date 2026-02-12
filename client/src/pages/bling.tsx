@@ -579,11 +579,34 @@ export default function BlingPage() {
       setHasMoreProducts(products.length === pageSize);
       return products;
     } catch (error: any) {
-      toast({
-        title: "Erro ao carregar produtos",
-        description: error.message || "Falha ao buscar produtos do Bling",
-        variant: "destructive",
-      });
+      const msg = error?.message || "Falha ao buscar produtos do Bling";
+      // If authentication has failed on the server, offer a direct re-authorize action
+      if (
+        String(msg).toLowerCase().includes("re-authorize") ||
+        String(msg).toLowerCase().includes("reauthorize") ||
+        String(msg).toLowerCase().includes("authentication failed")
+      ) {
+        toast({
+          title: "Erro de autenticação Bling",
+          description:
+            "Sua conexão com o Bling expirou. É necessário re-autorizar.",
+          action: (
+            <Button
+              size="sm"
+              onClick={() => (window.location.href = "/api/bling/auth")}
+            >
+              Autorizar (OAuth)
+            </Button>
+          ),
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Erro ao carregar produtos",
+          description: msg,
+          variant: "destructive",
+        });
+      }
       return [];
     } finally {
       setLoadingProducts(false);
