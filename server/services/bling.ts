@@ -1621,19 +1621,38 @@ async function handleStockEvent(
   const blingProductId = data.produto.id;
   const newStock = data.saldoVirtualTotal;
 
-  // Prefer exact match by blingId for reliability
-  const [found] = await db
-    .select()
-    .from(products)
-    .where(eq(products.blingId, blingProductId))
-    .limit(1);
+  // Prefer exact match by blingId for reliability (scoped to company when available)
+  let found;
+  if (companyId) {
+    [found] = await db
+      .select()
+      .from(products)
+      .where(
+        and(
+          eq(products.blingId, blingProductId),
+          eq(products.companyId, companyId),
+        ),
+      )
+      .limit(1);
+  } else {
+    [found] = await db
+      .select()
+      .from(products)
+      .where(eq(products.blingId, blingProductId))
+      .limit(1);
+  }
 
   let product = found;
 
-  // Fallback: try matching by SKU patterns
+  // Fallback: try matching by SKU patterns (scoped to company when available)
   if (!product) {
-    const allProducts = await db.select().from(products);
-    product = allProducts.find(
+    const productsToSearch = companyId
+      ? await db
+          .select()
+          .from(products)
+          .where(eq(products.companyId, companyId))
+      : await db.select().from(products);
+    product = productsToSearch.find(
       (p) =>
         p.sku === `BLING-${blingProductId}` ||
         p.sku.includes(String(blingProductId)),
@@ -1709,16 +1728,49 @@ export async function importBlingProductById(
     image: imageUrl,
     blingId: fullProduct.id,
     blingLastSyncedAt: new Date(),
+    companyId: companyId ?? null,
   };
 
-  const existing = await db
-    .select()
-    .from(products)
-    .where(eq(products.sku, sku))
-    .limit(1);
+  // 1) Try to find existing product by blingId scoped to company when provided
+  let productFound: any = null;
+  if (companyId) {
+    const [pf] = await db
+      .select()
+      .from(products)
+      .where(
+        and(
+          eq(products.blingId, fullProduct.id),
+          eq(products.companyId, companyId),
+        ),
+      )
+      .limit(1);
+    productFound = pf;
+  } else {
+    const [pf] = await db
+      .select()
+      .from(products)
+      .where(eq(products.blingId, fullProduct.id))
+      .limit(1);
+    productFound = pf;
+  }
 
-  if (existing.length === 0) {
-    await db.insert(products).values(productData);
+  // 2) Fallback: search by SKU within company if provided, otherwise globally
+  if (!productFound) {
+    const rows = companyId
+      ? await db
+          .select()
+          .from(products)
+          .where(and(eq(products.sku, sku), eq(products.companyId, companyId)))
+      : await db.select().from(products).where(eq(products.sku, sku));
+    if (rows.length > 0) productFound = rows[0];
+  }
+
+  if (!productFound) {
+    await db.insert(products).values({
+      ...productData,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
     return { created: true, updated: false, message: `Product ${sku} created` };
   } else {
     await db
@@ -1733,8 +1785,10 @@ export async function importBlingProductById(
         image: productData.image,
         blingId: productData.blingId,
         blingLastSyncedAt: productData.blingLastSyncedAt,
+        updatedAt: new Date(),
+        companyId: productFound.companyId ?? companyId ?? null,
       })
-      .where(eq(products.sku, sku));
+      .where(eq(products.id, productFound.id));
     return { created: false, updated: true, message: `Product ${sku} updated` };
   }
 }
