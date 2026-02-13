@@ -391,6 +391,117 @@ export async function registerRoutes(
         .json({ message: (error as any).message || String(error) });
     }
   });
+
+  // Cria nova categoria
+  app.post("/api/categories", async (req: any, res) => {
+    if (!req.isAuthenticated()) return res.status(401).send();
+    try {
+      const { name, slug, parentId, hideFromVarejo } = req.body || {};
+      if (!name || !String(name).trim()) {
+        return res.status(400).json({ message: "Nome é obrigatório" });
+      }
+      const companyId = getCompanyId(req);
+      const finalSlug =
+        (slug && String(slug).trim()) || generateSlug(String(name));
+
+      // Verifica slug duplicado na mesma empresa
+      const existing = await db
+        .select()
+        .from(categories)
+        .where(
+          and(
+            eq(categories.companyId, companyId),
+            eq(categories.slug, finalSlug),
+          ),
+        )
+        .limit(1);
+      if (existing.length > 0) {
+        return res.status(409).json({ message: "Slug já existe" });
+      }
+
+      const [newCategory] = await db
+        .insert(categories)
+        .values({
+          companyId,
+          name: String(name).trim(),
+          slug: finalSlug,
+          parentId: parentId ? Number(parentId) : null,
+          hideFromVarejo: !!hideFromVarejo,
+        })
+        .returning();
+
+      res.status(201).json(newCategory);
+    } catch (error) {
+      res
+        .status(500)
+        .json({ message: (error as any).message || String(error) });
+    }
+  });
+
+  // Atualiza categoria
+  app.patch("/api/categories/:id", async (req: any, res) => {
+    if (!req.isAuthenticated()) return res.status(401).send();
+    try {
+      const id = parseInt(req.params.id);
+      const { name, slug, parentId, hideFromVarejo } = req.body || {};
+      const companyId = getCompanyId(req);
+
+      let whereClause: any = eq(categories.id, id);
+      if (req.user.role !== "superadmin") {
+        whereClause = and(whereClause, eq(categories.companyId, companyId));
+      }
+
+      const updateData: any = {};
+      if (name !== undefined) updateData.name = String(name).trim();
+      if (slug !== undefined)
+        updateData.slug =
+          String(slug).trim() || generateSlug(String(name || ""));
+      if (parentId !== undefined)
+        updateData.parentId = parentId ? Number(parentId) : null;
+      if (hideFromVarejo !== undefined)
+        updateData.hideFromVarejo = !!hideFromVarejo;
+
+      const [updated] = await db
+        .update(categories)
+        .set(updateData)
+        .where(whereClause)
+        .returning();
+      if (!updated)
+        return res.status(404).json({ message: "Categoria não encontrada" });
+      res.json(updated);
+    } catch (error) {
+      res
+        .status(500)
+        .json({ message: (error as any).message || String(error) });
+    }
+  });
+
+  // Exclui categoria
+  app.delete("/api/categories/:id", async (req: any, res) => {
+    if (!req.isAuthenticated()) return res.status(401).send();
+    try {
+      const id = parseInt(req.params.id);
+      const companyId = getCompanyId(req);
+
+      let whereClause: any = eq(categories.id, id);
+      if (req.user.role !== "superadmin") {
+        whereClause = and(whereClause, eq(categories.companyId, companyId));
+      }
+
+      const [deleted] = await db
+        .delete(categories)
+        .where(whereClause)
+        .returning();
+      if (!deleted)
+        return res.status(404).json({ message: "Categoria não encontrada" });
+      res.json({ message: "Excluído" });
+    } catch (error) {
+      res
+        .status(500)
+        .json({ message: (error as any).message || String(error) });
+    }
+  });
+
   // 🏢 EMPRESA
   // ==========================================
 
@@ -3856,12 +3967,10 @@ export async function registerRoutes(
           message.includes("429") ||
           message.toLowerCase().includes("limite de requisições")
         ) {
-          return res
-            .status(429)
-            .json({
-              message:
-                "Bling API rate limit reached. Please try again in a few seconds.",
-            });
+          return res.status(429).json({
+            message:
+              "Bling API rate limit reached. Please try again in a few seconds.",
+          });
         }
         res.status(500).json({ message: message || String(error) });
       }
