@@ -131,7 +131,7 @@ export const categories = pgTable("categories", {
   slug: text("slug"),
   parentId: integer("parent_id"),
   hideFromVarejo: boolean("hide_from_varejo"),
-  blingId: bigint("bling_id"),
+  blingId: bigint("bling_id", { mode: "number" }),
 });
 export type Category = typeof categories.$inferSelect;
 export type InsertCategory = typeof categories.$inferInsert;
@@ -213,7 +213,7 @@ export const products = pgTable("products", {
   ipiCst: text("ipi_cst"),
   ipiAliquota: decimal("ipi_aliquota"),
 
-  blingId: bigint("bling_id"),
+  blingId: bigint("bling_id", { mode: "number" }),
   blingLastSyncedAt: timestamp("bling_last_synced_at"),
   pisCst: text("pis_cst"),
   pisAliquota: decimal("pis_aliquota"),

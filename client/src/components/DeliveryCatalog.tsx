@@ -2,6 +2,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useCart } from "@/contexts/CartContext";
+import { useCompany } from "@/contexts/CompanyContext";
 import { useToast } from "@/hooks/use-toast";
 import type { Category, Product as SchemaProduct } from "@shared/schema";
 import { useQuery } from "@tanstack/react-query";
@@ -41,8 +42,22 @@ export function DeliveryCatalog({ isPublic = false }: DeliveryCatalogProps) {
 
   const apiPrefix = isPublic ? "/api/public" : "/api";
 
+  const { activeCompany } = useCompany();
+
+  const companyHeaders = activeCompany
+    ? { "X-Company-Id": activeCompany.id }
+    : {};
+
   const { data: categories = [] } = useQuery<Category[]>({
     queryKey: [`${apiPrefix}/categories`],
+    queryFn: async () => {
+      const res = await fetch(`${apiPrefix}/categories`, {
+        credentials: "include",
+        headers: companyHeaders,
+      });
+      if (!res.ok) throw new Error("Failed to fetch categories");
+      return res.json();
+    },
   });
 
   const parentCategories = useMemo(
@@ -64,6 +79,7 @@ export function DeliveryCatalog({ isPublic = false }: DeliveryCatalogProps) {
     queryFn: async () => {
       const res = await fetch(`${apiPrefix}/products?${queryParams}`, {
         credentials: "include",
+        headers: companyHeaders,
       });
       if (!res.ok) throw new Error("Failed to fetch products");
       return res.json();

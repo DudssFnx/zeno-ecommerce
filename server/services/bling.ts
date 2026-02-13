@@ -5,7 +5,7 @@ import {
   type InsertProduct,
 } from "@shared/schema";
 import crypto from "crypto";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { db } from "../db";
 
 const BLING_API_BASE = "https://api.bling.com.br/Api/v3";
@@ -589,10 +589,34 @@ export async function fetchBlingProductsList(
   page: number = 1,
   limit: number = 100,
 ): Promise<BlingProductBasic[]> {
-  const response = await blingApiRequest<{ data: BlingProductBasic[] }>(
-    `/produtos?pagina=${page}&limite=${limit}&tipo=P&criterio=1`,
-  );
-  return response.data || [];
+  // Retry on transient errors (especially 429 rate limit) with exponential backoff
+  const maxAttempts = 5;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const response = await blingApiRequest<{ data: BlingProductBasic[] }>(
+        `/produtos?pagina=${page}&limite=${limit}&tipo=P&criterio=1`,
+      );
+      return response.data || [];
+    } catch (err: any) {
+      const msg = String(err || "");
+      // If it's a 429, retry with backoff; otherwise rethrow immediately
+      if (msg.includes("429") && attempt < maxAttempts) {
+        const waitMs = 300 * Math.pow(2, attempt - 1); // 300ms, 600ms, 1200ms...
+        console.warn(
+          `[fetchBlingProductsList] 429 received; retrying in ${waitMs}ms (attempt ${attempt}/${maxAttempts})`,
+        );
+        await new Promise((r) => setTimeout(r, waitMs));
+        continue;
+      }
+      // Non-retryable or last attempt -> surface a clearer error
+      if (msg.includes("429")) {
+        throw new Error("Bling rate limit reached (429). Try again later.");
+      }
+      throw err;
+    }
+  }
+  // If loop exits unexpectedly, return empty list
+  return [];
 }
 
 export async function fetchBlingProductDetails(
@@ -612,6 +636,40 @@ export async function fetchBlingProductDetails(
     console.error(`Failed to fetch product ${productId}:`, error);
     return null;
   }
+}
+
+// Helper: normalize stock values from various Bling payload shapes
+function extractStockFromBlingProduct(
+  bp: BlingProductFull | null | undefined,
+): number {
+  if (!bp || !bp.estoque) return 0;
+  const e: any = bp.estoque as any;
+
+  // Try common scalar fields
+  const candidates = [
+    e.saldoVirtual,
+    e.saldoVirtualTotal,
+    e.saldoFisico,
+    e.saldoFisicoTotal,
+    e.estoqueAtual,
+    e.saldo,
+  ];
+
+  for (const c of candidates) {
+    if (typeof c === "number" && !Number.isNaN(c)) return Math.floor(c);
+  }
+
+  // Sum deposits if present
+  if (Array.isArray(e.depositos) && e.depositos.length > 0) {
+    let sum = 0;
+    for (const d of e.depositos) {
+      const v = d.saldoVirtual ?? d.saldo ?? d.saldoFisico ?? 0;
+      if (typeof v === "number") sum += Math.floor(v);
+    }
+    if (sum > 0) return sum;
+  }
+
+  return 0;
 }
 
 export async function fetchBlingCategories(): Promise<BlingCategory[]> {
@@ -1146,13 +1204,27 @@ export async function syncProducts(): Promise<{
       `[import] Got stock for ${stockFromEndpoint.size} products. Non-zero: ${nonZeroFromEndpoint}`,
     );
 
-    // Merge: prefer endpoint stock, fallback to listing stock
+    // Merge stock sources:
+    // - Prefer a non-zero value from the endpoint when present
+    // - Otherwise prefer a non-zero value from the listing
+    // - If both are zero or missing, fall back to whichever value is available
     const stockMap = new Map<number, number>();
     for (const id of productIds) {
       const fromEndpoint = stockFromEndpoint.get(id);
       const fromListing = stockFromListing.get(id);
-      stockMap.set(id, fromEndpoint ?? fromListing ?? 0);
+
+      let finalStock: number;
+      if (typeof fromEndpoint === "number" && fromEndpoint > 0) {
+        finalStock = fromEndpoint;
+      } else if (typeof fromListing === "number" && fromListing > 0) {
+        finalStock = fromListing;
+      } else {
+        finalStock = fromEndpoint ?? fromListing ?? 0;
+      }
+
+      stockMap.set(id, finalStock);
     }
+
     const finalNonZero = Array.from(stockMap.values()).filter(
       (v) => v > 0,
     ).length;
@@ -1216,8 +1288,7 @@ export async function syncProducts(): Promise<{
         // Get stock from dedicated stock endpoint (stockMap) - more reliable
         const stock =
           stockMap.get(productId) ??
-          blingProduct.estoque?.saldoVirtual ??
-          blingProduct.estoque?.saldoFisico ??
+          extractStockFromBlingProduct(blingProduct) ??
           0;
 
         if (i < 5) {
@@ -1561,10 +1632,7 @@ async function handleProductEvent(
     description:
       fullProduct.descricaoComplementar || fullProduct.descricaoCurta || null,
     price: String(fullProduct.preco || 0),
-    stock:
-      fullProduct.estoque?.saldoVirtual ??
-      fullProduct.estoque?.saldoFisico ??
-      0,
+    stock: extractStockFromBlingProduct(fullProduct),
     image: imageUrl,
     // Link product to Bling
     blingId: fullProduct.id,
@@ -1729,10 +1797,7 @@ export async function importBlingProductById(
     description:
       fullProduct.descricaoComplementar || fullProduct.descricaoCurta || null,
     price: String(fullProduct.preco || 0),
-    stock:
-      fullProduct.estoque?.saldoVirtual ??
-      fullProduct.estoque?.saldoFisico ??
-      0,
+    stock: extractStockFromBlingProduct(fullProduct),
     image: imageUrl,
     blingId: fullProduct.id,
     blingLastSyncedAt: new Date(),
@@ -1774,6 +1839,9 @@ export async function importBlingProductById(
   }
 
   if (!productFound) {
+    console.log(
+      `[Bling Import] creating product sku=${sku} blingId=${fullProduct.id} company=${companyId}`,
+    );
     await db.insert(products).values({
       ...productData,
       createdAt: new Date(),
@@ -1781,6 +1849,9 @@ export async function importBlingProductById(
     });
     return { created: true, updated: false, message: `Product ${sku} created` };
   } else {
+    console.log(
+      `[Bling Import] updating product id=${productFound.id} sku=${sku} blingId=${fullProduct.id} existingCompany=${productFound.companyId} targetCompany=${companyId}`,
+    );
     await db
       .update(products)
       .set({
@@ -1816,8 +1887,14 @@ export async function importBlingProductsByIds(
 
   try {
     for (const id of productIds) {
+      console.log(
+        `[Bling Import] processing blingId=${id} for company=${companyId}`,
+      );
       try {
         const result = await importBlingProductById(id, companyId);
+        console.log(
+          `[Bling Import] result for blingId=${id} -> ${JSON.stringify(result)}`,
+        );
         if (result.created) imported++;
         else if (result.updated)
           skipped++; // treat update as skipped for UX
@@ -1827,6 +1904,10 @@ export async function importBlingProductsByIds(
         }
       } catch (error) {
         const err = error as any;
+        console.error(
+          `[Bling Import] error importing blingId=${id}:`,
+          err?.message || err,
+        );
         errors.push(`Product ${id}: ${err?.message || String(err)}`);
       }
       // Basic rate limit friendliness

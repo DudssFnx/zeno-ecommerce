@@ -3741,11 +3741,14 @@ export async function registerRoutes(
               ? expiresAtRaw
               : expiresAtRaw * 1000
             : expiresAtRaw instanceof Date
-            ? expiresAtRaw.getTime()
-            : Number(expiresAtRaw) > 1e12
-            ? Number(expiresAtRaw)
-            : Number(expiresAtRaw) * 1000;
-        const expiresInSec = Math.max(0, Math.floor((expiresAtMs - Date.now()) / 1000));
+              ? expiresAtRaw.getTime()
+              : Number(expiresAtRaw) > 1e12
+                ? Number(expiresAtRaw)
+                : Number(expiresAtRaw) * 1000;
+        const expiresInSec = Math.max(
+          0,
+          Math.floor((expiresAtMs - Date.now()) / 1000),
+        );
 
         res.json({
           found: true,
@@ -3800,7 +3803,11 @@ export async function registerRoutes(
           .orderBy(desc(blingTokens.id))
           .limit(1);
 
-        res.json({ refreshed: true, tokens: { access_token: "<masked>", expires_in: tokens.expires_in }, tokenRow: row || null });
+        res.json({
+          refreshed: true,
+          tokens: { access_token: "<masked>", expires_in: tokens.expires_in },
+          tokenRow: row || null,
+        });
       } catch (err: any) {
         res.status(500).json({ message: err.message });
       }
@@ -3842,10 +3849,21 @@ export async function registerRoutes(
           m.fetchBlingProductsList(page, limit),
         );
         res.json({ products });
-      } catch (error) {
-        res
-          .status(500)
-          .json({ message: (error as any).message || String(error) });
+      } catch (error: any) {
+        const message = String(error?.message || error || "");
+        if (
+          message.includes("rate limit") ||
+          message.includes("429") ||
+          message.toLowerCase().includes("limite de requisições")
+        ) {
+          return res
+            .status(429)
+            .json({
+              message:
+                "Bling API rate limit reached. Please try again in a few seconds.",
+            });
+        }
+        res.status(500).json({ message: message || String(error) });
       }
     },
   );

@@ -449,6 +449,7 @@ export default function BlingPage() {
       eventSourceRef.current = eventSource;
 
       eventSource.onmessage = (event) => {
+        // Defensive parse: log raw payload if JSON.parse fails so we can debug malformed data
         try {
           const progress: SyncProgress = JSON.parse(event.data);
           setSyncProgress(progress);
@@ -461,7 +462,13 @@ export default function BlingPage() {
             });
           }
         } catch (e) {
-          console.error("Error parsing SSE data:", e);
+          console.error("Error parsing SSE data. raw payload:", event.data, e);
+          toast({
+            title: "Erro na sincronização (dados inválidos)",
+            description:
+              "O servidor enviou dados inesperados durante a sincronização. Verifique os logs do servidor.",
+            variant: "destructive",
+          });
         }
       };
 
@@ -499,9 +506,97 @@ export default function BlingPage() {
   const syncProductsMutation = useMutation({
     mutationFn: async () => {
       const response = await apiRequest("POST", "/api/bling/sync/products");
-      return response.json();
+      // defensive JSON parse: if the server returns invalid JSON (rare),
+      // read raw text and surface a clear error instead of letting JSON.parse throw
+      try {
+        return await response.json();
+      } catch (e) {
+        try {
+          const raw = await response.clone().text();
+          throw new Error(
+            `Invalid JSON response from server: ${raw.slice(0, 300)}`,
+          );
+        } catch (inner) {
+          throw new Error(
+            "Invalid JSON response from server and failed to read raw body",
+          );
+        }
+      }
+    },
+    onSuccess: (data: any) => {
+      // Show immediate feedback and set optimistic progress so the UI
+      // disables the button while the SSE stream begins to report real progress.
+      setSyncProgress({
+        status: "running",
+        phase: "Iniciando sincronização",
+        currentStep: 0,
+        totalSteps: 0,
+        message: data?.message || "Sincronização iniciada",
+        created: 0,
+        updated: 0,
+        errors: 0,
+        startTime: Date.now(),
+        estimatedRemaining: null,
+      });
+
+      toast({
+        title: "Sincronização iniciada",
+        description:
+          data?.message || "A sincronização foi disparada em segundo plano.",
+      });
     },
     onError: (error: any) => {
+      const msg = String(error?.message || "");
+
+      // 409 from server indicates a sync already running — show friendly message
+      if (
+        msg.startsWith("409:") ||
+        msg.includes("Sincronização já em andamento")
+      ) {
+        toast({
+          title: "Sincronização em andamento",
+          description:
+            "Já existe uma sincronização ativa — mostrando o progresso atual.",
+          variant: "info",
+        });
+
+        // set optimistic running state so the button is immediately disabled
+        setSyncProgress((prev) =>
+          prev && prev.status === "running"
+            ? prev
+            : {
+                status: "running",
+                phase: "Sincronização em andamento",
+                currentStep: 0,
+                totalSteps: 0,
+                message: "Sincronização já em andamento",
+                created: 0,
+                updated: 0,
+                errors: 0,
+                startTime: prev?.startTime ?? Date.now(),
+                estimatedRemaining: null,
+              },
+        );
+
+        // ensure SSE is connected (if connection dropped, re-open it so user sees progress)
+        try {
+          if (
+            !eventSourceRef.current ||
+            eventSourceRef.current.readyState === 2
+          ) {
+            eventSourceRef.current = new EventSource(
+              "/api/bling/sync/progress",
+              { withCredentials: true },
+            );
+            // let the existing useEffect handler process incoming messages (it was the original source)
+          }
+        } catch (e) {
+          console.warn("Failed to re-open SSE for sync progress:", e);
+        }
+
+        return;
+      }
+
       toast({
         title: "Falha na Sincronização",
         description: error.message || "Falha ao sincronizar produtos",
@@ -1177,12 +1272,22 @@ export default function BlingPage() {
                 disabled={syncProductsMutation.isPending || isSyncing}
                 data-testid="button-sync-products"
               >
-                {syncProductsMutation.isPending || isSyncing ? (
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                {syncProductsMutation.isPending ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Solicitar sincronização...
+                  </>
+                ) : isSyncing ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Sincronizando...
+                  </>
                 ) : (
-                  <Package className="h-4 w-4 mr-2" />
+                  <>
+                    <Package className="h-4 w-4 mr-2" />
+                    Sincronizar Produtos
+                  </>
                 )}
-                Sincronizar Produtos
               </Button>
             </div>
 
