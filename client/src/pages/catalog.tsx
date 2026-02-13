@@ -122,7 +122,13 @@ export default function CatalogPage() {
     queryFn: async () => {
       const res = await fetch(`/api/products?${queryParams}`, { credentials: 'include' });
       if (!res.ok) throw new Error('Failed to fetch products');
-      return res.json();
+      const payload = await res.json();
+      // Compat: algumas rotas do servidor retornam diretamente um array de produtos.
+      // Normalizamos para o formato paginado que a página espera.
+      if (Array.isArray(payload)) {
+        return { products: payload, total: payload.length, page: 1, totalPages: 1 } as ProductsResponse;
+      }
+      return payload as ProductsResponse;
     },
   });
 
